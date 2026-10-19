@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andaxin.BuildConfig
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -33,7 +34,7 @@ import com.andaxin.shell.Sheet
  * 「我的」这一格只列入口，不取任何数据 —— 和旧版一致。
  * 每一行后面标的是这块什么时候接上：批次二（运动）、批次三（其余）。
  */
-private class Entry(val title: String, val note: String)
+private class Entry(val title: String, val note: String, val route: String? = null)
 
 private val ENTRIES = listOf(
     Entry("运动", "六屏 · 批次二"),
@@ -46,12 +47,12 @@ private val ENTRIES = listOf(
     Entry("素质学分", "批次三"),
     Entry("劳动教育", "批次三"),
     Entry("节假日离返校", "批次三"),
-    Entry("主题", "批次一"),
-    Entry("关于", "批次一"),
+    Entry("主题", "材质与玻璃", route = "theme"),
+    Entry("关于", BuildConfig.VERSION_NAME, route = "about"),
 )
 
 @Composable
-fun MeScreen(modifier: Modifier = Modifier) {
+fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
     Column(
         modifier = modifier
@@ -83,7 +84,7 @@ fun MeScreen(modifier: Modifier = Modifier) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { }
+                        .clickable { entry.route?.let(open) }
                         .padding(vertical = Gap.md),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,

@@ -1,5 +1,6 @@
 package com.andaxin.feature.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.design.Radius
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.PlaceholderNote
@@ -31,7 +33,7 @@ import com.andaxin.state.HomeModel
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
-    val model = adxViewModel { HomeModel(it.dashboard) }
+    val model = adxViewModel { HomeModel(it.dashboard, it.timetable) }
     val state by model.state.collectAsStateWithLifecycle()
 
     Column(
@@ -90,6 +92,48 @@ fun HomeScreen(modifier: Modifier = Modifier) {
         }
 
         PlaceholderNote(text = graph.placeholderHint)
+
+        if (state.today.isNotEmpty()) {
+            Text(
+                text = "今天",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = LocalInk.current.muted,
+                modifier = Modifier.padding(top = Gap.xl, bottom = Gap.sm, start = Gap.xxs),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                state.today.forEach { slot ->
+                    Sheet {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) {
+                                Text(slot.course, fontSize = 15.sp, color = LocalInk.current.strong)
+                                Spacer(Modifier.height(Gap.xs))
+                                Text(slot.room, fontSize = 12.sp, color = LocalInk.current.muted)
+                            }
+                            Text(
+                                text = "第 ${slot.startPeriod} 节",
+                                fontSize = 12.sp,
+                                color = LocalInk.current.faint,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(Gap.xl))
+        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            listOf("运动", "查寝", "校园卡", "报修").forEach { name ->
+                Text(
+                    text = name,
+                    fontSize = 13.sp,
+                    color = LocalInk.current.muted,
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.surfaceVariant, Radius.pill)
+                        .padding(horizontal = Gap.lg, vertical = Gap.md),
+                )
+            }
+        }
 
         state.error?.let {
             Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)

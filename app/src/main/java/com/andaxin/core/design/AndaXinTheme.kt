@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.andaxin.core.settings.DayNight
 
 private val LightInk = InkSet(
     strong = Palette.Ink,
@@ -99,9 +100,15 @@ private val Shapes = Shapes(
 
 @Composable
 fun AndaXinTheme(
-    dark: Boolean = isSystemInDarkTheme(),
+    dayNight: DayNight = DayNight.System,
     content: @Composable () -> Unit,
 ) {
+    val followSystem = isSystemInDarkTheme()
+    val dark = when (dayNight) {
+        DayNight.System -> followSystem
+        DayNight.Light -> false
+        DayNight.Dark -> true
+    }
     androidx.compose.runtime.CompositionLocalProvider(
         LocalInk provides if (dark) DarkInk else LightInk,
     ) {
