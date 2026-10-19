@@ -19,7 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -27,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.sp
+import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -122,12 +125,19 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     }
 }
 
-/** 登录。口令要 RSA 之后才发出去，公钥和参数得我们自己抓一次才算数。 */
+/**
+ * 登录。口令在本机用服务器的公钥 RSA 加密后直发 `getToken.do`，不经过任何第三方。
+ *
+ * 报文的形状是自己 10-19 打实样验过的，见 `data/capture/AuthFeed.kt` 顶上那段注释。
+ */
 @Composable
 fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val ink = LocalInk.current
     var account by remember { mutableStateOf("") }
     var secret by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
 
     ScaffoldPage(title = "登录", onBack = onBack) {
@@ -153,15 +163,39 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         Box(
             Modifier.fillMaxWidth().height(50.dp)
                 .background(MaterialTheme.colorScheme.primary, Radius.card)
-                .clickable { note = "登录接口还没接：口令怎么加密、公钥是哪一把，都要我们自己抓一次才写。" },
+                .clickable(enabled = !busy && account.isNotBlank() && secret.isNotBlank()) {
+                    busy = true
+                    note = null
+                    scope.launch {
+                        val r = graph.auth.login(account.trim(), secret)
+                        busy = false
+                        r.fold(
+                            onSuccess = { graph.session.save(it); onDone() },
+                            onFailure = { note = it.message ?: "登录失败" },
+                        )
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
-            Text("登录", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
+            Text(
+                text = if (busy) "正在登录…" else "登录",
+                fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary,
+            )
         }
         note?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error, lineHeight = 18.sp)
+            Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error, lineHeight = 19.sp)
         }
+        Spacer(Modifier.height(Gap.lg))
+        Text(
+            text = "先不登录，用占位数据看看界面",
+            fontSize = 13.sp,
+            color = ink.muted,
+            modifier = Modifier.clickable {
+                scope.launch { graph.session.browseWithoutLogin() }
+                onBack()
+            }.padding(vertical = Gap.sm),
+        )
     }
 }
 
