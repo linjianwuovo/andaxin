@@ -1,9 +1,9 @@
 package com.andaxin.shell
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -11,14 +11,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,31 +29,43 @@ import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.core.store.Session
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardColors
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 一张卡：白底、16 圆角、不带阴影 —— 层次靠底色差，不靠投影。 */
+/**
+ * 一张卡。底子和圆角都交给 Miuix 的 `Card`（HyperOS 的设置卡就是它那个样子：
+ * 16 圆角、`surfaceContainer` 底色、无投影），内容留白仍按我们的 `Gap.lg`，
+ * 免得换了零件之后每一屏的行距都跟着变。
+ */
 @Composable
 fun Sheet(
     modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.surface,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(tint, Radius.card)
-            .padding(Gap.lg),
+    val ink = LocalInk.current
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        cornerRadius = Radius.Card,
+        insideMargin = PaddingValues(Gap.lg),
+        colors = CardColors(color = tint, contentColor = ink.strong),
         content = content,
     )
 }
 
+/** 分组小标题：直接用 Miuix 的 `SmallTitle`，它的字号和缩进就是 HyperOS 那一档。 */
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(
+    SmallTitle(
         text = text,
-        modifier = modifier.padding(start = 2.dp, top = Gap.xl, bottom = Gap.sm),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        color = LocalInk.current.muted,
+        modifier = modifier.padding(top = Gap.lg, bottom = Gap.xs),
+        textColor = LocalInk.current.muted,
     )
 }
 
@@ -62,10 +75,12 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun PlaceholderNote(text: String, modifier: Modifier = Modifier) {
+    val ink = LocalInk.current
+    val scheme = MiuixTheme.colorScheme
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, Radius.tag)
+            .background(scheme.surfaceVariant, Radius.tag)
             .padding(horizontal = Gap.md, vertical = Gap.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -73,43 +88,54 @@ fun PlaceholderNote(text: String, modifier: Modifier = Modifier) {
             Modifier
                 .width(3.dp)
                 .height(14.dp)
-                .background(MaterialTheme.colorScheme.primary, Radius.tag)
+                .background(scheme.primary, Radius.tag)
         )
         Spacer(Modifier.width(Gap.sm))
-        Text(text = text, fontSize = 11.sp, color = LocalInk.current.muted)
+        Text(text = text, fontSize = 11.sp, color = ink.muted)
     }
 }
 
 @Composable
 fun StatBlock(label: String, value: String, modifier: Modifier = Modifier) {
+    val ink = LocalInk.current
     Column(modifier = modifier) {
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+        Text(value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
         Spacer(Modifier.height(Gap.xs))
-        Text(label, fontSize = 11.sp, color = LocalInk.current.faint)
+        Text(label, fontSize = 11.sp, color = ink.faint)
     }
 }
 
-/** 一行两列的键值对，明细类界面到处要用。 */
+/**
+ * 一行两列的键值对，明细类界面到处要用。
+ * 换成 Miuix 的 `BasicComponent`：标题在左、值在右，字号/行高/按压反馈都是 HyperOS 那一套，
+ * 值那一栏用 `endActions` 塞进去（它自己只管左对齐的标题和摘要）。
+ */
 @Composable
 fun Labeled(label: String, value: String, modifier: Modifier = Modifier) {
-    Row(
+    val ink = LocalInk.current
+    BasicComponent(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, fontSize = 13.sp, color = LocalInk.current.muted)
-        Text(value, fontSize = 13.sp, color = LocalInk.current.strong)
-    }
+        title = label,
+        titleColor = BasicComponentDefaults.titleColor(
+            color = ink.muted,
+            disabledColor = ink.faint,
+        ),
+        insideMargin = PaddingValues(horizontal = 0.dp, vertical = Gap.xs),
+        endActions = {
+            Text(
+                text = value,
+                fontSize = 13.sp,
+                color = ink.strong,
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxHeight().wrapContentHeight(),
+            )
+        },
+    )
 }
 
 @Composable
 fun Hairline(modifier: Modifier = Modifier) {
-    Spacer(
-        modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(LocalInk.current.hairline)
-    )
+    HorizontalDivider(modifier = modifier, color = LocalInk.current.hairline)
 }
 
 @Composable
