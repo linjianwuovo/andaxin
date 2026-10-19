@@ -13,7 +13,8 @@ import org.json.JSONObject
 /**
  * 登录与刷新 token。
  *
- * 2026-10-19 16:47 本机直发验过的契约（不是从旧实现抄的形状）：
+ * 形状来自两处独立取证，都不经过任何人的源码（详见 `core/net/Crypto.kt` 顶上那段）：
+ * 17:12 抓到安小信自己发的 `POST mobile/getToken.do`，以及 16:47 本机按同一形状直发拿到的响应。
  *
  * 请求  POST https://in.aiit.edu.cn/zhxy-information/mobile/getToken.do
  *       form: userCode、password=RSA(公钥见 Crypto)/Base64(口令)
