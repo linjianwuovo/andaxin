@@ -95,7 +95,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
 
         if (state.today.isNotEmpty()) {
             Text(
-                text = "今天",
+                text = "今日课程",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 color = LocalInk.current.muted,
