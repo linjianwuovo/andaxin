@@ -2,6 +2,7 @@ package com.andaxin.app
 
 import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.andaxin.data.capture.AuthFeed
 import com.andaxin.core.location.GpsFeed
 import com.andaxin.core.poll.Poller
 import com.andaxin.core.run.RunEngine
@@ -38,6 +39,9 @@ class AppGraph(val context: Context) {
 
     /** 明暗、底栏材质、四根玻璃滑杆 */
     val appearance: AppearanceStore by lazy { AppearanceStore(store) }
+
+    /** 登录与 token 刷新：这是全仓第一块接上真实报文的功能 */
+    val auth: AuthFeed by lazy { AuthFeed() }
 
     /** 免责声明看过没有、登没登录、宿舍填没填 */
     val session: SessionStore by lazy { SessionStore(store) }

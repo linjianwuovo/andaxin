@@ -17,6 +17,7 @@ data class Session(
     val loggedIn: Boolean = false,
     val browsing: Boolean = false,
     val account: String = "",
+    val userName: String = "",
     val dorm: String = "",
 )
 
@@ -28,8 +29,30 @@ class SessionStore(private val store: Store) {
             loggedIn = !store.peekString(p, Store.KEY_TOKEN).isNullOrBlank(),
             browsing = store.peekString(p, KEY_BROWSING) == "1",
             account = store.peekString(p, Store.KEY_USER_CODE).orEmpty(),
+            userName = store.peekString(p, KEY_USER_NAME).orEmpty(),
             dorm = store.peekString(p, KEY_DORM).orEmpty(),
         )
+    }
+
+    /** 登录成功后落盘。token 只存本机这一份文件里，不进日志、不进仓。 */
+    suspend fun save(token: com.andaxin.data.capture.TokenBundle) {
+        store.setMany(
+            Store.KEY_TOKEN to token.accessToken,
+            KEY_REFRESH to token.refreshToken,
+            Store.KEY_USER_CODE to token.userCode,
+            KEY_USER_NAME to token.userName,
+            KEY_USER_TYPE to token.userType,
+            KEY_EXPIRES_AT to (System.currentTimeMillis() / 1000 + token.expiresInSeconds).toString(),
+            KEY_BROWSING to null,
+        )
+    }
+
+    suspend fun refreshToken(): String? = store.peekString(store.snapshot(), KEY_REFRESH)
+
+    /** 还剩不到两小时就算过期（学校给 8 小时） */
+    suspend fun tokenExpired(): Boolean {
+        val until = store.peekString(store.snapshot(), KEY_EXPIRES_AT)?.toLongOrNull() ?: return true
+        return System.currentTimeMillis() / 1000 >= until - 7200
     }
 
     suspend fun agreeTerms() = store.setText(KEY_ONBOARDED, "1")
@@ -49,5 +72,9 @@ class SessionStore(private val store: Store) {
         const val KEY_ONBOARDED = "app.onboarded"
         const val KEY_BROWSING = "app.browsing"
         const val KEY_DORM = "profile.dorm"
+        const val KEY_REFRESH = "auth.refresh"
+        const val KEY_USER_NAME = "auth.userName"
+        const val KEY_USER_TYPE = "auth.userType"
+        const val KEY_EXPIRES_AT = "auth.expiresAt"
     }
 }

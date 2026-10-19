@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 // 全应用只有这一份首选项文件。
@@ -31,6 +32,9 @@ class Store(private val context: Context) {
 
     /** 从已经拿到的一份快照里读值，不再触发一次 IO —— 聚合多个设置项时用这个。 */
     fun peekString(prefs: Preferences, key: String): String? = prefs[stringPreferencesKey(key)]
+
+    /** 要一次性读好几个键、又不想订阅流的时候用这个拿快照。 */
+    suspend fun snapshot(): Preferences = runCatching { data.data.first() }.getOrDefault(emptyPreferences())
 
     suspend fun setText(key: String, value: String?) {
         data.edit { p ->
