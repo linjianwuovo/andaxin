@@ -3,7 +3,6 @@ package com.andaxin.feature.modules
 import androidx.compose.runtime.Composable
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.data.local.Affair
-import com.andaxin.data.local.AiClass
 import com.andaxin.data.local.Holiday
 import com.andaxin.data.local.Labor
 import com.andaxin.data.local.Repair
@@ -151,21 +150,6 @@ fun AffairFormScreen(onBack: () -> Unit) = BriefFormPage(
     title = "发起请假", source = Affair.form, onBack = onBack,
 )
 
-/* ── AI 课堂（抓包 6 处、20 个 .do） ── */
-
-@Composable
-fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) = BriefListPage(
-    title = "AI 课堂", source = AiClass.list, onBack = onBack,
-    onRow = { id ->
-        when (id) {
-            "scan" -> open("aiclass/scan")
-            "k1" -> open("aiclass/course")
-            else -> open("aiclass/detail/$id")
-        }
-    },
-    note = "AI 课堂：sttp 那一套证据够；作业(izuoye)零证据，先不做。",
-)
-
-@Composable
-fun AiClassDetailScreen(id: String, onBack: () -> Unit) =
-    BriefDetailPage(title = "课堂详情", source = AiClass.detail, id = id, onBack = onBack)
+/* AI 课堂那两屏搬到 feature/aiclass/AiClassScreens.kt：
+ * 那边不再走 BriefKit 的占位形状，改成真去问 FIF（课件 / 直录播 / 小组），
+ * 拉不到就显示服务端原话。投票那一栏整个删了 —— FIF 没有这个接口。 */

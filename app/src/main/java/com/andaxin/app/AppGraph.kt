@@ -130,6 +130,22 @@ class AppGraph(val context: Context) {
         DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
     }
 
+    /**
+     * AI 课堂（FIF 平台）。这一族跟 in.aiit 那套是**两套鉴权**：
+     * 校内的 access_token 要先经一次单点登录换成 FIF 自己的 JWT，业务请求全走 header。
+     * 见 `FifSession` 顶上那段取证 —— 本轮还没现打通过，等有机内会话补。
+     */
+    val fif: com.andaxin.data.capture.FifSession by lazy {
+        com.andaxin.data.capture.FifSession(store, session)
+    }
+
+    val fifApi: com.andaxin.data.capture.FifApi by lazy { com.andaxin.data.capture.FifApi(fif) }
+
+    /** 课程列表：走 FIF 自己的 myClassroom（抓包清点里是 A 级实样那条）。 */
+    val aiCourses: com.andaxin.data.capture.AiCourseFeed by lazy {
+        com.andaxin.data.capture.AiCourseFeed(fif, fifApi)
+    }
+
     /** 「我的」那一页的学院/专业/班级/辅导员 */
     val profile by lazy { CaptureProfile(school) }
 
