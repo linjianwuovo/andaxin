@@ -15,7 +15,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
@@ -93,6 +98,39 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.xl))
+        GroupTitle("强调色")
+        Sheet {
+            Row(horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
+                ACCENTS.forEach { (name, hex) ->
+                    val on = hex == draft.accent
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable { draft = draft.copy(accent = hex); commit() },
+                    ) {
+                        Box(
+                            Modifier
+                                .size(30.dp)
+                                .background(
+                                    if (hex.isEmpty()) ink.hairline else Color(android.graphics.Color.parseColor(hex)),
+                                    CircleShape,
+                                )
+                                .padding(Gap.xs),
+                        )
+                        Spacer(Modifier.height(Gap.xs))
+                        Text(
+                            name,
+                            fontSize = 10.sp,
+                            color = if (on) ink.strong else ink.faint,
+                            fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(Gap.sm))
+            Text("只换主色，底栏玻璃跟着走。", fontSize = 11.sp, color = ink.faint)
+        }
+
+        Spacer(Modifier.height(Gap.xl))
         GroupTitle("玻璃参数")
         Sheet {
             SliderRow("模糊度", draft.blur, commit) { draft = draft.copy(blur = it) }
@@ -109,6 +147,15 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         Spacer(Modifier.height(Gap.xxl))
     }
 }
+
+private val ACCENTS = listOf(
+    "跟随" to "",
+    "蓝" to "#2563EB",
+    "青" to "#0D9488",
+    "琥珀" to "#B45309",
+    "紫" to "#7C3AED",
+    "玫红" to "#E5484D",
+)
 
 @Composable
 private fun GroupTitle(text: String) {

@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
             // 明暗在根上决定：底栏那层玻璃和整屏必须同一套色，否则暗色下栏体还是白的
             val appearance by graph.appearance.state
                 .collectAsStateWithLifecycle(initialValue = Appearance())
-            AndaXinTheme(dayNight = appearance.dayNight) {
+            AndaXinTheme(dayNight = appearance.dayNight, accentHex = appearance.accent) {
                 CompositionLocalProvider(LocalAppGraph provides graph) {
                     RootShell()
                 }

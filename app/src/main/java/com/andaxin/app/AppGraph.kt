@@ -2,8 +2,11 @@ package com.andaxin.app
 
 import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.andaxin.core.location.GpsFeed
+import com.andaxin.core.poll.Poller
 import com.andaxin.core.run.RunEngine
 import com.andaxin.core.settings.AppearanceStore
+import com.andaxin.core.store.SessionStore
 import com.andaxin.core.store.Store
 import com.andaxin.data.DashboardFeed
 import com.andaxin.data.MessageFeed
@@ -36,6 +39,9 @@ class AppGraph(val context: Context) {
     /** 明暗、底栏材质、四根玻璃滑杆 */
     val appearance: AppearanceStore by lazy { AppearanceStore(store) }
 
+    /** 免责声明看过没有、登没登录、宿舍填没填 */
+    val session: SessionStore by lazy { SessionStore(store) }
+
     val timetable: TimetableFeed by lazy { LocalTimetable() }
     val messages: MessageFeed by lazy { LocalMessages() }
     val notices: NoticeFeed by lazy { LocalNotices() }
@@ -43,6 +49,12 @@ class AppGraph(val context: Context) {
 
     /** 运动：记录是占位，路线规划是真的（存本机文件） */
     val sports: SportsFeed by lazy { LocalSports(File(context.filesDir, "sport_routes.json")) }
+
+    /** 消息轮询：应用活着的时候每五分钟拉一次 */
+    val poller: Poller by lazy { Poller(messages, engineScope) }
+
+    /** 真 GPS：只有跑步那一屏会订阅 */
+    val gps: GpsFeed by lazy { GpsFeed(context) }
 
     /** 跑步引擎跟着进程活：界面切来切去不该打断采集 */
     val engine: RunEngine by lazy { RunEngine(engineScope) }

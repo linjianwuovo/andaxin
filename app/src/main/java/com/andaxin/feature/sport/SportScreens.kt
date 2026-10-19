@@ -63,6 +63,20 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
     var routes by remember { mutableStateOf<List<RouteTemplate>>(emptyList()) }
     var picked by remember { mutableStateOf<RouteTemplate?>(null) }
     var pace by remember { mutableStateOf(7.5f) }
+    var useGps by remember { mutableStateOf(true) }
+    var denied by remember { mutableStateOf<String?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        if (result[android.Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+            graph.engine.startReal(graph.gps)
+            com.andaxin.core.run.RunService.start(ctx)
+            open("sport/run")
+        } else {
+            denied = "没给定位权限就只能沿画好的线走 —— 那不是我采你的位置，是演示。"
+        }
+    }
 
     LaunchedLoad {
         summary = graph.sports.summary().getOrNull()
@@ -113,15 +127,45 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(Gap.xl))
-        BigButton("开始") {
-            scope.launch {
-                graph.engine.start(
-                    route = picked?.points ?: emptyList(),
-                    paceKmh = pace.toDouble(),
-                    mode = if (picked == null) RunMode.Free else RunMode.AlongRoute,
-                )
-                open("sport/run")
+        Section("采什么点")
+        Sheet {
+            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                ModeChip("手机 GPS", useGps) { useGps = true }
+                ModeChip("沿画好的线", !useGps) { useGps = false }
             }
+            Spacer(Modifier.height(Gap.sm))
+            Text(
+                text = if (useGps) "要你人真的在跑：定位权限不给就退不回演示圈。" else
+                    "沿线走是模拟，不是你的位置。学校那边有虚拟定位检测，这一条别当免死金牌。",
+                fontSize = 11.sp, color = ink.faint,
+            )
+        }
+
+        Spacer(Modifier.height(Gap.xl))
+        BigButton("开始") {
+            if (useGps) {
+                ask.launch(
+                    arrayOf(
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                        android.Manifest.permission.POST_NOTIFICATIONS,
+                    )
+                )
+            } else {
+                scope.launch {
+                    graph.engine.start(
+                        route = picked?.points ?: emptyList(),
+                        paceKmh = pace.toDouble(),
+                        mode = if (picked == null) RunMode.Free else RunMode.AlongRoute,
+                    )
+                    com.andaxin.core.run.RunService.start(ctx)
+                    open("sport/run")
+                }
+            }
+        }
+        denied?.let {
+            Spacer(Modifier.height(Gap.md))
+            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
         PlaceholderNote("运动记录是占位数据；上传报文还没接，跑完只能看，不能交。")
@@ -373,6 +417,21 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnS
 }
 
 private typealias ColumnScope = androidx.compose.foundation.layout.ColumnScope
+
+@Composable
+private fun ModeChip(text: String, picked: Boolean, onClick: () -> Unit) {
+    val ink = LocalInk.current
+    Text(
+        text = text,
+        fontSize = 13.sp,
+        fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
+        color = if (picked) MaterialTheme.colorScheme.primary else ink.muted,
+        modifier = Modifier
+            .background(if (picked) MaterialTheme.colorScheme.surfaceVariant else ink.hairline, Radius.pill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Gap.lg, vertical = Gap.sm),
+    )
+}
 
 @Composable
 private fun Section(text: String) {

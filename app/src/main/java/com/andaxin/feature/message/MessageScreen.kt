@@ -66,6 +66,19 @@ fun MessageScreen(modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.lg))
+        val lastRun by graph.poller.lastRunAt.collectAsStateWithLifecycle(0L)
+        val busy by graph.poller.busy.collectAsStateWithLifecycle(false)
+        Text(
+            text = when {
+                busy -> "正在拉新消息…"
+                lastRun == 0L -> "还没轮询过"
+                else -> "上次刷新：" + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                    .format(java.util.Date(lastRun)) + "，每 5 分钟一次"
+            },
+            fontSize = 11.sp,
+            color = LocalInk.current.faint,
+        )
+        Spacer(Modifier.height(Gap.sm))
         PlaceholderNote(graph.placeholderHint)
         Spacer(Modifier.height(Gap.xxl))
     }

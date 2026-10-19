@@ -1,0 +1,10 @@
+#!/bin/sh
+# 提交前自查：本仓任何一段连续 6 行都不许与前仓相同。规则见 docs/CLEAN_ROOM.md。
+# 装法（一次）：cp tools/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+PY=/d/app/Python312/python.exe
+[ -x "$PY" ] || PY=python3
+"$PY" tools/check_clean_room.py ../lightxin-main beta || {
+  echo ""
+  echo "净室自查没过，提交已挡下。要么改写成自己的写法，要么明确知道自己在干什么再 --no-verify。"
+  exit 1
+}

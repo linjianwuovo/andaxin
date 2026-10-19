@@ -22,8 +22,12 @@ import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.spec
 import com.andaxin.feature.about.AboutScreen
+import com.andaxin.feature.aiclass.CourseDetailScreen
+import com.andaxin.feature.aiclass.ScanScreen
 import com.andaxin.feature.home.HomeScreen
 import com.andaxin.feature.me.MeScreen
+import com.andaxin.feature.modules.LoginScreen
+import com.andaxin.feature.modules.OnboardingScreen
 import com.andaxin.feature.message.MessageScreen
 import com.andaxin.feature.notice.NoticeScreen
 import com.andaxin.feature.schedule.TimetableScreen
@@ -38,6 +42,7 @@ import com.andaxin.feature.modules.AffairListScreen
 import com.andaxin.feature.modules.AiClassDetailScreen
 import com.andaxin.feature.modules.AiClassListScreen
 import com.andaxin.feature.modules.CampusCardScreen
+import com.andaxin.feature.modules.CardFlowsScreen
 import com.andaxin.feature.modules.CreditDetailScreen
 import com.andaxin.feature.modules.CreditListScreen
 import com.andaxin.feature.modules.DormDetailScreen
@@ -61,6 +66,13 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
@@ -86,8 +98,10 @@ object Route {
     const val SPORT_PLANNER = "sport/planner"
     const val SPORT_DETAIL = "sport/detail/{id}"
 
+    const val WELCOME = "gate"
     const val MORE = "more"
     const val CARD = "card"
+    const val CARD_FLOWS = "card/flows"
     const val LOGIN = "login"
     const val DORM = "dorm"
     const val DORM_DETAIL = "dorm/detail/{id}"
@@ -108,6 +122,8 @@ object Route {
     const val AFFAIR_FORM = "affair/form"
     const val AICLASS = "aiclass"
     const val AICLASS_DETAIL = "aiclass/detail/{id}"
+    const val AICLASS_SCAN = "aiclass/scan"
+    const val AICLASS_COURSE = "aiclass/course"
 }
 
 /** 详情路由都带一个 {id}，注册时统一走这个，省掉二十行重复。 */
@@ -130,7 +146,7 @@ fun RootShell() {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        composable(Route.SHELF) { ShelfHost(appearance) { nav.navigate(it) } }
+        composable(Route.SHELF) { Gate(appearance, open = { nav.navigate(it) }) }
         composable(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
         composable(Route.ABOUT) { AboutScreen(onBack = { nav.popBackStack() }) }
         composable(Route.SPORT) { SportStartScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
@@ -148,7 +164,9 @@ fun RootShell() {
         }
 
         composable(Route.MORE) { MoreScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.CARD) { CampusCardScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.CARD) { CampusCardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.AICLASS_COURSE) { CourseDetailScreen(onBack = { nav.popBackStack() }) }
         composable(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
 
         composable(Route.DORM) { DormListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
@@ -183,9 +201,30 @@ fun RootShell() {
         }
         composable(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
         composable(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.AICLASS_SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
         composable(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
             AiClassDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
+    }
+}
+
+/**
+ * 第一屏该看到什么，由会话决定，不靠改 startDestination：
+ * 改 startDestination 会让 NavHost 在标志位翻转时整个重建，页面栈直接丢。
+ */
+@Composable
+private fun Gate(appearance: Appearance, open: (String) -> Unit) {
+    val graph = LocalAppGraph.current
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    val scope = rememberCoroutineScope()
+
+    when {
+        !session.onboarded -> OnboardingScreen(onAgree = { scope.launch { graph.session.agreeTerms() } })
+        !session.loggedIn && !session.browsing -> LoginScreen(
+            onDone = { open(Route.SHELF) },
+            onBack = { scope.launch { graph.session.browseWithoutLogin() } },
+        )
+        else -> ShelfHost(appearance, open)
     }
 }
 

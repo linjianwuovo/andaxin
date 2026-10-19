@@ -90,6 +90,11 @@ private val Type = Typography(
     labelSmall = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
 )
 
+private fun String.toColorOrNull(): Color? = runCatching {
+    if (isBlank()) return null
+    Color(android.graphics.Color.parseColor(if (startsWith("#")) this else "#$this"))
+}.getOrNull()
+
 private val Shapes = Shapes(
     extraSmall = Radius.tag,
     small = Radius.field,
@@ -101,6 +106,7 @@ private val Shapes = Shapes(
 @Composable
 fun AndaXinTheme(
     dayNight: DayNight = DayNight.System,
+    accentHex: String = "",
     content: @Composable () -> Unit,
 ) {
     val followSystem = isSystemInDarkTheme()
@@ -112,8 +118,16 @@ fun AndaXinTheme(
     androidx.compose.runtime.CompositionLocalProvider(
         LocalInk provides if (dark) DarkInk else LightInk,
     ) {
+        val base = if (dark) DarkScheme else LightScheme
+        val accent = accentHex.toColorOrNull()
         MaterialTheme(
-            colorScheme = if (dark) DarkScheme else LightScheme,
+            colorScheme = if (accent == null) base else base.copy(
+                primary = accent,
+                secondary = accent,
+                // 容器色直接用强调色的低透明版，省得每处再算一遍对比度
+                primaryContainer = accent.copy(alpha = 0.18f),
+                onPrimaryContainer = accent,
+            ),
             typography = Type,
             shapes = Shapes,
             content = content,

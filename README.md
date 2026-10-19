@@ -1,0 +1,43 @@
+# 安大信
+
+给本校学生自己写的校园应用：课表、消息、公告、运动、查寝、报修这些原本散在四五个官方入口里的东西，放在一处。
+
+纯客户端。数据直连校方与第三方厂商的接口，没有我们自己的服务器；本机只存登录状态、外观设置、宿舍位置和自绘的跑步路线。
+
+## 这个仓的来历
+
+从零写。不继承轻小信（Relianttt/lightxin）及其任何派生仓的一行源码，约束和自查办法见 [docs/CLEAN_ROOM.md](docs/CLEAN_ROOM.md)。
+
+界面上"每一步出自我这"是硬要求：任何一块协议字段，落进代码时旁边要写清证据来自哪次抓包。取不到证的不写，宁可那一屏少显示一行。
+
+## 怎么编
+
+```bash
+export JAVA_HOME=/d/app/jdk-21
+./gradlew :app:assembleDebug        # 调试包
+./gradlew :app:assembleRelease      # 正式包：R8 + 资源压缩 + 你的签名
+```
+
+`release` 要签名：在仓根放一个 `keystore.properties`（已经在 .gitignore 里），四个键 `storeFile / storePassword / keyAlias / keyPassword`。没有它 release 出来是未签名包，别当正式包发。密钥库和口令永远不进仓。
+
+## 结构
+
+```
+app/AppGraph.kt      手写依赖图，全应用唯一 new 业务对象的地方
+core/                平台适配：定位、瓦片地图、坐标换算、存储、网络、实况通知
+data/brief/          列表 / 详情 / 表单三种契约
+data/local/          占位实现：让每一屏在没抓包之前也能点、能看、能量帧率
+data/                各块的 Contract 接口
+state/ feature/      ViewModel 与界面
+shell/               底栏五格、玻璃栏、公共小块
+docs/architecture/   现状模型与目标分层
+docs/接入清单.md      每块要哪些字段、还缺哪次抓包
+```
+
+依赖选型是性能优先的：没有 Hilt（手写 AppGraph）、没有 Retrofit+Gson（OkHttp + 无反射解析）、13 个 DataStore 合成一份、地图是自己写的 Compose 瓦片层、图标自己画。release 开 R8。
+
+## 现在能干什么
+
+底栏五格和二十几屏界面都在机上跑起来了。路线规划是真能用的：点图加拐点、撤销、存本机、回列表选它跑。
+
+多数屏的数据还是占位 —— 屏幕上会一直挂着一条"这是占位数据"的说明，接上一路就划掉一路。所有写操作（报修提交、请假提交、销假、挂失、付款、跑步上传）一律停在最后一步由人按，没接上报文的那一侧直接回明确失败，不假装成功。

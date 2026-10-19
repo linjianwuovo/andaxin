@@ -1,3 +1,13 @@
+import java.util.Properties
+
+// release 签名。密钥库和口令永远在仓外：仓里只留这个 gitignore 掉的 keystore.properties，
+// 指向 ../signing/ 那份。它不在的时候 release 出来是未签名包，别当正式包发。
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    // 必须用 Reader 版 load：老的 InputStream 版按 ISO-8859-1 解码，路径带中文会读成乱码
+    if (f.exists()) f.reader(Charsets.UTF_8).use { load(it) }
+}
+
 plugins {
     // AGP 9 自带 Kotlin 支持，再套一层 org.jetbrains.kotlin.android 会直接报错 —— 别加回来
     alias(libs.plugins.android.application)
@@ -19,6 +29,19 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                // 相对路径按根仓算：file() 在 app 模块里会把 ../signing 解析成 app/../signing
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                // PKCS12 不区分键口令，keyPassword 就是库口令
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         // 和旧仓反着来：release 也开 R8。旧仓关它是因为 Gson 靠反射，
         // 这仓没有反射解析，规则只有一条 —— 见 proguard-rules.pro。
@@ -26,6 +49,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             // 装机看性能数字用 debug 签名没问题，但帧率一律以 release 为准
@@ -69,9 +93,18 @@ dependencies {
     // 协议层：无反射。报文解析等 CaptureFeed 开工时再引入 kotlinx.serialization，
     // 现在只有 OkHttp 备着，骨架不拉任何下不来的依赖。
     implementation(libs.okhttp)
+    // 装了 profileinstaller，将来录到 Baseline Profile 就直接生效；
+    // 现在还没有录好的 profile —— 生成它要 androidx.baselineprofile 插件，本机离线拉不到。
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
     // Coil 先不进来。旧仓那次教训：只引 coil-compose 不引网络引擎，远程图静默不出、
     // 还不报错，新闻封面空白了好久。这仓接图那天，两个 artifact 必须同一笔提交进来。
+
+    // 扫码签到
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+    implementation(libs.mlkit.barcode)
 
     // 外观：他定的那套玻璃，留着
     implementation(libs.miuix.ui)

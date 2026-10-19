@@ -30,10 +30,12 @@
 
 ```bash
 # 连续 6 行以上相同即报告；只读比对，不改任何文件
-python tools/check_clean_room.py ../lightxin-main beta
+# 这台机器的 python 不在 PATH 里，要么写全路径，要么先 export PATH
+/d/app/Python312/python.exe tools/check_clean_room.py ../lightxin-main beta
 ```
 
-（`tools/check_clean_room.py` 在骨架编过之后补上，先记在这里当验收项。）
+脚本在 `tools/check_clean_room.py`，只用标准库。它同时装成了 `tools/git-hooks/pre-commit`：
+`cp tools/git-hooks/pre-commit .git/hooks/pre-commit` 之后，每次提交自动跑一遍。
 
 ## 依赖选型
 

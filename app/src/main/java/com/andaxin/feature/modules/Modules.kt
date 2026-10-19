@@ -117,7 +117,14 @@ fun AffairFormScreen(onBack: () -> Unit) =
 
 @Composable
 fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) = BriefListPage(
-    title = "AI 课堂", source = AiClass.list, onBack = onBack, onRow = { open("aiclass/detail/$it") },
+    title = "AI 课堂", source = AiClass.list, onBack = onBack,
+    onRow = { id ->
+        when (id) {
+            "scan" -> open("aiclass/scan")
+            "k1" -> open("aiclass/course")
+            else -> open("aiclass/detail/$id")
+        }
+    },
     note = "AI 课堂：sttp 那一套证据够；作业(izuoye)零证据，先不做。",
 )
 
