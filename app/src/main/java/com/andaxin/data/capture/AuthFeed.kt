@@ -50,7 +50,21 @@ class AuthFeed {
     suspend fun login(userCode: String, password: String): Result<TokenBundle> =
         post("$AUTH_BASE/mobile/getToken.do", "userCode" to userCode, "password" to Crypto.encryptPassword(password))
 
-    /** 过期前拿 refresh_token 换新的；换不动就退回登录页，别静默续。 */
+    /**
+     * 过期前拿 refresh_token 换新的；换不动就退回登录页，别静默续。
+     *
+     * **这条现在实际是打不通的，别把它当已接功能。** 10-19 20:1x 我拿自己账号的真 refresh_token
+     * 从本机直发验过：`mobile/refresh.do` 回 404（一份 3218 字节的 HTML 错误页），蛇形/驼峰字段、
+     * GET、带 `token` 头、带 `X-Requested-With`、带 Referer/Origin 六种打法全一样；同一个 base 下
+     * `mobile/getToken.do` 空 POST 回的是 200 + `{"flag":false,"code":"S9999999"}`，`mobile/valid.do`
+     * 也回 404 —— 所以不是网关在拦、也不是我们请求的形状不对，是这两条路由在校方那边现在就不通。
+     * URL 本身不是我猜的：安小信 base.apk 的 classes.dex 字符串表里就有
+     * `https://in.aiit.edu.cn/zhxy-information/mobile/refresh.do`（同族一共五条：sms / valid / logout /
+     * refresh / getToken）。**官方包里有这条，不等于服务端现在接着。**
+     *
+     * 留着它是因为：① 哪天校内网/校方改版把它接回去了，这里一行都不用改；② 失败路径是有原因的
+     * 降级，不是静默装死。所以 `TokenKeepAlive` 换不动时会把人请回登录页并写明原因。
+     */
     suspend fun refresh(refreshToken: String): Result<TokenBundle> =
         post("$AUTH_BASE/mobile/refresh.do", "refresh_token" to refreshToken)
 

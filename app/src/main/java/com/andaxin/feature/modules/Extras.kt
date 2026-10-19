@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -138,7 +139,13 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
     var account by remember { mutableStateOf("") }
     var secret by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf<String?>(null) }
+    // 被"续期失败"请回来的原因：进这一屏时按当前值取一次。
+    // 别用 StateFlow + LaunchedEffect 往 note 里灌 —— 装机实测那样那一行根本不出来：
+    // 会话翻转和 reason 落地不在同一帧，effect 跑到第二次时 reason 已经被消费成 null 了。
+    var note by remember { mutableStateOf(graph.keepAlive.kicked.value) }
+    DisposableEffect(Unit) {
+        onDispose { graph.keepAlive.consumeKicked() }
+    }
 
     ScaffoldPage(title = "登录", onBack = onBack) {
         Column(verticalArrangement = Arrangement.spacedBy(Gap.md)) {
