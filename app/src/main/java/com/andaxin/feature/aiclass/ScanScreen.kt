@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,7 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -130,16 +132,40 @@ private fun CameraPreview(onCode: (String) -> Unit) {
     val lifecycle = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val scanner = remember {
-        BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .build(),
-        )
+    /*
+     * 扫码器**不能在 remember {} 里造**。10-20 01:42 米11 上就是这么炸的：
+     * ML Kit 的 `getClient()` 一旦初始化不了，异常是抛在组合阶段的，整条主线程直接 FATAL，
+     * 界面上连一句"扫码起不来"都来不及显示。现在等相机服务真的拿到了再建，
+     * 建不起来就把原因显示在黑底那一块，取景框还在，App 还在。
+     */
+    var scanner by remember { mutableStateOf<BarcodeScanner?>(null) }
+    var trouble by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { scanner?.close() }
+            scanner = null
+            executor.shutdown()
+        }
     }
 
     LaunchedEffect(Unit) {
-        val provider = cameraProvider(context) ?: return@LaunchedEffect
+        val provider = cameraProvider(context)
+        if (provider == null) {
+            trouble = "拿不到相机服务（CameraX 没起来）"
+            return@LaunchedEffect
+        }
+        val client = runCatching {
+            BarcodeScanning.getClient(
+                BarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                    .build(),
+            )
+        }.getOrElse {
+            trouble = "这台机器上二维码识别起不来：${it.message ?: it.javaClass.simpleName}"
+            return@LaunchedEffect
+        }
+        scanner = client
         val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
         val analysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -147,24 +173,36 @@ private fun CameraPreview(onCode: (String) -> Unit) {
             .also { use ->
                 use.setAnalyzer(executor) { proxy ->
                     val image = proxy.image
-                    if (image == null) {
+                    val sc = scanner
+                    if (image == null || sc == null) {
                         proxy.close()
                         return@setAnalyzer
                     }
-                    scanner.process(InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees))
-                        .addOnSuccessListener { list ->
-                            list.firstOrNull()?.rawValue?.let(onCode)
-                        }
-                        .addOnCompleteListener { proxy.close() }
+                    // 识别本身也可能抛（帧已回收、模型没就绪），抛了就关帧继续等下一张
+                    runCatching {
+                        sc.process(InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees))
+                            .addOnSuccessListener { list -> list.firstOrNull()?.rawValue?.let(onCode) }
+                            .addOnCompleteListener { proxy.close() }
+                    }.onFailure { proxy.close() }
                 }
             }
         runCatching {
             provider.unbindAll()
             provider.bindToLifecycle(lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-        }
+        }.onFailure { trouble = "相机打不开：${it.message ?: it.javaClass.simpleName}" }
     }
 
-    AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        trouble?.let {
+            Text(
+                text = it,
+                fontSize = 13.sp,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.BottomStart).padding(Gap.md),
+            )
+        }
+    }
 }
 
 private suspend fun cameraProvider(context: Context): ProcessCameraProvider? =

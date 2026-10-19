@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,13 +56,9 @@ private val CAMPUS = LatLng(31.146501, 118.635061)
 @Composable
 fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
     val ink = LocalInk.current
     var summary by remember { mutableStateOf<com.andaxin.data.SportSummary?>(null) }
     var routes by remember { mutableStateOf<List<RouteTemplate>>(emptyList()) }
-    var picked by remember { mutableStateOf<RouteTemplate?>(null) }
-    var pace by remember { mutableStateOf(7.5f) }
-    var useGps by remember { mutableStateOf(true) }
     var denied by remember { mutableStateOf<String?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val ask = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -74,7 +69,9 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             com.andaxin.core.run.RunService.start(ctx)
             open("sport/run")
         } else {
-            denied = "没给定位权限就只能沿画好的线走 —— 那不是我采你的位置，是演示。"
+            // 没给定位就不开始。不退回"沿画好的线走"那种演示：那一圈点是算出来的，
+            // 报上去就是假成绩，界面上也绝不用"演示"两个字给它留门。
+            denied = "没给定位权限，这一趟没法开始 —— 学校要的是你真实跑出来的轨迹。"
         }
     }
 
@@ -95,23 +92,19 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.xl))
         Section("路线")
         Sheet {
-            if (routes.isEmpty()) {
-                Text("还没有画过路线。去「规划路线」点几下就有一条。", fontSize = 13.sp, color = ink.faint)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("画过的线", fontSize = 13.sp, color = ink.muted)
+                Text("${routes.size} 条", fontSize = 13.sp, color = ink.faint)
             }
-            routes.forEach { r ->
-                val on = picked?.id == r.id
-                Row(
-                    Modifier.fillMaxWidth().clickable { picked = r }.padding(vertical = Gap.md),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(r.name, fontSize = 15.sp, color = if (on) ink.strong else ink.body)
-                    Text("${r.points.size} 个点", fontSize = 12.sp, color = ink.faint)
-                }
-                if (r !== routes.last()) Hairline()
-            }
+            Spacer(Modifier.height(Gap.sm))
+            Text(
+                "路线在地图上画、存在本机，用来对照着跑。",
+                fontSize = 11.sp,
+                color = ink.faint,
+            )
             Spacer(Modifier.height(Gap.md))
             Text(
-                text = "＋ 规划新路线",
+                text = "＋ 画一条 / 看地图",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable { open("sport/planner") }.padding(vertical = Gap.sm),
@@ -119,49 +112,14 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(Gap.xl))
-        Section("配速")
-        Sheet {
-            Labeled(label = "目标", value = "%.1f km/h".format(pace))
-            Slider(value = pace, onValueChange = { pace = it }, valueRange = 5f..12f)
-            Text("低于 5 或高于 12 学校会判无效，这里只给这个区间。", fontSize = 11.sp, color = ink.faint)
-        }
-
-        Spacer(Modifier.height(Gap.xl))
-        Section("采什么点")
-        Sheet {
-            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                ModeChip("手机 GPS", useGps) { useGps = true }
-                ModeChip("沿画好的线", !useGps) { useGps = false }
-            }
-            Spacer(Modifier.height(Gap.sm))
-            Text(
-                text = if (useGps) "要你人真的在跑：定位权限不给就退不回演示圈。" else
-                    "沿线走是模拟，不是你的位置。学校那边有虚拟定位检测，这一条别当免死金牌。",
-                fontSize = 11.sp, color = ink.faint,
-            )
-        }
-
-        Spacer(Modifier.height(Gap.xl))
         BigButton("开始") {
-            if (useGps) {
-                ask.launch(
-                    arrayOf(
-                        android.Manifest.permission.ACCESS_FINE_LOCATION,
-                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                        android.Manifest.permission.POST_NOTIFICATIONS,
-                    )
+            ask.launch(
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                    android.Manifest.permission.POST_NOTIFICATIONS,
                 )
-            } else {
-                scope.launch {
-                    graph.engine.start(
-                        route = picked?.points ?: emptyList(),
-                        paceKmh = pace.toDouble(),
-                        mode = if (picked == null) RunMode.Free else RunMode.AlongRoute,
-                    )
-                    com.andaxin.core.run.RunService.start(ctx)
-                    open("sport/run")
-                }
-            }
+            )
         }
         denied?.let {
             Spacer(Modifier.height(Gap.md))
@@ -228,7 +186,12 @@ fun SportRunScreen(onBack: () -> Unit) {
         }
         Spacer(Modifier.height(Gap.md))
         Text(
-            text = if (state.mode == RunMode.Free) "当前没有指定路线，沿演示圈走 —— 这不是真实轨迹。" else "沿「${state.points.size} 个点采集」这条线走。",
+            // 运动开始只有一条路：手机 GPS。以前这句在 Free 档写"沿演示圈走"，
+            // 而 startReal() 给的正是 Free —— 真跑反而被标成假轨迹，读着正好反了。
+            text = when (state.mode) {
+                RunMode.AlongRoute -> "沿「${state.points.size} 个点采集」这条线走。"
+                else -> "采的是手机 GPS 的真实位置。楼边、室内会飘，飘出来的那几段学校那边也可能判无效。"
+            },
             fontSize = 11.sp,
             color = ink.faint,
         )
@@ -417,21 +380,6 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnS
 }
 
 private typealias ColumnScope = androidx.compose.foundation.layout.ColumnScope
-
-@Composable
-private fun ModeChip(text: String, picked: Boolean, onClick: () -> Unit) {
-    val ink = LocalInk.current
-    Text(
-        text = text,
-        fontSize = 13.sp,
-        fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
-        color = if (picked) MaterialTheme.colorScheme.primary else ink.muted,
-        modifier = Modifier
-            .background(if (picked) MaterialTheme.colorScheme.surfaceVariant else ink.hairline, Radius.pill)
-            .clickable(onClick = onClick)
-            .padding(horizontal = Gap.lg, vertical = Gap.sm),
-    )
-}
 
 @Composable
 private fun Section(text: String) {
