@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 装机时和 com.linxin 并排，名字要能一眼分开 -->
+    <string name="app_name">安大信·重构</string>
+
+    <string name="tab_home">首页</string>
+    <string name="tab_schedule">课程表</string>
+    <string name="tab_message">消息</string>
+    <string name="tab_notice">公告</string>
+    <string name="tab_me">我的</string>
+</resources>

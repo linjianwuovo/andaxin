@@ -1,0 +1,88 @@
+/*
+ * 新仓目标分层与选型（target state）
+ * 生成：2026-10-19，system-modeler 的现状模型 → 本图是目标态
+ * 读法：实线=允许的依赖方向；虚线=后续由用户抓包接入时才连上的线
+ * 所有节点标 [state=target]，因为新仓此刻还没有代码
+ */
+digraph andaxin_target {
+    rankdir=TB;
+    nodesep=0.25; ranksep=0.55;
+    fontname="Helvetica"; node [fontname="Helvetica", fontsize=11]; edge [fontname="Helvetica", fontsize=9];
+
+    // ---------- 依赖方向铁律：上层可以依赖下层，反向一律不许 ----------
+    subgraph cluster_L6 {
+        label="L6 装配（唯一允许 new 的地方）"; style=rounded; color="#9ca3af"; fontsize=10;
+        appgraph [label="AppGraph.kt\n手写依赖图，全进程单例，懒建\n[state=target]", shape=box3d, fillcolor="#fef3c7", style=filled];
+    }
+
+    subgraph cluster_L5 {
+        label="L5 平台适配（碰 Android API 的只有这一层）"; style=rounded; color="#9ca3af"; fontsize=10;
+        gps [label="GpsFeed\n定位注点 / 随机游走", shape=component, fillcolor="#e0f2fe", style=filled];
+        liveact [label="LiveActivity\nProgressStyle + Flyme + 普通三路", shape=component, fillcolor="#e0f2fe", style=filled];
+        tilemap [label="TileMapLayer\n自写 Compose 瓦片层（替 osmdroid）", shape=component, fillcolor="#dcfce7", style=filled];
+        store [label="Store\n一个存储入口（替 13 个 DataStore）", shape=component, fillcolor="#e0f2fe", style=filled];
+        scan [label="Scan\nCameraX+MLKit，按需加载", shape=component, fillcolor="#e0f2fe", style=filled];
+    }
+
+    subgraph cluster_L4 {
+        label="L4 协议（校方报文的知识全压在这层，一块一面）"; style=rounded; color="#9ca3af"; fontsize=10;
+        contract [label="Contract 接口\nScheduleContract / SportsContract / LeaveContract …\n只声明「要什么数据」", shape=cylinder, fillcolor="#ede9fe", style=filled];
+        realprov [label="CaptureProvider\n真实报文：OkHttp + kotlinx.serialization\n[state=target，等抓包逐块填]", shape=component, fillcolor="#f5f5f4", style=dashed];
+        fakeprov [label="LocalProvider\n现在就有：假数据 + 本地路线文件", shape=component, fillcolor="#fef9c3", style=filled];
+    }
+
+    subgraph cluster_L3 {
+        label="L3 状态"; style=rounded; color="#9ca3af"; fontsize=10;
+        vm [label="ViewModel + StateFlow\nUiState 全 @Immutable / @Stable", shape=component, fillcolor="#fce7f3", style=filled];
+    }
+
+    subgraph cluster_L2 {
+        label="L2 界面（38 屏，一次一屏）"; style=rounded; color="#9ca3af"; fontsize=10;
+        screens [label="feature/*/ui\nCompose + Strong Skipping", shape=component, fillcolor="#dbeafe", style=filled];
+        dsys [label="designsystem\n色/字/形 token + 玻璃底栏 + 拖拽引擎", shape=component, fillcolor="#dbeafe", style=filled];
+    }
+
+    subgraph cluster_L1 {
+        label="L1 壳"; style=rounded; color="#9ca3af"; fontsize=10;
+        main [label="MainActivity（单 Activity）+ Nav\n底栏五格：首页/课程表/消息/公告/我的", shape=component, fillcolor="#e5e7eb", style=filled];
+    }
+
+    main -> screens;
+    screens -> vm;
+    screens -> dsys;
+    vm -> contract;
+    contract ..> realprov : 他补完抓包才连上
+    contract -> fakeprov;
+    vm -> store;
+    screens -> tilemap;
+    vm -> gps;
+    vm -> liveact;
+    screens -> scan;
+    realprov -> gps;
+    appgraph -> main;
+    appgraph -> realprov;
+    appgraph -> fakeprov;
+    appgraph -> store;
+
+    // ---------- 选型：换掉的依赖（性能理由，不是口味） ----------
+    subgraph cluster_sw {
+        label="选型变更（现状 → 目标）"; style=dashed; color="#b91c1c"; fontsize=10;
+        r1 [label="Hilt/Dagger → 手写 AppGraph\n省冷启动、省 1~2MB、去掉 KSP 代码生成", shape=note, fillcolor="#fee2e2", style=filled];
+        r2 [label="Retrofit+Gson → OkHttp+kotlinx.serialization\nGson 靠反射：慢、占内存、挡 R8", shape=note, fillcolor="#fee2e2", style=filled];
+        r3 [label="13 个 DataStore → 1 个存储入口\n现状每个都是一份文件+协程，启动期 IO", shape=note, fillcolor="#fee2e2", style=filled];
+        r4 [label="osmdroid → 自写 Compose 瓦片层\n只要栅格瓦片+折线+点选，View 互操作最贵", shape=note, fillcolor="#fef3c7", style=filled];
+        r5 [label="material-icons-extended → 自画用到的图标\n那个包体积最大、收益最小", shape=note, fillcolor="#fef3c7", style=filled];
+        r6 [label="R8 关 → 开（配 keep 规则）+ Baseline Profile\n这是滚动帧率和首帧最大的一笔", shape=note, fillcolor="#dcfce7", style=filled];
+        r7 [label="保留：Miuix + haze + Kyant 玻璃\n那是他定的外观，不是性能问题；只把模糊限制在底栏区域并缓存", shape=note, fillcolor="#dcfce7", style=filled];
+    }
+
+    // ---------- 批次 ----------
+    subgraph cluster_batches {
+        label="施工批次"; style=dotted; color="#6b7280"; fontsize=10;
+        b1 [label="批次一：壳+设计系统+五格主屏", shape=box, fillcolor="#f3f4f6", style=filled];
+        b2 [label="批次二：运动六屏+地图", shape=box, fillcolor="#f3f4f6", style=filled];
+        b3 [label="批次三：其余十七屏", shape=box, fillcolor="#f3f4f6", style=filled];
+        b4 [label="收尾：装机量性能（am start -W / gfxinfo / 包体）+ 接口待接入清单", shape=box, fillcolor="#f3f4f6", style=filled];
+        b1 -> b2 -> b3 -> b4;
+    }
+}
