@@ -65,6 +65,9 @@ class SessionStore(private val store: Store) {
     /** 先不登录，用占位数据逛界面。真接上登录后这条路径就该被登录取代。 */
     suspend fun browseWithoutLogin() = store.setText(KEY_BROWSING, "1")
 
+    /** 从"先不登录逛逛"退回登录那一屏。只清浏览标志，不动 token。 */
+    suspend fun leaveBrowsing() = store.setText(KEY_BROWSING, null)
+
     suspend fun setDorm(value: String) = store.setText(KEY_DORM, value.ifBlank { null })
 
     suspend fun signOut() = store.setMany(
