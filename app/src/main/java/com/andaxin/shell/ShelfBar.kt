@@ -318,31 +318,34 @@ private fun RowScope.ShelfCell(
     onClick: () -> Unit,
 ) {
     val ink = LocalInk.current
+    val grow = scale()
+    // 缩放原点不在正中：偏下一点，字往上顶的时候才有"被水托起来"的感觉
+    val squish = Modifier.graphicsLayer {
+        scaleX = grow
+        scaleY = grow
+        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.62f)
+    }
     Column(
-        modifier = Modifier
-            .weight(1f)
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = squish
+            .then(Modifier.weight(1f))
             .fillMaxHeight()
-            .graphicsLayer {
-                val s = scale()
-                scaleX = s
-                scaleY = s
-            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
             ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
         Image(
             painter = painterResource(iconRes),
             contentDescription = label,
-            modifier = Modifier.size(21.dp).graphicsLayer {
-                // 图标自己染成墨色：vector 上那个 android:tint 是黑的，亮暗两套得靠这里
-                val c = if (active) accent else ink.muted
-                if (c != Color.Unspecified) colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(c)
-            },
+            modifier = Modifier
+                .size(21.dp)
+                .graphicsLayer {
+                    val tint = if (active) accent else ink.muted
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint)
+                },
         )
         Text(
             text = label,
