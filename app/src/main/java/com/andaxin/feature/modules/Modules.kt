@@ -36,9 +36,8 @@ fun DormDetailScreen(id: String, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     BriefDetailPage(
         title = "查寝详情", source = graph.dormDetail, id = id, onBack = onBack,
-        note = "详情走 fdygl 的 getTaskInfoByDateId（身份在请求头里，dateId 从待办那条 url 拆出来）。" +
-            "这条接口是从前端代码里读出来的，还没现打验证过；打不通就把待办里已有的真字段摊开，" +
-            "并把服务端原话附在后面。签到是写操作，这一版不接。",
+        note = "详情走 fdygl 的 getTaskInfoByDateId（身份在请求头里，dateId 从待办那条 url 拆出来），" +
+            "10-20 凌晨现打通过。签到是写操作（定位/拍照/扫码），这一版不接。",
     )
 }
 
@@ -141,8 +140,9 @@ fun AffairDetailScreen(id: String, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     BriefDetailPage(
         title = "单据详情", source = graph.affairDetail, id = id, onBack = onBack,
-        note = "审批链、表单回显、超假信息分别来自 getApprovedInfoByExeId / getForm / getXjxx。" +
-            "销假那颗键要连按两次才真发，发的是 getForm 回显的 dataJson 原样。",
+        note = "流程类的单子给审批链 + 表单回显 + 超假信息，分别来自 getApprovedInfoByExeId / getForm / getXjxx；" +
+            "查寝类那一条走的是 fdygl 的当天详情。销假那颗键要连按两次才真发，" +
+            "发的是 getForm 回显的 dataJson 原样。",
     )
 }
 
