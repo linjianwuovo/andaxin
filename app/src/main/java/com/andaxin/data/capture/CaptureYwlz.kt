@@ -198,8 +198,11 @@ class CaptureDorm(private val tasks: YwlzTasks) : ListSource {
  * signinPlaceName signinDate collectionStartTime collectionEndTime lateReturnTime replenish
  * replenishDate requirement createName createOrgName signinPhotoName`。
  *
- * **这条我还没现打过**（写它时本机四把 token 全被判死，见 `School.YWLZ_DENIED` 的取证），
- * 所以打不通时不装成功：把待办列表里已有的真字段摊开，再把服务端原话附在后面。
+ * **这条 10-20 00:48 现打过了**（取证升到②）：按前端原文给 `role`/`roleId` 传空串，服务端照回
+ * `flag:true` + 63 个非空字段 —— 2026-10-19 那场：定位签到、采集窗口 21:00–23:59、已签到 22:01、
+ * 地点"新建的签到地点"、签到要求四条、创建人<教师姓名·从略> / 艺术设计学院、签到照片一张。
+ * 所以学生端那两个头确实是空串，不用再猜；`code=203` 之外还有没有别的失效码，仍然没见过。
+ * 哪天打不通就退回把待办里已有的真字段摊开，再把服务端原话附在后面，不装成功。
  */
 class CaptureDormDetail(
     private val school: School,
@@ -210,79 +213,95 @@ class CaptureDormDetail(
     override suspend fun detail(id: String): Result<BriefDetail> {
         val a = list.byId[id] ?: tasks.all().getOrNull()?.firstOrNull { it.nodeId == id }
             ?: return Result.failure(Exception("这一条不在查寝列表里，回列表重进一次"))
-        val dateId = a.query["dateId"].orEmpty()
-        val fallback = bedDetail(a)
-        if (dateId.isBlank()) return Result.success(fallback)
+        return dormDetailOf(school, a)
+    }
+}
 
-        val r = school.postJson(
-            "${School.FDYGL}/app/dorm/getTaskInfoByDateId",
-            JSONObject().put("dateId", dateId),
-        )
-        if (r.isFailure) {
-            return Result.success(
-                fallback.copy(
-                    paragraphs = fallback.paragraphs +
-                        "查寝详情这条接口没打通，服务端/网络给的原话是：${r.exceptionOrNull()?.message}",
-                )
-            )
-        }
-        val d = r.getOrThrow().optJSONObject("data")
-        if (d == null) return Result.success(fallback)
+/**
+ * 查寝详情：从待办那条 `url` 里拆出 `dateId` → 打 fdygl → 映射成人话。
+ * 待办那一侧点进查寝类的一条也走这儿：两边看到同一份真数据，不是一个给 ID、一个给字段。
+ * 打不通就退回 [bedDetail]（列表里已有的真字段 + 服务端原话），不装成功。
+ */
+internal suspend fun dormDetailOf(school: School, a: YwlzTask): Result<BriefDetail> {
+    val fallback = bedDetail(a)
+    val dateId = a.query["dateId"].orEmpty()
+    if (dateId.isBlank()) return Result.success(fallback)
 
-        val fields = buildList {
-            keep(d, "查寝日期", "taskDate")
-            add("现在什么状态" to statusOf(d.optString("status")))
-            add("签到了没" to if (d.optString("signStatus") == "1") "已签到" else "还没签到")
-            keep(d, "签到地点", "signinPlaceName")
-            keep(d, "签到时间", "signinDate")
-            add("签到方式" to signinModeOf(d.optString("signinMode")))
-            keep(d, "采集开始", "collectionStartTime")
-            keep(d, "采集结束", "collectionEndTime")
-            keep(d, "开始", "startTimes")
-            keep(d, "结束", "endTimes")
-            keep(d, "晚归阈值(分钟)", "lateReturnTime")
-            keep(d, "能不能补签", "replenish")
-            keep(d, "补签截止", "replenishDate")
-            keep(d, "签到要求", "requirement")
-            keep(d, "发起人", "createName")
-            keep(d, "发起组织", "createOrgName")
-            keep(d, "签到照片", "signinPhotoName")
-            add("日期 ID" to dateId)
-        }
+    val r = school.postJson(
+        "${School.FDYGL}/app/dorm/getTaskInfoByDateId",
+        JSONObject().put("dateId", dateId),
+    )
+    if (r.isFailure) {
         return Result.success(
-            BriefDetail(
-                title = d.optString("title").ifBlank { fallback.title },
-                fields = fields,
-                paragraphs = listOf(
-                    "这一屏的字段来自 fdygl 的 getTaskInfoByDateId（查寝详情）。",
-                    "签到是写操作，而且它要定位/拍照/扫码，这一版没接 —— 真要签到还是得去学校那个页面。",
-                ),
+            fallback.copy(
+                paragraphs = fallback.paragraphs +
+                    "查寝详情这条接口没打通，服务端/网络给的原话是：${r.exceptionOrNull()?.message}",
             )
         )
     }
+    val d = r.getOrThrow().optJSONObject("data") ?: return Result.success(fallback)
 
-    /** 状态码含义来自前端组件里的判断分支（`"0"`=进行中、`"2"`=未到签到时间）。 */
-    private fun statusOf(v: String) = when (v) {
-        "0" -> "进行中"
-        "2" -> "还没到签到时间"
-        "" -> "—"
-        else -> v
+    val fields = buildList {
+        keep(d, "查寝日期", "taskDate")
+        add("现在什么状态" to bedStatusOf(d.optString("status")))
+        add("签到了没" to if (d.optString("signStatus") == "1") "已签到" else "还没签到")
+        keep(d, "签到地点", "signinPlaceName")
+        keep(d, "签到时间", "signinDate")
+        add("签到方式" to signinModeOf(d.optString("signinMode")))
+        keep(d, "采集开始", "collectionStartTime")
+        keep(d, "采集结束", "collectionEndTime")
+        keep(d, "开始", "startTimes")
+        keep(d, "结束", "endTimes")
+        keep(d, "晚归阈值(分钟)", "lateReturnTime")
+        add("能不能补签" to yesNo(d.optString("replenish")))
+        keep(d, "补签截止", "replenishDate")
+        keep(d, "签到要求", "requirement")
+        keep(d, "发起人", "createName")
+        keep(d, "发起组织", "createOrgName")
+        keep(d, "签到照片", "signinPhotoName")
+        add("日期 ID" to dateId)
     }
+    return Result.success(
+        BriefDetail(
+            title = d.optString("title").ifBlank { fallback.title },
+            fields = fields,
+            paragraphs = listOf(
+                "这一屏的字段来自 fdygl 的 getTaskInfoByDateId（查寝详情）。",
+                "签到是写操作，要定位、拍照或扫码，这一版没接，所以这儿只给你看当天是什么要求、你签了没有。",
+            ),
+        )
+    )
+}
 
-    private fun signinModeOf(v: String) = when (v) {
-        "1" -> "定位签到"
-        "2" -> "扫码签到"
-        "" -> "—"
-        else -> v
-    }
+/** 状态码含义来自前端组件里的判断分支（`"0"`=进行中、`"2"`=未到签到时间）。 */
+private fun bedStatusOf(v: String) = when (v) {
+    "0" -> "进行中"
+    "2" -> "还没到签到时间"
+    "" -> "—"
+    else -> v
+}
 
-    /** 空值三种写法（没这个键 / null / 空串）都当"没有"，不摆空行糊弄人。 */
-    private fun MutableList<Pair<String, String>>.keep(o: JSONObject?, label: String, key: String) {
-        if (o == null || !o.has(key) || o.isNull(key)) return
-        val v = o.optString(key)
-        if (v.isBlank() || v == "null") return
-        add(label to v)
-    }
+private fun signinModeOf(v: String) = when (v) {
+    "1" -> "定位签到"
+    "2" -> "扫码签到"
+    "" -> "—"
+    else -> v
+}
+
+/** 这一族的布尔开关是给机器看的 0/1（实样里 `replenish:"0"`），界面上别说人话以外的那种。 */
+private fun yesNo(v: String) = when (v) {
+    "0" -> "不允许"
+    "1" -> "允许"
+    "" -> "—"
+    else -> v
+}
+
+/** 空值三种写法（没这个键 / null / 空串）都当"没有"，不摆空行糊弄人。 */
+private fun MutableList<Pair<String, String>>.keep(o: JSONObject?, label: String, key: String) {
+    if (o == null || !o.has(key) || o.isNull(key)) return
+    val v = o.optString(key)
+    if (v.isBlank() || v == "null") return
+    add(label to v)
 }
 
 internal fun bedDetail(a: YwlzTask): BriefDetail {
@@ -334,7 +353,8 @@ class CaptureAffairDetail(
         val a = list.byId[id] ?: tasks.all().getOrNull()?.firstOrNull { it.nodeId == id }
             ?: return Result.failure(Exception("这一条不在待办列表里，回列表重进一次"))
         affordById[id] = a
-        if (a.isBedCheck || a.executionId.isBlank()) return Result.success(bedDetail(a))
+        // 查寝类的那一条不摆三个 ID 交差：走和查寝那屏同一个详情，同一份真数据
+        if (a.isBedCheck || a.executionId.isBlank()) return dormDetailOf(school, a)
 
         val exe = a.executionId
         val chainR = school.postH5(
