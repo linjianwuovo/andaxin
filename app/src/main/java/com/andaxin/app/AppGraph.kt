@@ -9,6 +9,7 @@ import com.andaxin.core.run.RunEngine
 import com.andaxin.core.settings.AppearanceStore
 import com.andaxin.core.store.SessionStore
 import com.andaxin.core.store.Store
+import com.andaxin.core.store.TokenKeepAlive
 import com.andaxin.data.DashboardFeed
 import com.andaxin.data.MessageFeed
 import com.andaxin.data.NoticeFeed
@@ -45,6 +46,9 @@ class AppGraph(val context: Context) {
 
     /** 免责声明看过没有、登没登录、宿舍填没填 */
     val session: SessionStore by lazy { SessionStore(store) }
+
+    /** token 到点前换成新的，换不动就请回登录页并带上原因 */
+    val keepAlive: TokenKeepAlive by lazy { TokenKeepAlive(auth, session) }
 
     val timetable: TimetableFeed by lazy { LocalTimetable() }
     val messages: MessageFeed by lazy { LocalMessages() }

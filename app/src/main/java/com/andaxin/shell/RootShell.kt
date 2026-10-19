@@ -9,11 +9,17 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -26,7 +32,6 @@ import com.andaxin.feature.aiclass.CourseDetailScreen
 import com.andaxin.feature.aiclass.ScanScreen
 import com.andaxin.feature.home.HomeScreen
 import com.andaxin.feature.me.MeScreen
-import com.andaxin.feature.modules.LoginScreen
 import com.andaxin.feature.modules.OnboardingScreen
 import com.andaxin.feature.message.MessageScreen
 import com.andaxin.feature.notice.NoticeScreen
@@ -217,6 +222,20 @@ private fun Gate(appearance: Appearance, open: (String) -> Unit) {
     val graph = LocalAppGraph.current
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     val scope = rememberCoroutineScope()
+
+    // 光看 loggedIn 触发不了"进程一直活着、token 半路过期"那一种，所以每次回到前台再查一次。
+    var resumed by remember { mutableIntStateOf(0) }
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val watch = LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) resumed++
+        }
+        owner.lifecycle.addObserver(watch)
+        onDispose { owner.lifecycle.removeObserver(watch) }
+    }
+    LaunchedEffect(session.loggedIn, resumed) {
+        if (session.loggedIn) graph.keepAlive.ensureFresh()
+    }
 
     when {
         !session.onboarded -> OnboardingScreen(onAgree = { scope.launch { graph.session.agreeTerms() } })

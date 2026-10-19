@@ -5,11 +5,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * 会话与首次使用状态。
+ * 会话与首次使用状态：全应用唯一一份登录态，落在 `andaxin` 那个 DataStore 文件里。
  *
- * 只有形状，没有真实登录：登录接口那一侧要等我们自己抓一次才知道公钥是哪一把、
- * 口令按什么顺序加密。所以这里存的是"看没看过免责声明""是不是先不登录逛逛"，
- * 加一个账号字符串占位 —— 真 token 来了往 token 键里放，别往 account 里塞。
+ * `loggedIn` 是从"有没有 token"推出来的，不是另存的一个布尔 —— 免得出现
+ * "token 已经清掉了但 loggedIn 还写着 true" 这种界面进不去、又 nowhere 可退的状态。
+ * token 只存本机这一份，不进日志、不进仓、不进崩溃上报。
+ *
+ * 到点续期不在这里做，在 `TokenKeepAlive`：这一层只管存和读。
  */
 @Immutable
 data class Session(
@@ -49,6 +51,9 @@ class SessionStore(private val store: Store) {
 
     suspend fun refreshToken(): String? = store.peekString(store.snapshot(), KEY_REFRESH)
 
+    /** 手里有没有 token。不读 Session 那条流，就是为了在协程里当场判一次。 */
+    suspend fun signedIn(): Boolean = !store.peekString(store.snapshot(), Store.KEY_TOKEN).isNullOrBlank()
+
     /** 还剩不到两小时就算过期（学校给 8 小时） */
     suspend fun tokenExpired(): Boolean {
         val until = store.peekString(store.snapshot(), KEY_EXPIRES_AT)?.toLongOrNull() ?: return true
@@ -65,6 +70,10 @@ class SessionStore(private val store: Store) {
     suspend fun signOut() = store.setMany(
         Store.KEY_TOKEN to null,
         Store.KEY_USER_CODE to null,
+        KEY_REFRESH to null,
+        KEY_USER_NAME to null,
+        KEY_USER_TYPE to null,
+        KEY_EXPIRES_AT to null,
         KEY_BROWSING to null,
     )
 
