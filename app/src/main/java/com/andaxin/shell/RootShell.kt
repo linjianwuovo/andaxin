@@ -32,6 +32,28 @@ import com.andaxin.feature.sport.SportDetailScreen
 import com.andaxin.feature.sport.SportMaintainScreen
 import com.andaxin.feature.sport.SportRecordsScreen
 import com.andaxin.feature.sport.SportRunScreen
+import com.andaxin.feature.modules.AffairDetailScreen
+import com.andaxin.feature.modules.AffairFormScreen
+import com.andaxin.feature.modules.AffairListScreen
+import com.andaxin.feature.modules.AiClassDetailScreen
+import com.andaxin.feature.modules.AiClassListScreen
+import com.andaxin.feature.modules.CampusCardScreen
+import com.andaxin.feature.modules.CreditDetailScreen
+import com.andaxin.feature.modules.CreditListScreen
+import com.andaxin.feature.modules.DormDetailScreen
+import com.andaxin.feature.modules.DormListScreen
+import com.andaxin.feature.modules.ExamDetailScreen
+import com.andaxin.feature.modules.ExamListScreen
+import com.andaxin.feature.modules.HolidayDetailScreen
+import com.andaxin.feature.modules.HolidayFormScreen
+import com.andaxin.feature.modules.HolidayListScreen
+import com.andaxin.feature.modules.LaborDetailScreen
+import com.andaxin.feature.modules.LaborListScreen
+import com.andaxin.feature.modules.LoginScreen
+import com.andaxin.feature.modules.MoreScreen
+import com.andaxin.feature.modules.RepairDetailScreen
+import com.andaxin.feature.modules.RepairFormScreen
+import com.andaxin.feature.modules.RepairListScreen
 import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -63,7 +85,35 @@ object Route {
     const val SPORT_MAINTAIN = "sport/maintain"
     const val SPORT_PLANNER = "sport/planner"
     const val SPORT_DETAIL = "sport/detail/{id}"
+
+    const val MORE = "more"
+    const val CARD = "card"
+    const val LOGIN = "login"
+    const val DORM = "dorm"
+    const val DORM_DETAIL = "dorm/detail/{id}"
+    const val EXAM = "exam"
+    const val EXAM_DETAIL = "exam/detail/{id}"
+    const val CREDIT = "credit"
+    const val CREDIT_DETAIL = "credit/detail/{id}"
+    const val LABOR = "labor"
+    const val LABOR_DETAIL = "labor/detail/{id}"
+    const val HOLIDAY = "holiday"
+    const val HOLIDAY_DETAIL = "holiday/detail/{id}"
+    const val HOLIDAY_FORM = "holiday/form"
+    const val REPAIR = "repair"
+    const val REPAIR_DETAIL = "repair/detail/{id}"
+    const val REPAIR_FORM = "repair/form"
+    const val AFFAIR = "affair"
+    const val AFFAIR_DETAIL = "affair/detail/{id}"
+    const val AFFAIR_FORM = "affair/form"
+    const val AICLASS = "aiclass"
+    const val AICLASS_DETAIL = "aiclass/detail/{id}"
 }
+
+/** 详情路由都带一个 {id}，注册时统一走这个，省掉二十行重复。 */
+private const val ID_ARG = "id"
+
+private fun idPattern() = androidx.navigation.navArgument(ID_ARG) { defaultValue = "" }
 
 @Composable
 fun RootShell() {
@@ -92,9 +142,49 @@ fun RootShell() {
         composable(Route.SPORT_PLANNER) { RoutePlannerScreen(onBack = { nav.popBackStack() }) }
         composable(
             Route.SPORT_DETAIL,
-            arguments = listOf(androidx.navigation.navArgument("id") { defaultValue = "" }),
+            arguments = listOf(idPattern()),
         ) { entry ->
-            SportDetailScreen(recordId = entry.arguments?.getString("id").orEmpty(), onBack = { nav.popBackStack() })
+            SportDetailScreen(recordId = entry.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
+        }
+
+        composable(Route.MORE) { MoreScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.CARD) { CampusCardScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
+
+        composable(Route.DORM) { DormListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
+            DormDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
+        composable(Route.EXAM) { ExamListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.EXAM_DETAIL, arguments = listOf(idPattern())) { e ->
+            ExamDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
+        composable(Route.CREDIT) { CreditListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.CREDIT_DETAIL, arguments = listOf(idPattern())) { e ->
+            CreditDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
+        composable(Route.LABOR) { LaborListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.LABOR_DETAIL, arguments = listOf(idPattern())) { e ->
+            LaborDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
+        composable(Route.HOLIDAY) { HolidayListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.HOLIDAY_DETAIL, arguments = listOf(idPattern())) { e ->
+            HolidayDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
+        composable(Route.HOLIDAY_FORM) { HolidayFormScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.REPAIR) { RepairListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.REPAIR_DETAIL, arguments = listOf(idPattern())) { e ->
+            RepairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
+        composable(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.AFFAIR) { AffairListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.AFFAIR_DETAIL, arguments = listOf(idPattern())) { e ->
+            AffairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
+        composable(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
+            AiClassDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
     }
 }
