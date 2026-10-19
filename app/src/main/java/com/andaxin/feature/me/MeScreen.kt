@@ -15,24 +15,34 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.BuildConfig
+import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
+import kotlinx.coroutines.launch
 
 /**
- * 「我的」这一格只列入口，不取任何数据 —— 和旧版一致。
- * 每一行后面标的是这块什么时候接上：批次二（运动）、批次三（其余）。
+ * 「我的」：顶上那一块是本机会话（名字、学号、能不能退出），下面只列入口、不取任何数据。
+ *
+ * 名字和学号是从登录那次落盘的键里读的，不发网络请求 —— 这一页要能在离线时照常打开。
  */
 private class Entry(val title: String, val note: String, val route: String? = null)
 
@@ -55,7 +65,14 @@ private val ENTRIES = listOf(
 
 @Composable
 fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
+    val graph = LocalAppGraph.current
+    val scope = rememberCoroutineScope()
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     val ink = LocalInk.current
+    // 退出是"抹掉本机这把 token"，不是删账号数据，但一旦点了就得重新输口令，
+    // 所以不给二次确认就太随手了：第一下只把这一行变成"再点一次"，第二下才真退。
+    var armedToQuit by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -70,19 +87,54 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     .background(Palette.Sand, Radius.pill),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("安", fontSize = 18.sp, color = ink.muted)
+                Text(
+                    text = session.userName.firstOrNull()?.toString() ?: "安",
+                    fontSize = 18.sp,
+                    color = if (session.loggedIn) ink.strong else ink.muted,
+                )
             }
             Spacer(Modifier.width(Gap.md))
             Column {
-                Text("未登录", fontSize = 17.sp, fontWeight = FontWeight.Medium, color = ink.strong)
+                Text(
+                    text = when {
+                        session.loggedIn -> session.userName.ifBlank { session.account }
+                        session.browsing -> "未登录，看的是占位数据"
+                        else -> "未登录"
+                    },
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = ink.strong,
+                )
                 Spacer(Modifier.height(Gap.xxs))
-                Text("登录那块要等抓包接上", fontSize = 12.sp, color = ink.faint)
+                Text(
+                    text = when {
+                        session.loggedIn -> "校园账号 ${session.account}"
+                        else -> "登录后这一格会换成你的名字和学号"
+                    },
+                    fontSize = 12.sp,
+                    color = ink.faint,
+                )
+            }
+        }
+
+        if (!session.loggedIn) {
+            Spacer(Modifier.height(Gap.lg))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { scope.launch { graph.session.leaveBrowsing() } }
+                    .padding(vertical = Gap.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("去登录", fontSize = 15.sp, color = ink.strong)
+                Text("回到登录那一屏", fontSize = 11.sp, color = ink.faint)
             }
         }
 
         Spacer(Modifier.height(Gap.xl))
         Sheet {
-            ENTRIES.forEachIndexed { index, entry ->
+            ENTRIES.forEach { entry ->
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -94,7 +146,38 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     Text(entry.title, fontSize = 15.sp, color = ink.strong)
                     Text(entry.note, fontSize = 11.sp, color = ink.faint)
                 }
-                if (index != ENTRIES.lastIndex) Hairline()
+                Hairline()
+            }
+            // 退出登录挂在最后一行：它不是"又一个功能"，是这一页的收尾动作
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = session.loggedIn) {
+                        if (armedToQuit) {
+                            scope.launch { graph.session.signOut() }
+                            armedToQuit = false
+                        } else {
+                            armedToQuit = true
+                        }
+                    }
+                    .padding(vertical = Gap.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (session.loggedIn) "退出登录" else "退出登录（当前没登录）",
+                    fontSize = 15.sp,
+                    color = if (session.loggedIn) ink.strong else ink.ghost,
+                )
+                Text(
+                    text = when {
+                        !session.loggedIn -> "本机没有 token"
+                        armedToQuit -> "再点一次就退出"
+                        else -> "只清本机这把 token"
+                    },
+                    fontSize = 11.sp,
+                    color = if (armedToQuit && session.loggedIn) MaterialTheme.colorScheme.error else ink.faint,
+                )
             }
         }
         Spacer(Modifier.height(Gap.xxl))
