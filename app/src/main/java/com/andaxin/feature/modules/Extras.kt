@@ -40,6 +40,9 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 
 /**
  * 更多功能那一格：只是入口，不取任何数据。
@@ -149,44 +152,46 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
 
     ScaffoldPage(title = "登录", onBack = onBack) {
         Column(verticalArrangement = Arrangement.spacedBy(Gap.md)) {
-            TextField(
+            MiuixTextField(
                 value = account,
                 onValueChange = { account = it },
-                placeholder = { Text("校园账号", fontSize = 14.sp, color = ink.ghost) },
+                label = "校园账号",
+                useLabelAsPlaceholder = true,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            TextField(
+            MiuixTextField(
                 value = secret,
                 onValueChange = { secret = it },
-                placeholder = { Text("口令", fontSize = 14.sp, color = ink.ghost) },
+                label = "口令",
+                useLabelAsPlaceholder = true,
+                singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         Spacer(Modifier.height(Gap.lg))
-        Box(
-            Modifier.fillMaxWidth().height(50.dp)
-                .background(MaterialTheme.colorScheme.primary, Radius.card)
-                .clickable(enabled = !busy && account.isNotBlank() && secret.isNotBlank()) {
-                    busy = true
-                    note = null
-                    scope.launch {
-                        val r = graph.auth.login(account.trim(), secret)
-                        busy = false
-                        r.fold(
-                            onSuccess = { graph.session.save(it); onDone() },
-                            onFailure = { note = it.message ?: "登录失败" },
-                        )
-                    }
-                },
-            contentAlignment = Alignment.Center,
+        MiuixButton(
+            onClick = {
+                busy = true
+                note = null
+                scope.launch {
+                    val r = graph.auth.login(account.trim(), secret)
+                    busy = false
+                    r.fold(
+                        onSuccess = { graph.session.save(it); onDone() },
+                        onFailure = { note = it.message ?: "登录失败" },
+                    )
+                }
+            },
+            enabled = !busy && account.isNotBlank() && secret.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColorsPrimary(),
         ) {
             Text(
                 text = if (busy) "正在登录…" else "登录",
-                fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary,
+                fontSize = 16.sp, fontWeight = FontWeight.Medium,
             )
         }
         note?.let {
