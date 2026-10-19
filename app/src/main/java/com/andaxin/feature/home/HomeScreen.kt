@@ -27,6 +27,7 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
+import com.andaxin.shell.DataCaveat
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Route
 import com.andaxin.shell.Sheet
@@ -94,7 +95,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             )
         }
 
-        PlaceholderNote(text = graph.placeholderHint)
+        DataCaveat(state.error)
 
         if (state.today.isNotEmpty()) {
             Text(

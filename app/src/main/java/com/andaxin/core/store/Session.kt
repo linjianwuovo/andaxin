@@ -23,6 +23,20 @@ data class Session(
     val dorm: String = "",
 )
 
+/**
+ * 协议层要带的身份四件套。名字照校方字段来，别在中间层再翻一次命名。
+ *
+ * `userType` 是登录响应里那个 `userType`（学生是 "1"）。抓包里有一条消息列表打的是 "2"，
+ * 那是安小信自己分系统消息时用的，不代表身份，别跟着改。
+ */
+@Immutable
+data class SchoolIdentity(
+    val accessToken: String,
+    val userCode: String,
+    val userName: String,
+    val userType: String,
+)
+
 class SessionStore(private val store: Store) {
 
     val state: Flow<Session> = store.raw.map { p ->
@@ -51,8 +65,27 @@ class SessionStore(private val store: Store) {
 
     suspend fun refreshToken(): String? = store.peekString(store.snapshot(), KEY_REFRESH)
 
-    /** 手里有没有 token。不读 Session 那条流，就是为了在协程里当场判一次。 */
+    /** 手里有没有 token。不读 Session 那条流，就是为了在协程里现查一次。 */
     suspend fun signedIn(): Boolean = !store.peekString(store.snapshot(), Store.KEY_TOKEN).isNullOrBlank()
+
+    /**
+     * 给协议层用的身份四件套。没登录给 null，让上层自己决定是退回登录页还是继续用占位数据。
+     *
+     * 校方那一圈 `.do` 每一条都要带这一套：`access_token` + `_userCode` + `userId` + `userCode` +
+     * `_userName` + `_userType` + `appId`。少一个就回 `flag:false` 或者直接给你一坨 HTML。
+     */
+    suspend fun identity(): SchoolIdentity? {
+        val p = store.snapshot()
+        val token = store.peekString(p, Store.KEY_TOKEN)
+        val code = store.peekString(p, Store.KEY_USER_CODE)
+        if (token.isNullOrBlank() || code.isNullOrBlank()) return null
+        return SchoolIdentity(
+            accessToken = token,
+            userCode = code,
+            userName = store.peekString(p, KEY_USER_NAME).orEmpty(),
+            userType = store.peekString(p, KEY_USER_TYPE) ?: "1",
+        )
+    }
 
     /** 还剩不到两小时就算过期（学校给 8 小时） */
     suspend fun tokenExpired(): Boolean {

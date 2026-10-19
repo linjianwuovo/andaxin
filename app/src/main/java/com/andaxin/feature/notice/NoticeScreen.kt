@@ -23,6 +23,7 @@ import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.data.NoticeItem
 import com.andaxin.shell.Hairline
+import com.andaxin.shell.DataCaveat
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
@@ -88,7 +89,7 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.lg))
-        PlaceholderNote(graph.placeholderHint)
+        DataCaveat(state.error)
         Spacer(Modifier.height(Gap.xxl))
     }
 }

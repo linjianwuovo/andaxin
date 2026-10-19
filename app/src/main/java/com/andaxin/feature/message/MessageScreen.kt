@@ -30,6 +30,7 @@ import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.data.MessageItem
 import com.andaxin.shell.Hairline
+import com.andaxin.shell.DataCaveat
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
@@ -79,7 +80,7 @@ fun MessageScreen(modifier: Modifier = Modifier) {
             color = LocalInk.current.faint,
         )
         Spacer(Modifier.height(Gap.sm))
-        PlaceholderNote(graph.placeholderHint)
+        DataCaveat(state.error)
         Spacer(Modifier.height(Gap.xxl))
     }
 }

@@ -1,0 +1,207 @@
+package com.andaxin.data.capture
+
+import com.andaxin.core.store.SessionStore
+import com.andaxin.data.MessageCategory
+import com.andaxin.data.MessageFeed
+import com.andaxin.data.MessageItem
+import com.andaxin.data.NoticeBody
+import com.andaxin.data.NoticeFeed
+import com.andaxin.data.NoticeItem
+import com.andaxin.data.TimetableFeed
+import com.andaxin.data.TimetableSlot
+import org.json.JSONArray
+import org.json.JSONObject
+
+/*
+ * 这三个是 2026-10-19 那批抓包里证据最厚的三块，形状照实样来，一条都不猜。
+ * 每条接口下面写的是我实际发过、并且回了真数据的那一次的参数。
+ */
+
+/**
+ * 消息中心。
+ *
+ * 【取证】`POST zhxy-new-scps/msgCenter/mesDetailListNew.do`，
+ * 业务参数 `currentPage=1&pageSize=10&sourceType=2` 之外就是身份那套；
+ * 回 `data` 是分页壳（`totalRecords:29`、`totalPage:3`、`data:[]`）。
+ * 单条字段：`id / title / content / url / contentTypeCode / sendDate("2026-10-19 07:19") /
+ * yearMonth("2026-10") / readFlag("0"|"1") / pushType / hours / minutes`。
+ * 两个坑：① `createDate` 是 Java `LocalDateTime` 序列化出来的**对象**，不是字符串，别去 parse 它，
+ * 要时间看 `sendDate`；② 我试过 `dealFlag=0` 不带 `sourceType`，回的是 0 条 —— 所以 `sourceType` 是必填。
+ *
+ * 分类映射没验：界面那四档（学业/查寝/运动/系统）是界面自己的分组，校方给的是 `sourceType` 数字 +
+ * `contentTypeCode` 短码（实样里见过 `grrcts`）。现在只按短码猜了两条，其余归"系统"，
+ * 猜的都在代码里标出来，等抓到分类表再换。
+ */
+class CaptureMessages(private val school: School, private val session: SessionStore) : MessageFeed {
+
+    override suspend fun page(cursor: Int): Result<List<MessageItem>> {
+        val r = school.post(
+            "$SCPS/msgCenter/mesDetailListNew.do",
+            "currentPage" to (cursor + 1).toString(),
+            "pageSize" to PAGE,
+            "sourceType" to SOURCE,
+        )
+        return r.mapCatching { root ->
+            val arr = School.page(root)
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                MessageItem(
+                    id = o.optString("id"),
+                    title = o.optString("title").ifBlank { o.optString("contentPrefix", "消息") },
+                    brief = o.optString("content"),
+                    sentAt = o.optString("sendDate"),
+                    unread = o.optString("readFlag") == "0",
+                    category = categorize(o.optString("contentTypeCode")),
+                )
+            }
+        }
+    }
+
+    /**
+     * 标已读。【取证】`readPushMessage.do` 在旧清单里出现过，但我这次没发过它 ——
+     * 所以这里明确回失败，不许让界面以为已经读过了。
+     */
+    override suspend fun markRead(id: String): Result<Unit> =
+        Result.failure(Exception("标已读这条还没取证，不代发"))
+
+    private fun categorize(code: String): MessageCategory = when {
+        code.contains("ts", ignoreCase = true) -> MessageCategory.Dorm      // 猜：查寝类短码含 ts
+        code.contains("ty", ignoreCase = true) -> MessageCategory.Sports    // 猜：体育类短码含 ty
+        code.contains("jw", ignoreCase = true) || code.contains("ks", ignoreCase = true) ->
+            MessageCategory.Academic                                        // 猜：教务/考试类短码
+        else -> MessageCategory.System
+    }
+
+    private companion object {
+        const val SCPS = School.SCPS
+        const val PAGE = "10"
+
+        /** 抓包里给的就是 2；别的值没验过。 */
+        const val SOURCE = "2"
+    }
+}
+
+/**
+ * 公告 / 资讯。
+ *
+ * 【取证】`news/getNewsTypeList.do` 回四条分类：`{typeNum, type}` ——
+ * 学校要闻 / 学院动态 / 通知公告 / 学术信息（`typeNum` 是 `ff8080815ecc…` 这种 32 位十六进制）。
+ * `news/getNewsList.do` 参数 `isActivity=0&type=<typeNum>&currentPage=1&pageSize=10`，
+ * 回分页壳（`totalRecords:3430`），单条字段 `id / bt(标题) / image1..3 / urlList[] /
+ * publishPerson / publishTime("2026-10-19 10:57:24") / content:null`。
+ * 列表里 `content` 是 null —— 正文要另打 `news/getNewsDetail.do`，那条我只发了 `id` 一个参数、
+ * 没验成，所以 detail 现在明确回失败。
+ * 封面图是 `https://www.aiit.edu.cn/uploads/...jpg` 直链，能直接喂给 `Images`。
+ */
+class CaptureNotices(private val school: School) : NoticeFeed {
+
+    override suspend fun list(): Result<List<NoticeItem>> {
+        val typesR = school.post("${School.SCPS}/news/getNewsTypeList.do").mapCatching { School.array(it) }
+        val types = typesR.getOrElse { return Result.failure(it) }
+        // 一次只拉一条分类不够看：抓包里"学校要闻"那一类就有 3430 条，
+        // 所以这里把每条分类各拉一页 10 条拼起来，界面上就是一次出的完整列表。
+        val out = ArrayList<NoticeItem>()
+        var firstError: Throwable? = null
+        for (i in 0 until types.length()) {
+            val t = types.getJSONObject(i)
+            val num = t.optString("typeNum")
+            if (num.isBlank()) continue
+            val r = school.post(
+                "${School.SCPS}/news/getNewsList.do",
+                "isActivity" to "0",
+                "type" to num,
+                "currentPage" to "1",
+                "pageSize" to "10",
+            )
+            if (r.isFailure) {
+                firstError = firstError ?: r.exceptionOrNull()
+                continue
+            }
+            val arr = School.page(r.getOrThrow())
+            for (k in 0 until arr.length()) {
+                val o = arr.getJSONObject(k)
+                out += NoticeItem(
+                    id = o.optString("id"),
+                    title = o.optString("bt"),
+                    publishedAt = o.optString("publishTime").substringBeforeLast(':'),
+                    source = o.optString("publishPerson").ifBlank { t.optString("type") },
+                    coverUrl = o.optString("image1").takeIf { it.startsWith("http") },
+                )
+            }
+        }
+        return if (out.isEmpty()) {
+            // 一条都没拿到时，把服务器/网络给的第一句原话带出去，别只说"没拉到"
+            Result.failure(Exception(firstError?.message ?: "分类是空的，校方没给任何一条公告"))
+        } else {
+            Result.success(out)
+        }
+    }
+
+    override suspend fun detail(id: String): Result<NoticeBody> =
+        Result.failure(Exception("正文那条（news/getNewsDetail.do）我发过但没验成，先不装成功"))
+}
+
+/**
+ * 全周课表。
+ *
+ * 【取证】两条，都是 10-19 深夜拿自己账号真 token 直发打出来的：
+ * ① `POST zhxy-csh/dict/selectZcList.do` → 根节点 `rows:[{text:"第8周",value:"8"},…]`，
+ *    另外 `data:{week:"8", schoolTerm:"1", schoolYear:"2026"}` 直接给了"现在是哪一学年的第几学期第几周"。
+ * ② `POST zhxy-csh/mobile/selectStuSelfTimeTable.do`，参数 `xn=2026&xq=1&zc=8`（外加身份那套），
+ *    根节点 `rows` 是七天，每天 `{rq:"10/19", xq:1..7, kcVoList:[…]}`，
+ *    单门课 `{id, kcmc(课名), ksjc(开始节次), jsjc(结束节次), kcdm, jxbh, jsmc(教室), sort, kclbdm, mc(课程类别)}`。
+ *
+ * 三个坑，都撞过：
+ * ① 前缀必须是 `/zhxy-csh`。我按旧清单里的 `/zhxy-information` 打，回的是一坨登录页 HTML，
+ *    所以那条"接口不通"的结论是错的，错在基址。
+ * ② `zc` 不给 → `flag:false`；`xn`/`xq` 写法不对 → 直接 HTTP 500（不是 400，别以为是服务器挂了）。
+ * ③ 每天那条 `kcVoList` 里都混着一条 `sort=0`、`kcmc` 为空的占位行，不滤掉界面上就多一格空课。
+ *
+ * 还有：**校方这份数据里没有教师**。`jsmc` 是教室名称不是老师（我一开始以为是老师），
+ * 课名后面那个 `mc` 是课程类别（通识课/学科基础课）。所以真数据下教师那一行是空的，
+ * 界面得自己让开，别拿课程类别冒充老师名字填进去。
+ */
+class CaptureTimetable(private val school: School) : TimetableFeed {
+
+    override suspend fun week(weekOffset: Int): Result<List<TimetableSlot>> {
+        val dict = school.post("${School.CSH}/dict/selectZcList.do")
+            .mapCatching { it.optJSONObject("data") ?: JSONObject() }
+        if (dict.isFailure) return Result.failure(dict.exceptionOrNull()!!)
+        val d = dict.getOrThrow()
+        val year = d.optString("schoolYear").ifBlank { return Result.failure(Exception("周次表没给学年")) }
+        val term = d.optString("schoolTerm").ifBlank { "1" }
+        val now = d.optString("week").toIntOrNull() ?: 1
+        val zc = (now + weekOffset).coerceIn(0, 20)
+
+        return school
+            .post("${School.CSH}/mobile/selectStuSelfTimeTable.do", "xn" to year, "xq" to term, "zc" to zc.toString())
+            .mapCatching { root ->
+                val days = root.optJSONArray("rows") ?: JSONArray()
+                buildList {
+                    for (i in 0 until days.length()) {
+                        val day = days.getJSONObject(i)
+                        val weekday = day.optInt("xq", i + 1)
+                        val courses = day.optJSONArray("kcVoList") ?: JSONArray()
+                        for (k in 0 until courses.length()) {
+                            val c = courses.getJSONObject(k)
+                            val name = c.optString("kcmc")
+                            if (name.isBlank()) continue          // 每天那条 sort=0 的空占位行
+                            val start = c.optString("ksjc").toIntOrNull() ?: continue
+                            val end = c.optString("jsjc").toIntOrNull() ?: start
+                            add(
+                                TimetableSlot(
+                                    courseId = c.optString("jxbh").ifBlank { c.optString("kcdm") },
+                                    course = name,
+                                    teacher = "",                 // 校方这份数据里没有教师
+                                    room = c.optString("jsmc"),
+                                    day = weekday,
+                                    startPeriod = start,
+                                    periodCount = (end - start + 1).coerceAtLeast(1),
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+    }
+}

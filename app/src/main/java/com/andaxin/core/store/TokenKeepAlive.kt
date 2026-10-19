@@ -26,7 +26,13 @@ import kotlinx.coroutines.sync.withLock
  * refresh_token 直发那条接口回的是 404。所以到期之后用户会看到一句写明原因的提示、
  * 重登一次，而不是一个说不清的空白首页。接口哪天回去了，这一层不用动。
  */
-class TokenKeepAlive(private val auth: AuthFeed, private val session: SessionStore) {
+class TokenKeepAlive(
+    private val auth: AuthFeed,
+    private val session: SessionStore,
+    /** 由 AppGraph 把 `School.kicked` 递进来；这一层不去 new 协议层的东西。 */
+    private val kickedDetector: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
+    private val kickedAck: () -> Unit = {},
+) {
 
     private val mutex = Mutex()
 
@@ -41,6 +47,14 @@ class TokenKeepAlive(private val auth: AuthFeed, private val session: SessionSto
      */
     suspend fun ensureFresh(): Boolean = mutex.withLock {
         if (!session.signedIn()) return@withLock true
+        // 被顶号比过期更常见：任何一屏先撞到"没有访问权限"，这里下一次过闸门时就直接请回登录页，
+        // 不再让每一屏各自挂一句"系统异常"。
+        if (kickedDetector?.value == true) {
+            session.signOut()
+            _kicked.value = com.andaxin.data.capture.School.KICKED
+            kickedAck()
+            return@withLock false
+        }
         if (!session.tokenExpired()) return@withLock true
 
         val refresh = session.refreshToken()

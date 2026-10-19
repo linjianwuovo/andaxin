@@ -14,15 +14,20 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.app.LocalAppGraph
+import com.andaxin.app.TIMETABLE_NOTE
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
+import com.andaxin.core.store.Session
 
 /** 一张卡：白底、16 圆角、不带阴影 —— 层次靠底色差，不靠投影。 */
 @Composable
@@ -109,3 +114,29 @@ fun Hairline(modifier: Modifier = Modifier) {
 
 @Composable
 fun FillHeight(modifier: Modifier = Modifier) = Spacer(modifier.fillMaxHeight())
+
+/**
+ * 每一屏底部那句"这数据真不真"。
+ *
+ * 有错误先把错误说出来，再说哪几格还是占位 —— 以前只挂那句占位说明，
+ * 接口挂了界面就是一屏空白加一句无关的话，看着像我们没做，其实是被服务器挡了。
+ *
+ * [scheduleNote] 给课表那一屏用：它接上的只有"今天"，整周那条还没取证，措辞不一样。
+ */
+@Composable
+fun DataCaveat(error: String? = null, scheduleNote: Boolean = false, modifier: Modifier = Modifier) {
+    val graph = LocalAppGraph.current
+    val session by graph.session.state.collectAsStateWithLifecycle(Session())
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (!error.isNullOrBlank()) {
+            Text(
+                text = error,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Spacer(Modifier.height(Gap.sm))
+        }
+        PlaceholderNote(if (scheduleNote) TIMETABLE_NOTE else graph.placeholderNote(session.loggedIn))
+    }
+}
