@@ -72,6 +72,11 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     // 退出是"抹掉本机这把 token"，不是删账号数据，但一旦点了就得重新输口令，
     // 所以不给二次确认就太随手了：第一下只把这一行变成"再点一次"，第二下才真退。
     var armedToQuit by remember { mutableStateOf(false) }
+    // 学院/专业/班级/辅导员从校方拉，只读两条接口；拉不到就退回"校园账号 xxx"那行
+    var profile by remember { mutableStateOf<com.andaxin.data.capture.Profile?>(null) }
+    androidx.compose.runtime.LaunchedEffect(session.loggedIn) {
+        if (session.loggedIn) graph.profile.load().onSuccess { profile = it }
+    }
 
     Column(
         modifier = modifier
@@ -108,6 +113,8 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(Gap.xxs))
                 Text(
                     text = when {
+                        session.loggedIn && profile != null ->
+                            "${profile!!.college} · ${profile!!.major} · ${profile!!.className}"
                         session.loggedIn -> "校园账号 ${session.account}"
                         else -> "登录后这一格会换成你的名字和学号"
                     },

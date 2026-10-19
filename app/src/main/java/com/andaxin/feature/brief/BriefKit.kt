@@ -78,7 +78,12 @@ internal class ListModel(private val source: ListSource) : ViewModel() {
 }
 
 @Immutable
-internal data class DetailUi(val data: BriefDetail? = null, val error: String? = null)
+internal data class DetailUi(
+    val data: BriefDetail? = null,
+    val error: String? = null,
+    val done: String? = null,
+    val acting: Boolean = false,
+)
 
 internal class DetailModel(private val source: DetailSource, private val id: String) : ViewModel() {
     private val _state = MutableStateFlow(DetailUi())
@@ -88,6 +93,20 @@ internal class DetailModel(private val source: DetailSource, private val id: Str
         viewModelScope.launch {
             val r = try { source.detail(id) } catch (e: Exception) { Result.failure(e) }
             _state.value = DetailUi(data = r.getOrNull(), error = r.exceptionOrNull()?.message)
+        }
+    }
+
+    /** 详情里那颗写操作键。界面已经连按两次确认过才会走到这儿。 */
+    fun act() {
+        if (_state.value.acting) return
+        _state.value = _state.value.copy(acting = true, error = null)
+        viewModelScope.launch {
+            val r = try { source.act(id) } catch (e: Exception) { Result.failure(e) }
+            _state.value = _state.value.copy(
+                acting = false,
+                done = r.getOrNull(),
+                error = r.exceptionOrNull()?.message,
+            )
         }
     }
 }
@@ -176,6 +195,8 @@ fun BriefDetailPage(
     val model = adxViewModel { DetailModel(source, id) }
     val state by model.state.collectAsStateWithLifecycle()
     val ink = LocalInk.current
+    // 写操作要连按两次：第一次只是把键变成"再按一次真的销假"，第二次才发报文
+    var armed by remember { mutableStateOf(false) }
 
     ScaffoldPage(title = state.data?.title ?: title, onBack = onBack) {
         val d = state.data
@@ -192,6 +213,42 @@ fun BriefDetailPage(
                 Spacer(Modifier.height(Gap.md))
                 Text(it, fontSize = 14.sp, color = ink.body, lineHeight = 21.sp)
             }
+            if (d.writable) {
+                Spacer(Modifier.height(Gap.lg))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .background(
+                            if (armed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            Radius.card,
+                        )
+                        .clickable(enabled = !state.acting) {
+                            if (armed) {
+                                armed = false
+                                model.act()
+                            } else {
+                                armed = true
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = when {
+                            state.acting -> "正在发…"
+                            armed -> "再按一次，真的${d.writeLabel.ifBlank { "提交" }}"
+                            else -> d.writeLabel.ifBlank { "提交" }
+                        },
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (armed) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+        }
+        state.done?.let {
+            Spacer(Modifier.height(Gap.md))
+            Text(it, fontSize = 13.sp, color = Palette.Teal, lineHeight = 19.sp)
         }
         state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.md))

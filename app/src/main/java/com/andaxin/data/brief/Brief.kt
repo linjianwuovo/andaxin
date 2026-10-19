@@ -55,6 +55,14 @@ interface ListSource {
 
 interface DetailSource {
     suspend fun detail(id: String): Result<BriefDetail>
+
+    /**
+     * 详情里那颗写操作键（`BriefDetail.writable` 为真时才露出来）。
+     * 默认不给：没接上报文的一律回 failure，界面就只显示那句原因，绝不静默成功。
+     * 真发之前界面要连按两次确认 —— 写操作停在最后一步由人按。
+     */
+    suspend fun act(id: String): Result<String> =
+        Result.failure(Exception("这一屏没有可发的写操作"))
 }
 
 interface FormSource {

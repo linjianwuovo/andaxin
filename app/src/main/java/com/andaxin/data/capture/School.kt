@@ -8,7 +8,9 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -20,7 +22,7 @@ import org.json.JSONObject
  * `access_token` + `_userCode` + `userId` + `userCode` + `_userName` + `_userType` + `appId`。
  * `appId` 是 32 个 `1`，写死在客户端里，不是我们编的。
  *
- * 三个坑，都是这次实样里看见的：
+ * 前三个坑，都是这次实样里看见的：
  * ① `_userName` 有两种编码：原生那圈（okhttp UA）给一次 URL 编码的 `%E9%BB%84…`，
  *    另有几条（Dalvik UA）给两次编码的 `%25E9%25BB%2584…`。两种服务端都认（都回过 flag:true），
  *    这里统一按一次编码发 —— 少一层歧义，也免得有人以为名字里该带百分号。
@@ -29,6 +31,12 @@ import org.json.JSONObject
  * ③ 服务端不给你 4xx：token 过期、参数缺了，都回 200 + `flag:false` + 一句中文 `msg`，
  *    或者干脆回一坨 HTML（我拿旧清单里那条 `selectStuSelfTimeTable.do` 试过来着，回的是登录页）。
  *    所以判成功只看 `flag` 和能不能钻到结构，别用 HTTP 状态码。
+ *
+ * 第四个坑是 10-19 23:05 用设备上那把活 token 一条条试出来的（`stuExamScore.do`）：
+ * 表单里**同一个键重复出现**，服务端不报错，只把结果清空 ——
+ * `kkxn=2026&kkxq=1&userCode=<学号>` 回 1 条；再补一个 `userCode` 就回 0 条。
+ * 身份那七个字段单独加哪个都不影响，两次编码的名字也不影响。
+ * 所以 `form()` 里做了去重：调用方自己给了同名参数，身份那份就让开。
  */
 class School(private val session: SessionStore) {
 
@@ -51,19 +59,100 @@ class School(private val session: SessionStore) {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
+    /** 当前会话的学号。没登录给空串，调用方自己决定要不要发。 */
+    suspend fun userCode(): String = session.identity()?.userCode.orEmpty()
+
+    /** 当前会话的 token。同上。 */
+    suspend fun token(): String = session.identity()?.accessToken.orEmpty()
+
     /** 带身份表单发一次 POST，回根节点 JSON。没登录直接给失败，不发网络。 */
     suspend fun post(url: String, vararg fields: Pair<String, String>): Result<JSONObject> {
         val id = session.identity()
             ?: return Result.failure(Exception("还没登录，这一屏要校方数据"))
-        return form(id, url, fields.toList())
+        return send(url, dedupe(identityFields(id), fields.toList()))
     }
 
-    private suspend fun form(id: SchoolIdentity, url: String, extra: List<Pair<String, String>>) =
+    /**
+     * H5 那一套身份字段的 POST。ywlz（业务流转）域上的接口是学校的 WebView 页面在调，
+     * 带的身份跟原生那圈**不是一套**，混着用服务端直接拒。
+     *
+     * 【取证】① 旧抓包里 ywlz 的 H5 调用一律是 `accessToken`(驼峰) + `_userCode` + `_userType`
+     * + `userCode` + `xh`（xh 与 userCode 同值），由 axios 拦截器统一追加；
+     * ② 10-19 23:10 我拿设备上那把活 token 对着 `getRunTaskByUserCode.do` 现打了一遍：
+     * H5 这套回 21 条数据；换成原生那套（`access_token`/`appId`/`_userName`/`userId`）
+     * 回 `flag:false result:"非法访问"`。所以这不是风格差异，是服务端真在挑。
+     */
+    suspend fun postH5(url: String, vararg fields: Pair<String, String>): Result<JSONObject> {
+        val id = session.identity()
+            ?: return Result.failure(Exception("还没登录，这一屏要校方数据"))
+        return send(url, dedupe(h5IdentityFields(id), fields.toList()))
+    }
+
+    /**
+     * fdygl（学生工作平台，查寝/晚点名在这儿）用的是**JSON 体 + 身份放请求头**，
+     * 跟前面两种（form 体 + 身份放表单）都不一样，所以单开一个口。
+     *
+     * 【取证】等级①，我读的前端代码：`fdygl.aiit.edu.cn/swp-app/js/chunk-464b727d.8a22efb7.js`
+     * 里 axios 的请求拦截器把身份写进 header —— `accessToken` / `userCode` / `userType` /
+     * `xh`(=userCode) / `role` / `roleId`，`Content-Type: application/json`；
+     * 响应是 `{flag, code, msg, data}`，响应拦截器里 `code===203` 就是把人踢回登录页（token 失效）。
+     *
+     * **这一条我还没现打过**：写它的那会儿本机存着的四把 token 全被判死了（见 `YWLZ_DENIED` 那条取证），
+     * 没法验证。所以两个地方是明写的问号：① `role`/`roleId` 该填什么不知道，拦截器原文是
+     * `t.code || ""`，学生端很可能就是空串，先按空串发；② `code=203` 之外还有没有别的失效码没见过。
+     * 打不通的时候界面显示的是服务端原话，不装作有数据。
+     */
+    suspend fun postJson(url: String, body: JSONObject): Result<JSONObject> {
+        val id = session.identity()
+            ?: return Result.failure(Exception("还没登录，这一屏要校方数据"))
+        return withContext(Dispatchers.IO) {
+            val request = Request.Builder().url(url)
+                .post(body.toString().toRequestBody(JSON_TYPE))
+                .header("Accept", "application/json")
+                .header("User-Agent", AGENT)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("accessToken", id.accessToken)
+                .header("userCode", id.userCode)
+                .header("userType", id.userType)
+                .header("xh", id.userCode)
+                .header("role", "")
+                .header("roleId", "")
+                .build()
+            try {
+                client.newCall(request).execute().use { resp ->
+                    val text = resp.body?.string().orEmpty()
+                    if (!resp.isSuccessful) return@use Result.failure(Exception("服务器回了 ${resp.code}"))
+                    val root = runCatching { JSONObject(text) }.getOrNull()
+                        ?: return@use Result.failure(Exception("回来的不是 JSON（多半是被踢到登录页了）"))
+                    if (root.optInt("code") == 203) {
+                        _kicked.value = true
+                        return@use Result.failure(Exception(KICKED))
+                    }
+                    if (!root.optBoolean("flag", false)) {
+                        val msg = root.optString("msg").ifBlank { "校方说没通过" }
+                        if (msg.contains("没有访问权限")) {
+                            _kicked.value = true
+                            return@use Result.failure(Exception(KICKED))
+                        }
+                        return@use Result.failure(Exception(msg))
+                    }
+                    Result.success(root)
+                }
+            } catch (e: Exception) {
+                Result.failure(Exception("连不上学校：${e.message ?: e.javaClass.simpleName}"))
+            }
+        }
+    }
+
+    /** 同一个键只留调用方那一份（见类注释第四个坑）。 */
+    private fun dedupe(identity: List<Pair<String, String>>, extra: List<Pair<String, String>>): List<Pair<String, String>> {
+        val given = extra.mapTo(HashSet()) { it.first }
+        return identity.filterNot { it.first in given } + extra
+    }
+
+    private suspend fun send(url: String, pairs: List<Pair<String, String>>) =
         withContext(Dispatchers.IO) {
-            val form = FormBody.Builder().apply {
-                identityFields(id).forEach { (k, v) -> add(k, v) }
-                extra.forEach { (k, v) -> add(k, v) }
-            }.build()
+            val form = FormBody.Builder().apply { pairs.forEach { (k, v) -> add(k, v) } }.build()
             val request = Request.Builder().url(url).post(form)
                 .header("Accept", "application/json")
                 .header("User-Agent", AGENT)
@@ -77,8 +166,12 @@ class School(private val session: SessionStore) {
                     val root = runCatching { JSONObject(body) }.getOrNull()
                         ?: return@use Result.failure(Exception("回来的不是 JSON（多半是会话过期被踢到登录页）"))
                     if (!root.optBoolean("flag", false)) {
-                        val msg = root.optString("msg").ifBlank { "校方说没通过" }
-                        if (msg.contains("没有访问权限")) {
+                        // in.aiit 那一族把原因放 `msg`，ywlz 那一族放 `result`（实测回过"非法访问"）。
+                        // 两处都看，都没有才说"没通过"，别自己编一句。
+                        val msg = root.optString("msg")
+                            .ifBlank { root.optString("result") }
+                            .ifBlank { "校方说没通过" }
+                        if (msg.contains("没有访问权限") || msg == YWLZ_DENIED) {
                             // 顶号是会话级的事，一次命中就该整体认，别每屏各报各的
                             _kicked.value = true
                             return@use Result.failure(Exception(KICKED))
@@ -96,8 +189,25 @@ class School(private val session: SessionStore) {
         /** 被顶号时统一给这一句，界面上和到期那句要能分开。 */
         const val KICKED = "登录已在别处被顶掉（这台设备的服务端会话失效了），重新登一次。"
 
+        /**
+         * ywlz 那一域判会话失效时回的话（在 `result` 字段里，不是 `msg`）。
+         *
+         * 【取证】10-19 23:12 同一套报文回 21 条；23:40 起逐字节一样的报文改回
+         * `flag:false result:"非法访问"`，同一时刻 in.aiit 那些**查会话**的接口
+         * （news/getNewsTypeList、personal/queryStudentStatus）也一起回"没有访问权限"，
+         * 而**不查会话**的（timeTable、notReadCount、stuExamScore、getYwdtCount）照回数据 ——
+         * 所以这句是"会话没了"，不是"参数写错"。当时本机存着的四把 token
+         * （我们 app、安小信、老包 access + refresh）全部同时失效，像是校方夜里清了一次会话。
+         * 万一哪天它拿这句话表示别的意思，界面上会多说一句"重新登一次"，
+         * 那也比沉默地显示一个空列表强。
+         */
+        const val YWLZ_DENIED = "非法访问"
+
         /** 安小信自己那圈调用用的就是 okhttp 默认串，跟着它，别自造一个。 */
         const val AGENT = "okhttp/4.9.3"
+
+        /** fdygl 那一族要 JSON 体（见 `postJson`），MediaType 只造一次。 */
+        val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
 
         /** 32 个 1，抓包里每条都带。 */
         const val APP_ID = "11111111111111111111111111111111"
@@ -108,6 +218,21 @@ class School(private val session: SessionStore) {
 
         /** 课表与成绩那一组在 csh 这个 context 下，前缀错了服务器直接回登录页 HTML。 */
         const val CSH = "$MAIN/zhxy-csh"
+
+        /**
+         * 业务流转（待办事务 / 请假 / 销假）。前端 JS 里写的是 `/mobile/...`，
+         * axios 的 baseURL 把 `/zhxy-bfc` 补上 —— 抓包里线上真实路径带这个前缀。
+         */
+        const val YWLZ = "https://ywlz.aiit.edu.cn/zhxy-bfc"
+
+        /** 考勤（查寝/活动）那一域，没有网关前缀。 */
+        const val KQ = "https://kq.aiit.edu.cn"
+
+        /**
+         * 学生工作平台。查寝（晚点名）的详情在这一域，路径前缀是 `/app/`，
+         * 身份放**请求头**、体是 JSON（见 `postJson`），跟前面几族都不一样。
+         */
+        const val FDYGL = "https://fdygl.aiit.edu.cn"
 
         /** 身份字段。`userId`/`userCode` 跟 `_userCode` 是同一个值，校方三条接口各认一个，全给。 */
         fun identityFields(id: SchoolIdentity): List<Pair<String, String>> = listOf(
@@ -120,11 +245,23 @@ class School(private val session: SessionStore) {
             "appId" to APP_ID,
         )
 
+        /** H5 那套身份字段：token 换成驼峰名，多一个 `xh`，不带 appId 和用户名。见 `postH5`。 */
+        fun h5IdentityFields(id: SchoolIdentity): List<Pair<String, String>> = listOf(
+            "accessToken" to id.accessToken,
+            "_userCode" to id.userCode,
+            "_userType" to id.userType,
+            "userCode" to id.userCode,
+            "xh" to id.userCode,
+        )
+
         fun enc(s: String): String =
             if (s.isEmpty()) "" else runCatching { URLEncoder.encode(s, "UTF-8") }.getOrDefault(s)
 
         /** 分页壳：`data.data` 才是数组。拿不到就回空数组，不抛。 */
         fun page(root: JSONObject): JSONArray = root.optJSONObject("data")?.optJSONArray("data") ?: JSONArray()
+
+        /** ywlz / csh 那一族的信封：数组直接挂根节点的 `rows`。 */
+        fun rows(root: JSONObject): JSONArray = root.optJSONArray("rows") ?: JSONArray()
 
         /** 有的接口 `data` 直接就是数组，有的挂在 `data` 里再套一层，两种都吃。 */
         fun array(root: JSONObject): JSONArray {

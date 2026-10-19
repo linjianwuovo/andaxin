@@ -15,7 +15,25 @@ import com.andaxin.data.MessageFeed
 import com.andaxin.data.NoticeFeed
 import com.andaxin.data.SportsFeed
 import com.andaxin.data.TimetableFeed
+import com.andaxin.data.capture.BriefSwitch
+import com.andaxin.data.capture.CaptureAffairDetail
+import com.andaxin.data.capture.CaptureAffairs
+import com.andaxin.data.capture.CaptureCreditDetail
+import com.andaxin.data.capture.CaptureCreditList
+import com.andaxin.data.capture.CaptureDorm
+import com.andaxin.data.capture.CaptureDormDetail
+import com.andaxin.data.capture.CaptureExamDetail
+import com.andaxin.data.capture.CaptureExamList
+import com.andaxin.data.capture.YwlzTasks
+import com.andaxin.data.brief.DetailSource
+import com.andaxin.data.brief.ListSource
 import com.andaxin.data.capture.CaptureMessages
+import com.andaxin.data.capture.CaptureProfile
+import com.andaxin.data.capture.DetailSwitch
+import com.andaxin.data.local.Affair
+import com.andaxin.data.local.Credit
+import com.andaxin.data.local.Dorm
+import com.andaxin.data.local.Exam
 import com.andaxin.data.capture.CaptureNotices
 import com.andaxin.data.capture.CaptureTimetable
 import com.andaxin.data.capture.DashboardSource
@@ -65,8 +83,8 @@ class AppGraph(val context: Context) {
 
     /**
      * 四路 feed 各自包一层开关：登录了走校方，没登录走占位（见 `data/capture/Sources.kt`）。
-     * 已经接上真实报文的是消息、公告、今日课程、首页那三格；
-     * 还欠的是全周课表、查寝、跑量、报修、待办事务、校园卡、AI 课堂。
+     * 已经接上真实报文的是消息、公告、全周课表、首页那几格、成绩、素质学分、待办事务、查寝。
+     * 还欠的是本周跑量、报修、校园卡、AI 课堂、劳动教育、节假日离返校。
      */
     val timetable: TimetableFeed by lazy {
         TimetableSource(CaptureTimetable(school), LocalTimetable(), session)
@@ -81,8 +99,39 @@ class AppGraph(val context: Context) {
     }
 
     val dashboard: DashboardFeed by lazy {
-        DashboardSource(school, session, LocalDashboard(messages, timetable), timetable)
+        DashboardSource(school, session, LocalDashboard(messages, timetable), timetable, ywlz)
     }
+
+    /** 成绩与学分：列表和详情共用一份进程内缓存（详情就是把列表那一行展开，校方没有单独接口） */
+    private val examCapture by lazy { CaptureExamList(school) }
+    private val creditCapture by lazy { CaptureCreditList(school) }
+
+    val examList: ListSource by lazy { BriefSwitch(examCapture, Exam.list, session) }
+    val examDetail: DetailSource by lazy { DetailSwitch(CaptureExamDetail(examCapture), Exam.detail, session) }
+    val creditList: ListSource by lazy { BriefSwitch(creditCapture, Credit.list, session) }
+    val creditDetail: DetailSource by lazy { DetailSwitch(CaptureCreditDetail(creditCapture), Credit.detail, session) }
+
+    /**
+     * 业务流转（ywlz）那一套：待办事务、请假读链、销假、查寝。
+     * 待办和查寝是**同一份数据**（查寝就是列表里 msgType=2 的那批），所以共用一个取数口，
+     * 60 秒内不重复发；详情才按条目去拉审批链和表单回显。
+     */
+    val ywlz: YwlzTasks by lazy { YwlzTasks(school) }
+
+    private val affairCapture by lazy { CaptureAffairs(ywlz) }
+    private val dormCapture by lazy { CaptureDorm(ywlz) }
+
+    val affairList: ListSource by lazy { BriefSwitch(affairCapture, Affair.list, session) }
+    val affairDetail: DetailSource by lazy {
+        DetailSwitch(CaptureAffairDetail(school, ywlz, affairCapture), Affair.detail, session)
+    }
+    val dormList: ListSource by lazy { BriefSwitch(dormCapture, Dorm.list, session) }
+    val dormDetail: DetailSource by lazy {
+        DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
+    }
+
+    /** 「我的」那一页的学院/专业/班级/辅导员 */
+    val profile by lazy { CaptureProfile(school) }
 
     /** 运动：记录是占位，路线规划是真的（存本机文件） */
     val sports: SportsFeed by lazy { LocalSports(File(context.filesDir, "sport_routes.json")) }
@@ -101,13 +150,14 @@ class AppGraph(val context: Context) {
     /**
      * 界面上那条"哪些还是占位"的说明。
      *
-     * 分登录与否两种说法：没登录时整屏都是假的，登录了就只剩查寝和跑量这两格 ——
-     * 再挂那句"课表、消息、公告都没接上"就是谎话了，那三块 10-19 已经接上真实报文。
+     * 分登录与否两种说法：没登录时整屏都是假的；登录了就只剩**本周跑量**这一格 ——
+     * 查寝那格 10-19 也接上真数据了（来源是 ywlz 待办列表里 msgType=2 的条目），
+     * 再把它跟跑量一起说成占位就是谎话。
      * 宁可屏幕上一直挂着提醒，也不要让用户以为看到的是校方给的真数据。
      */
     fun placeholderNote(loggedIn: Boolean): String =
         if (!loggedIn) "没登录：这一屏全是占位数据，不是校方给的。"
-        else "查寝和本周跑量这两格还是占位：那两条接口没取到实样。"
+        else "本周跑量这一格还是占位：那条接口（sports:8082 那一域）还没取到实样。"
 }
 
 /** 课表那一屏单独一句：整周是真的，缺的是教师。 */

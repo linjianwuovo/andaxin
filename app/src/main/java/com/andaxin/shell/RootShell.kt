@@ -237,6 +237,18 @@ private fun Gate(appearance: Appearance, open: (String) -> Unit) {
         if (session.loggedIn) graph.keepAlive.ensureFresh()
     }
 
+    /**
+     * 会话半路没了（被顶号 / 校方夜里清了会话），别等下一次回前台才处理。
+     *
+     * 任何一屏先撞到"没有访问权限"或"非法访问"，`School` 就把标志立起来；这里立刻过一遍闸门，
+     * 让它清会话并把原因送到登录页那一句上。不这么做的话用户会停在原地：
+     * 一块屏写着"登录已在别处被顶掉，重新登一次"，可界面上没有任何一条路能去登录。
+     */
+    val sessionKicked by graph.school.kicked.collectAsStateWithLifecycle(false)
+    LaunchedEffect(sessionKicked) {
+        if (sessionKicked && session.loggedIn) graph.keepAlive.ensureFresh()
+    }
+
     when {
         !session.onboarded -> OnboardingScreen(onAgree = { scope.launch { graph.session.agreeTerms() } })
         !session.loggedIn && !session.browsing -> LoginScreen(
