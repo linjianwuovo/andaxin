@@ -65,10 +65,16 @@ fun TileMap(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current.density
-    val dd = density.toDouble()
+    // 网格一律按 1 张瓦片 = 256 物理像素来算，不乘 density。
+    // 为什么：高德 webrd 这套直链只出 256² 的图，我 10-19 拿 scale=1/2、size=1/2 四种组合
+    // 各打了一次同一个格子，返回的字节数与尺寸完全一样（6171B / 256x256），也就是没有 @2x。
+    // 乘上 density 去贴就是把 256 的图硬拉到 2.75 倍，糊；1:1 贴最锐，视野靠 zoom 档位补回来
+    // （z18 在 1:1 下 ≈ 0.6 米/像素，一屏 860 米，正好是看校园的量）。
+    // 直链最高到 z18：z19、z20 我探过，返回 179 字节的空白格，所以上限锁在 18。
+    val dd = 1.0
     val cache = remember { TileCache(context.cacheDir) }
     val scope = rememberCoroutineScope()
-    val tilePx = Tiles.SIZE * density
+    val tilePx = Tiles.SIZE.toFloat()
     var loadedTick by remember { mutableIntStateOf(0) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableIntStateOf(zoomStart) }
@@ -133,7 +139,7 @@ fun TileMap(
                         } else if (pinchBase > 0f) {
                             val ratio = d / pinchBase
                             if (abs(ratio - 1f) > 0.22f) {
-                                zoom = (zoom + (if (ratio > 1f) 1 else -1)).fastCoerceIn(3, 19)
+                                zoom = (zoom + (if (ratio > 1f) 1 else -1)).fastCoerceIn(10, 18)
                                 pinchBase = d
                                 shift = Offset.Zero
                             }

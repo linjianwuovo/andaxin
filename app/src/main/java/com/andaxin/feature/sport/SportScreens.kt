@@ -292,7 +292,7 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
             TileMap(
                 centerWgs = d.track.firstOrNull() ?: CAMPUS,
                 pathWgs = d.track,
-                zoomStart = 17,
+                zoomStart = 16,
                 modifier = Modifier.fillMaxSize().clip(Radius.card),
             )
         }
@@ -357,7 +357,7 @@ fun RoutePlannerScreen(onBack: () -> Unit) {
                 centerWgs = center,
                 pathWgs = points,
                 markersWgs = points.takeIf { it.isNotEmpty() }?.let { listOf(it.last()) } ?: emptyList(),
-                zoomStart = 17,
+                zoomStart = 18,
                 modifier = Modifier.fillMaxSize().clip(Radius.card),
                 onPickWgs = { points = points + it },
                 onCenterMoved = { center = it },

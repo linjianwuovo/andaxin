@@ -249,7 +249,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 .layerBackdrop(pageBackdrop),
         ) { index ->
             when (Shelf.entries[index]) {
-                Shelf.Home -> HomeScreen()
+                Shelf.Home -> HomeScreen(open = open)
                 Shelf.Timetable -> TimetableScreen()
                 Shelf.Message -> MessageScreen()
                 Shelf.Notice -> NoticeScreen()
