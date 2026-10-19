@@ -80,7 +80,7 @@ class LocalDashboard(
         val lessons = timetable.week(0).getOrDefault(emptyList()).count { it.day == 1 }
         return Result.success(
             Dashboard(
-                greeting = "上午好",
+                greeting = greetAt(java.time.LocalTime.now().hour),
                 todayLessons = lessons,
                 nextLesson = "第 3 节 · 大学英语 · 教二 111",
                 unreadMessages = unread,
@@ -89,4 +89,13 @@ class LocalDashboard(
             )
         )
     }
+}
+
+/** 问候语跟表走，不跟着占位数据走：这一格是唯一一处本机就能算对的话。 */
+internal fun greetAt(hour: Int) = when (hour) {
+    in 5..10 -> "早上好"
+    in 11..12 -> "中午好"
+    in 13..17 -> "下午好"
+    in 18..22 -> "晚上好"
+    else -> "夜深了"
 }

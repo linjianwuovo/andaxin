@@ -1,6 +1,7 @@
 package com.andaxin.feature.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -26,12 +28,13 @@ import com.andaxin.core.design.Radius
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.PlaceholderNote
+import com.andaxin.shell.Route
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.state.HomeModel
 
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier) {
+fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
     val model = adxViewModel { HomeModel(it.dashboard, it.timetable) }
     val state by model.state.collectAsStateWithLifecycle()
@@ -122,17 +125,21 @@ fun HomeScreen(modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.xl))
+        // 四枚快捷格只负责跳，不在这儿摆数据：数据在各自那一屏里。
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            listOf("运动", "查寝", "校园卡", "报修").forEach { name ->
-                Text(
-                    text = name,
-                    fontSize = 13.sp,
-                    color = LocalInk.current.muted,
-                    modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surfaceVariant, Radius.pill)
-                        .padding(horizontal = Gap.lg, vertical = Gap.md),
-                )
-            }
+            listOf("运动" to Route.SPORT, "查寝" to Route.DORM, "校园卡" to Route.CARD, "报修" to Route.REPAIR)
+                .forEach { (name, at) ->
+                    Text(
+                        text = name,
+                        fontSize = 13.sp,
+                        color = LocalInk.current.muted,
+                        modifier = Modifier
+                            .clip(Radius.pill)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, Radius.pill)
+                            .clickable { open(at) }
+                            .padding(horizontal = Gap.lg, vertical = Gap.md),
+                    )
+                }
         }
 
         state.error?.let {
