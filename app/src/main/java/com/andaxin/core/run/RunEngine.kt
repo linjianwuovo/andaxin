@@ -107,6 +107,26 @@ class RunEngine(private val scope: CoroutineScope) {
         }
     }
 
+    /** 真 GPS 采集：定点由系统给，我们只负责串成轨迹。 */
+    fun startReal(gps: com.andaxin.core.location.GpsFeed) {
+        startedAt = System.currentTimeMillis()
+        _state.value = RunState(active = true, mode = RunMode.Free)
+        job?.cancel()
+        job = scope.launch {
+            var lastAt = startedAt
+            gps.fixes().collect { fix ->
+                val now = System.currentTimeMillis()
+                val dt = ((now - lastAt) / 1000.0).coerceAtLeast(0.5)
+                lastAt = now
+                _state.value = _state.value.copy(
+                    seconds = ((now - startedAt) / 1000).toInt(),
+                    meters = _state.value.meters + fix.meters,
+                    points = _state.value.points + RunPoint(now, fix.where, fix.meters / dt),
+                )
+            }
+        }
+    }
+
     fun pause() {
         _state.value = _state.value.copy(paused = true)
     }

@@ -16,6 +16,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -34,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -205,10 +209,19 @@ fun BriefFormPage(
     val state by model.state.collectAsStateWithLifecycle()
     val values = remember { mutableStateMapOf<String, String>() }
     val ink = LocalInk.current
+    val dorm = LocalAppGraph.current.let { g ->
+        val s by g.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+        s.dorm
+    }
 
     ScaffoldPage(title = state.spec?.title ?: title, onBack = onBack) {
         state.spec?.fields?.forEach { field ->
-            FieldRow(field, get = { values[it].orEmpty() }, put = { k, v -> values[k] = v })
+            FieldRow(
+                field,
+                get = { values[it].orEmpty() },
+                put = { k, v -> values[k] = v },
+                dorm = dorm,
+            )
             Spacer(Modifier.height(Gap.md))
         }
         Box(
@@ -235,8 +248,14 @@ fun BriefFormPage(
 }
 
 @Composable
-private fun FieldRow(field: Field, get: (String) -> String, put: (String, String) -> Unit) {
+private fun FieldRow(
+    field: Field,
+    get: (String) -> String,
+    put: (String, String) -> Unit,
+    dorm: String,
+) {
     val ink = LocalInk.current
+    var picking by remember { mutableStateOf(false) }
     when (field) {
         is Field.Text -> Column {
             Text(field.label, fontSize = 12.sp, color = ink.muted)

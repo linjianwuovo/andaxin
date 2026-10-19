@@ -162,6 +162,7 @@ object Affair {
 object AiClass {
     val list = PlaceholderList(
         listOf(
+            BriefRow("scan", "扫码签到", "对着课堂上的二维码", "去扫码", Flag.Unread),
             BriefRow("k1", "军事理论 · 3 班", "今天 10:00 签到已结束", "已签到", Flag.Ok),
             BriefRow("k2", "形势与政策", "进行中 · 还有 12 分钟", "在上课", Flag.Warn),
             BriefRow("k3", "大学英语", "明天 08:00", "未开始", Flag.None),

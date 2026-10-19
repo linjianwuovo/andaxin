@@ -21,6 +21,8 @@ data class Appearance(
     val refraction: Float = 0.5f,
     val distortion: Float = 0.5f,
     val dispersion: Float = 0.5f,
+    /** 强调色，十六进制不带 #；空串 = 用主题默认那支蓝 */
+    val accent: String = "",
 )
 
 /**
@@ -39,6 +41,7 @@ class AppearanceStore(private val store: Store) {
             refraction = store.peekString(p, KEY_REFRACTION)?.toFloatOrNull() ?: 0.5f,
             distortion = store.peekString(p, KEY_DISTORTION)?.toFloatOrNull() ?: 0.5f,
             dispersion = store.peekString(p, KEY_DISPERSION)?.toFloatOrNull() ?: 0.5f,
+            accent = store.peekString(p, KEY_ACCENT).orEmpty(),
         )
     }
 
@@ -51,6 +54,7 @@ class AppearanceStore(private val store: Store) {
             KEY_REFRACTION to a.refraction.toString(),
             KEY_DISTORTION to a.distortion.toString(),
             KEY_DISPERSION to a.dispersion.toString(),
+            KEY_ACCENT to a.accent,
         )
     }
 
@@ -61,6 +65,7 @@ class AppearanceStore(private val store: Store) {
         const val KEY_REFRACTION = "theme.refraction"
         const val KEY_DISTORTION = "theme.distortion"
         const val KEY_DISPERSION = "theme.dispersion"
+        const val KEY_ACCENT = "theme.accent"
     }
 }
 

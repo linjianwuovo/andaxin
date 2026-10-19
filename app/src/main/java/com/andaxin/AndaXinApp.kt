@@ -12,5 +12,6 @@ class AndaXinApp : Application() {
         super.onCreate()
         // 只建壳，feed 全是 lazy：启动期不做任何磁盘或网络 IO
         graph = AppGraph(this)
+        graph.poller.start()
     }
 }

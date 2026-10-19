@@ -74,7 +74,7 @@ fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
 /** 校园卡。17wanxiao 是第三方，要先用校方会话换它的会话，所以这一块接起来是两步。 */
 @Composable
-fun CampusCardScreen(onBack: () -> Unit) {
+fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ink = LocalInk.current
     ScaffoldPage(title = "校园卡", onBack = onBack) {
         Box(
@@ -102,7 +102,7 @@ fun CampusCardScreen(onBack: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
             Box(
                 Modifier.weight(1f).height(46.dp).background(ink.hairline, Radius.field)
-                    .clickable { }.padding(Gap.md),
+                    .clickable { open("card/flows") }.padding(Gap.md),
                 contentAlignment = Alignment.Center,
             ) { Text("流水", fontSize = 14.sp, color = ink.body) }
             Box(
@@ -111,6 +111,12 @@ fun CampusCardScreen(onBack: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) { Text("挂失", fontSize = 14.sp, color = ink.body) }
         }
+        Spacer(Modifier.height(Gap.sm))
+        Text(
+            text = "挂失是写操作，接口没接之前这个按钮按了不动。",
+            fontSize = 11.sp,
+            color = ink.faint,
+        )
         Spacer(Modifier.height(Gap.md))
         PlaceholderNote("挂失、充值这类写操作一律不代做：接上之后也只会把你送到最后一步。")
     }
@@ -194,5 +200,24 @@ fun OnboardingScreen(onAgree: () -> Unit) {
         ) {
             Text("知道了", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
         }
+    }
+}
+
+
+/** 校园卡流水：形状和别的列表一样，只是每行右边是金额。 */
+@Composable
+fun CardFlowsScreen(onBack: () -> Unit) {
+    val ink = LocalInk.current
+    ScaffoldPage(title = "校园卡流水", onBack = onBack) {
+        listOf("10-18 12:04" to "-8.50", "10-17 07:31" to "-6.00", "10-15 18:22" to "+50.00").forEach { (when_, money) ->
+            Sheet {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(when_, fontSize = 13.sp, color = ink.muted)
+                    Text(money, fontSize = 14.sp, color = if (money.startsWith("-")) ink.body else Palette.Teal)
+                }
+            }
+            Spacer(Modifier.height(Gap.sm))
+        }
+        PlaceholderNote("流水要等校园卡那套会话交换接上，现在这几行是占位。")
     }
 }
