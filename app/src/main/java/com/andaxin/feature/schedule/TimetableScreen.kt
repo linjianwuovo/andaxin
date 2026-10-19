@@ -33,7 +33,9 @@ import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
+import com.andaxin.core.schedule.Periods
 import com.andaxin.data.TimetableSlot
+import com.andaxin.shell.DataCaveat
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.adxViewModel
 import com.andaxin.state.TimetableModel
@@ -41,11 +43,8 @@ import java.util.Calendar
 
 private val DAYS = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
-/** 每节课的起止时刻。学校改作息的话，这一张表要跟着接口走，别长期写死。 */
-private val PERIOD_TIMES = listOf(
-    "08:00", "08:55", "10:00", "10:55", "12:00", "12:55",
-    "14:00", "14:55", "16:00", "16:55", "19:00", "19:55",
-)
+/** 每节课的起止时刻。表在 `Periods` 里，和首页"下一节"共用一份。 */
+private val PERIOD_TIMES = Periods.START_AT
 
 private const val ROW_HEIGHT = 62
 private const val GUTTER = 34
@@ -102,7 +101,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.lg))
-        PlaceholderNote(graph.placeholderHint)
+        DataCaveat(state.error, scheduleNote = true)
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -215,7 +214,7 @@ private fun CourseRow(slot: TimetableSlot) {
             Column(Modifier.fillMaxWidth()) {
                 Text(slot.course, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = ink.strong)
                 Spacer(Modifier.height(Gap.xs))
-                Text("${slot.teacher} · ${slot.room}", fontSize = 12.sp, color = ink.muted)
+                Text(if (slot.teacher.isBlank()) slot.room else "${slot.teacher} · ${slot.room}", fontSize = 12.sp, color = ink.muted)
             }
         }
     }
