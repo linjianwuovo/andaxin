@@ -26,10 +26,20 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
     val firstLoad: Boolean = true,
     val data: Dashboard? = null,
+    val today: List<TimetableSlot> = emptyList(),
     val error: String? = null,
 )
 
-class HomeModel(private val feed: DashboardFeed) : ViewModel() {
+/**
+ * 首页。
+ *
+ * 一次出：仪表数据和今天的课两路并发取，都回来了才落一次 state ——
+ * 不许一路加载一路蹦（他验收过的手感）。
+ */
+class HomeModel(
+    private val feed: DashboardFeed,
+    private val timetable: TimetableFeed,
+) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
@@ -39,11 +49,13 @@ class HomeModel(private val feed: DashboardFeed) : ViewModel() {
 
     fun reload() {
         viewModelScope.launch {
-            val r = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
+            val dash = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
+            val slots = try { timetable.week(0) } catch (e: Exception) { Result.failure(e) }
             _state.value = HomeUiState(
                 firstLoad = false,
-                data = r.getOrNull() ?: _state.value.data,
-                error = r.exceptionOrNull()?.message,
+                data = dash.getOrNull() ?: _state.value.data,
+                today = slots.getOrDefault(emptyList()).filter { it.day == 1 },
+                error = (dash.exceptionOrNull() ?: slots.exceptionOrNull())?.message,
             )
         }
     }

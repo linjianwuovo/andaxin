@@ -29,10 +29,23 @@ class Store(private val context: Context) {
 
     fun text(key: String): Flow<String?> = raw.map { it[stringPreferencesKey(key)] }
 
+    /** 从已经拿到的一份快照里读值，不再触发一次 IO —— 聚合多个设置项时用这个。 */
+    fun peekString(prefs: Preferences, key: String): String? = prefs[stringPreferencesKey(key)]
+
     suspend fun setText(key: String, value: String?) {
         data.edit { p ->
             val k = stringPreferencesKey(key)
             if (value == null) p.remove(k) else p[k] = value
+        }
+    }
+
+    /** 一批一起写。拖滑杆时逐帧 edit 会把磁盘打满，也会让读侧一帧内看到半新半旧。 */
+    suspend fun setMany(vararg pairs: Pair<String, String?>) {
+        data.edit { p ->
+            pairs.forEach { (key, value) ->
+                val k = stringPreferencesKey(key)
+                if (value == null) p.remove(k) else p[k] = value
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package com.andaxin.app
 
 import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.andaxin.core.settings.AppearanceStore
 import com.andaxin.core.store.Store
 import com.andaxin.data.DashboardFeed
 import com.andaxin.data.MessageFeed
@@ -24,6 +25,9 @@ import com.andaxin.data.local.LocalTimetable
 class AppGraph(val context: Context) {
 
     val store: Store by lazy { Store(context) }
+
+    /** 明暗、底栏材质、四根玻璃滑杆 */
+    val appearance: AppearanceStore by lazy { AppearanceStore(store) }
 
     val timetable: TimetableFeed by lazy { LocalTimetable() }
     val messages: MessageFeed by lazy { LocalMessages() }
