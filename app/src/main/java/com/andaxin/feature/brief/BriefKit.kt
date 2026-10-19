@@ -55,12 +55,26 @@ import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /* ───────────────────────── 状态 ───────────────────────── */
+
+/** 按下去就是真发的那一档：底色给错误色，字给白。 */
+@Composable
+private fun dangerColors() = ButtonDefaults.buttonColors(
+    color = MaterialTheme.colorScheme.error,
+    disabledColor = MaterialTheme.colorScheme.error.copy(alpha = 0.4f),
+    contentColor = androidx.compose.ui.graphics.Color.White,
+    disabledContentColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
+)
 
 @Immutable
 internal data class ListUi(val rows: List<BriefRow> = emptyList(), val error: String? = null, val loading: Boolean = true)
@@ -215,23 +229,20 @@ fun BriefDetailPage(
             }
             if (d.writable) {
                 Spacer(Modifier.height(Gap.lg))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .background(
-                            if (armed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            Radius.card,
-                        )
-                        .clickable(enabled = !state.acting) {
-                            if (armed) {
-                                armed = false
-                                model.act()
-                            } else {
-                                armed = true
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
+                    // 写操作那颗键走 Miuix 的 Button；armed 那档换成错误色，
+                // 让"这一下是真发"在颜色上就看得出来，不靠多写一行字
+                MiuixButton(
+                    onClick = {
+                        if (armed) {
+                            armed = false
+                            model.act()
+                        } else {
+                            armed = true
+                        }
+                    },
+                    enabled = !state.acting,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = if (armed) dangerColors() else ButtonDefaults.buttonColorsPrimary(),
                 ) {
                     Text(
                         text = when {
@@ -241,7 +252,6 @@ fun BriefDetailPage(
                         },
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
-                        color = if (armed) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
                     )
                 }
             }
@@ -281,15 +291,12 @@ fun BriefFormPage(
             )
             Spacer(Modifier.height(Gap.md))
         }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .background(MaterialTheme.colorScheme.primary, Radius.card)
-                .clickable { model.submit(values.toMap()) },
-            contentAlignment = Alignment.Center,
+        MiuixButton(
+            onClick = { model.submit(values.toMap()) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColorsPrimary(),
         ) {
-            Text("提交", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
+            Text("提交", fontSize = 16.sp, fontWeight = FontWeight.Medium)
         }
         state.done?.let {
             Spacer(Modifier.height(Gap.md))
@@ -347,29 +354,48 @@ private fun FieldRow(
     }
 }
 
+/**
+ * 三种页共用的那一层壳。
+ *
+ * 换成 Miuix 的 `Scaffold` + `SmallTopAppBar`：HyperOS 那一档标题栏自带状态栏与
+ * 刘海的留白，以前是我们手搓一个 `Spacer(Gap.xl)` 顶出来的，换个机型就得重调一次。
+ * 返回那颗键仍然写"‹ 返回"三个字 —— 这仓的返回入口一直是这个说法，不换图标。
+ */
 @Composable
 fun ScaffoldPage(
     title: String,
     onBack: () -> Unit,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
-    ) {
-        Spacer(Modifier.height(Gap.xl))
-        Text(
-            "‹ 返回",
-            fontSize = 14.sp,
-            color = LocalInk.current.muted,
-            modifier = Modifier.clickable(onClick = onBack).padding(vertical = Gap.sm),
-        )
-        Spacer(Modifier.height(Gap.sm))
-        Text(title, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
-        Spacer(Modifier.height(Gap.lg))
-        content()
-        Spacer(Modifier.height(Gap.xxl))
+    Scaffold(
+        topBar = {
+            SmallTopAppBar(
+                title = title,
+                navigationIcon = {
+                    Text(
+                        "‹ 返回",
+                        fontSize = 14.sp,
+                        color = LocalInk.current.muted,
+                        modifier = Modifier.clickable(onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
+                    )
+                },
+            )
+        },
+        containerColor = topBarBackdrop(),
+    ) { bars ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(bars)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Gap.screen),
+        ) {
+            Spacer(Modifier.height(Gap.md))
+            content()
+            Spacer(Modifier.height(Gap.xxl))
+        }
     }
 }
+
+@Composable
+private fun topBarBackdrop() = MiuixTheme.colorScheme.background
