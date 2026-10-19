@@ -37,7 +37,8 @@ import com.andaxin.shell.Sheet
 private class Entry(val title: String, val note: String, val route: String? = null)
 
 private val ENTRIES = listOf(
-    Entry("运动", "六屏 · 批次二"),
+    Entry("运动", "开始 · 路线规划", route = "sport"),
+    Entry("运动记录", "记录 / 明细 / 维护", route = "sport/records"),
     Entry("查寝签到", "两屏 · 批次三"),
     Entry("AI 课堂", "四屏 · 批次三"),
     Entry("待办事务", "请假与销假 · 批次三"),

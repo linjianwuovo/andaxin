@@ -27,6 +27,12 @@ import com.andaxin.feature.me.MeScreen
 import com.andaxin.feature.message.MessageScreen
 import com.andaxin.feature.notice.NoticeScreen
 import com.andaxin.feature.schedule.TimetableScreen
+import com.andaxin.feature.sport.RoutePlannerScreen
+import com.andaxin.feature.sport.SportDetailScreen
+import com.andaxin.feature.sport.SportMaintainScreen
+import com.andaxin.feature.sport.SportRecordsScreen
+import com.andaxin.feature.sport.SportRunScreen
+import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -51,6 +57,12 @@ object Route {
     const val SHELF = "shelf"
     const val THEME = "theme"
     const val ABOUT = "about"
+    const val SPORT = "sport"
+    const val SPORT_RUN = "sport/run"
+    const val SPORT_RECORDS = "sport/records"
+    const val SPORT_MAINTAIN = "sport/maintain"
+    const val SPORT_PLANNER = "sport/planner"
+    const val SPORT_DETAIL = "sport/detail/{id}"
 }
 
 @Composable
@@ -71,6 +83,19 @@ fun RootShell() {
         composable(Route.SHELF) { ShelfHost(appearance) { nav.navigate(it) } }
         composable(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
         composable(Route.ABOUT) { AboutScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.SPORT) { SportStartScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.SPORT_RECORDS) {
+            SportRecordsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() })
+        }
+        composable(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
+        composable(Route.SPORT_PLANNER) { RoutePlannerScreen(onBack = { nav.popBackStack() }) }
+        composable(
+            Route.SPORT_DETAIL,
+            arguments = listOf(androidx.navigation.navArgument("id") { defaultValue = "" }),
+        ) { entry ->
+            SportDetailScreen(recordId = entry.arguments?.getString("id").orEmpty(), onBack = { nav.popBackStack() })
+        }
     }
 }
 

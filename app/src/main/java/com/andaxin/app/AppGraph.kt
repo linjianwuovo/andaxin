@@ -2,16 +2,23 @@ package com.andaxin.app
 
 import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.andaxin.core.run.RunEngine
 import com.andaxin.core.settings.AppearanceStore
 import com.andaxin.core.store.Store
 import com.andaxin.data.DashboardFeed
 import com.andaxin.data.MessageFeed
 import com.andaxin.data.NoticeFeed
+import com.andaxin.data.SportsFeed
 import com.andaxin.data.TimetableFeed
 import com.andaxin.data.local.LocalDashboard
 import com.andaxin.data.local.LocalMessages
 import com.andaxin.data.local.LocalNotices
+import com.andaxin.data.local.LocalSports
 import com.andaxin.data.local.LocalTimetable
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * 手写的依赖图。全应用唯一允许 `new` 业务对象的地方。
@@ -33,6 +40,14 @@ class AppGraph(val context: Context) {
     val messages: MessageFeed by lazy { LocalMessages() }
     val notices: NoticeFeed by lazy { LocalNotices() }
     val dashboard: DashboardFeed by lazy { LocalDashboard(messages, timetable) }
+
+    /** 运动：记录是占位，路线规划是真的（存本机文件） */
+    val sports: SportsFeed by lazy { LocalSports(File(context.filesDir, "sport_routes.json")) }
+
+    /** 跑步引擎跟着进程活：界面切来切去不该打断采集 */
+    val engine: RunEngine by lazy { RunEngine(engineScope) }
+
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
      * 界面上那条"数据还是占位"的说明。
