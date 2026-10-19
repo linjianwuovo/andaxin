@@ -44,8 +44,8 @@ import com.andaxin.feature.sport.SportRunScreen
 import com.andaxin.feature.modules.AffairDetailScreen
 import com.andaxin.feature.modules.AffairFormScreen
 import com.andaxin.feature.modules.AffairListScreen
-import com.andaxin.feature.modules.AiClassDetailScreen
-import com.andaxin.feature.modules.AiClassListScreen
+import com.andaxin.feature.aiclass.AiClassListScreen
+import com.andaxin.feature.aiclass.CourseDetailScreen
 import com.andaxin.feature.modules.CampusCardScreen
 import com.andaxin.feature.modules.CardFlowsScreen
 import com.andaxin.feature.modules.CreditDetailScreen
@@ -128,7 +128,6 @@ object Route {
     const val AICLASS = "aiclass"
     const val AICLASS_DETAIL = "aiclass/detail/{id}"
     const val AICLASS_SCAN = "aiclass/scan"
-    const val AICLASS_COURSE = "aiclass/course"
 }
 
 /** 详情路由都带一个 {id}，注册时统一走这个，省掉二十行重复。 */
@@ -171,7 +170,6 @@ fun RootShell() {
         composable(Route.MORE) { MoreScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         composable(Route.CARD) { CampusCardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         composable(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.AICLASS_COURSE) { CourseDetailScreen(onBack = { nav.popBackStack() }) }
         composable(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
 
         composable(Route.DORM) { DormListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
@@ -208,7 +206,7 @@ fun RootShell() {
         composable(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         composable(Route.AICLASS_SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
         composable(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
-            AiClassDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
     }
 }

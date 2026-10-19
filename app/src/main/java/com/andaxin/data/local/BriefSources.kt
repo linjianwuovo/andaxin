@@ -158,18 +158,5 @@ object Affair {
     val dynamicForm = true
 }
 
-/** AI 课堂。【取证】抓包 6 处、.do 20 处（sttp.fifedu.com）；izuoye 那个作业接口是零证据。 */
-object AiClass {
-    val list = PlaceholderList(
-        listOf(
-            BriefRow("scan", "扫码签到", "对着课堂上的二维码", "去扫码", Flag.Unread),
-            BriefRow("k1", "军事理论 · 3 班", "今天 10:00 签到已结束", "已签到", Flag.Ok),
-            BriefRow("k2", "形势与政策", "进行中 · 还有 12 分钟", "在上课", Flag.Warn),
-            BriefRow("k3", "大学英语", "明天 08:00", "未开始", Flag.None),
-        )
-    )
-    val detail = PlaceholderDetail(
-        "课堂详情",
-        listOf("课程" to "形势与政策", "教师" to "—", "签到" to "已签", "讨论" to "3 条未看"),
-    )
-}
+/* AI 课堂不再用占位数据：那一屏改成真去问 FIF（feature/aiclass/AiClassScreens.kt）。
+   以前这四行假条目里连"随堂投票"都编出来了，而 FIF 根本没有投票接口。 */
