@@ -89,8 +89,17 @@ class AppGraph(val context: Context) {
     val session: SessionStore by lazy { SessionStore(store) }
 
     /** token 到点前换成新的，换不动就请回登录页并带上原因 */
+    /** 「记住密码」那把不可导出的 AES 密钥。构造失败也不该影响启动，所以是 lazy。 */
+    val vault: com.andaxin.core.store.KeystoreVault by lazy {
+        com.andaxin.core.store.KeystoreVault(context)
+    }
+
     val keepAlive: TokenKeepAlive by lazy {
-        TokenKeepAlive(auth, session, kickedDetector = school.kicked, kickedAck = { school.consumeKicked() })
+        TokenKeepAlive(
+            auth, session,
+            kickedDetector = school.kicked, kickedAck = { school.consumeKicked() },
+            vault = vault,
+        )
     }
 
     /** 校方接口的公共外壳：身份四件套、表单、JSON 钻取。所有 Capture* 都从这儿走。 */

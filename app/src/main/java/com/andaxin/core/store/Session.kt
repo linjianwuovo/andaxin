@@ -21,6 +21,8 @@ data class Session(
     val account: String = "",
     val userName: String = "",
     val dorm: String = "",
+    /** 本机存了加密后的登录口令。能不能解开是另一回事：解不开时 `TokenKeepAlive` 会把它清掉并请人重输。 */
+    val remembered: Boolean = false,
 )
 
 /**
@@ -47,6 +49,7 @@ class SessionStore(private val store: Store) {
             account = store.peekString(p, Store.KEY_USER_CODE).orEmpty(),
             userName = store.peekString(p, KEY_USER_NAME).orEmpty(),
             dorm = store.peekString(p, KEY_DORM).orEmpty(),
+            remembered = !store.peekString(p, KEY_PW_BLOB).isNullOrBlank(),
         )
     }
 
@@ -103,7 +106,25 @@ class SessionStore(private val store: Store) {
 
     suspend fun setDorm(value: String) = store.setText(KEY_DORM, value.ifBlank { null })
 
-    suspend fun signOut() = store.setMany(
+    /** 记住口令：只存 Keystore 加密后的 base64，明文一刻都不落盘。 */
+    suspend fun rememberPassword(blob: String?) = store.setText(KEY_PW_BLOB, blob)
+
+    suspend fun passwordBlob(): String? = store.peekString(store.snapshot(), KEY_PW_BLOB)
+
+    /** 重登要用的学号。`identity()` 要 token，被顶号那会儿不能用它，所以单开一条只读账号。 */
+    suspend fun accountNow(): String? =
+        store.peekString(store.snapshot(), Store.KEY_USER_CODE)?.takeIf { it.isNotBlank() }
+
+    suspend fun forgetPassword() = store.setText(KEY_PW_BLOB, null)
+
+    /**
+     * 清登录态。
+     *
+     * `keepPassword` 只有一种情况该给 true：**被顶号 / 到期，而本机记着口令、马上要用它重登**。
+     * 那时候清掉口令就等于把自己锁在门外（`refresh.do` 服务端是死的，重登只能靠口令）。
+     * 他自己按「退出登录」走的是默认 false —— 人都要退了，不该继续存着钥匙。
+     */
+    suspend fun signOut(keepPassword: Boolean = false) = store.setMany(
         Store.KEY_TOKEN to null,
         Store.KEY_USER_CODE to null,
         KEY_REFRESH to null,
@@ -111,6 +132,7 @@ class SessionStore(private val store: Store) {
         KEY_USER_TYPE to null,
         KEY_EXPIRES_AT to null,
         KEY_BROWSING to null,
+        KEY_PW_BLOB to if (keepPassword) store.peekString(store.snapshot(), KEY_PW_BLOB) else null,
     )
 
     private companion object {
@@ -121,5 +143,6 @@ class SessionStore(private val store: Store) {
         const val KEY_USER_NAME = "auth.userName"
         const val KEY_USER_TYPE = "auth.userType"
         const val KEY_EXPIRES_AT = "auth.expiresAt"
+        const val KEY_PW_BLOB = "auth.pwBlob"
     }
 }

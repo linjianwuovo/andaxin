@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -236,6 +237,8 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
     val ink = LocalInk.current
     var account by remember { mutableStateOf("") }
     var secret by remember { mutableStateOf("") }
+    // 默认勾上：这台机器上"每次到期都要手打口令"才是问题，不记是例外
+    var rememberPw by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
     // 被"续期失败"请回来的原因：进这一屏时按当前值取一次。
     // 别用 StateFlow + LaunchedEffect 往 note 里灌 —— 装机实测那样那一行根本不出来：
@@ -266,6 +269,20 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        Spacer(Modifier.height(Gap.md))
+        // 「记住密码」这一格不是方便少打六个字：校方那条 refresh.do 服务端是死的（404），
+        // 续期只能拿口令重登一次。不记住 = 每 8 小时、以及每次被顶号，都得回到这一屏手打。
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("记住密码", fontSize = 14.sp, color = ink.strong)
+                Text(
+                    "口令用系统 Keystore 里一把不可导出的密钥加密后存本机；到期或被顶号时代你自动重登（会把对方客户端挤下线，校方一个账号只留一个活会话）。",
+                    fontSize = 11.sp, color = ink.faint, lineHeight = 15.sp,
+                )
+            }
+            Spacer(Modifier.width(Gap.md))
+            top.yukonga.miuix.kmp.basic.Switch(checked = rememberPw, onCheckedChange = { rememberPw = it })
+        }
         Spacer(Modifier.height(Gap.lg))
         MiuixButton(
             onClick = {
@@ -275,7 +292,13 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                     val r = graph.auth.login(account.trim(), secret)
                     busy = false
                     r.fold(
-                        onSuccess = { graph.session.save(it); onDone() },
+                        onSuccess = {
+                            graph.session.save(it)
+                            // 勾了就存密文，没勾就把旧的清掉 —— 别留一份"他以为没记住"的钥匙在机器里
+                            if (rememberPw) graph.session.rememberPassword(graph.vault.seal(secret))
+                            else graph.session.forgetPassword()
+                            onDone()
+                        },
                         onFailure = { note = it.message ?: "登录失败" },
                     )
                 }
