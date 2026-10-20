@@ -3,6 +3,7 @@ package com.andaxin.core.net
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +62,14 @@ fun RemoteImage(
     contentDescription: String,
     cacheDir: File,
     modifier: Modifier = Modifier,
+    /**
+     * true = 按图片自己的宽高比撑高（正文配图用）。
+     *
+     * 不这么做的话：调用方只给 `fillMaxWidth()` 时，`Image` 的高度走的是**原始像素高**，
+     * 一张 800×3000 的会议安排长图就会以 3000 像素摆在那里、还顺手被 Crop 裁掉一大截。
+     * 默认 false 是因为封面那种调用方已经写死了尺寸，比例再乘一遍就变形了。
+     */
+    adaptAspect: Boolean = false,
 ) {
     var bmp by remember(url) { mutableStateOf<ImageBitmap?>(null) }
     var failed by remember(url) { mutableStateOf(false) }
@@ -76,8 +85,12 @@ fun RemoteImage(
         Image(
             bitmap = shown,
             contentDescription = contentDescription,
-            contentScale = ContentScale.Crop,
-            modifier = modifier,
+            contentScale = if (adaptAspect) ContentScale.FillWidth else ContentScale.Crop,
+            modifier = if (adaptAspect) {
+                modifier.aspectRatio(shown.width.toFloat() / shown.height.coerceAtLeast(1))
+            } else {
+                modifier
+            },
         )
     } else {
         Box(modifier, contentAlignment = Alignment.Center) {
