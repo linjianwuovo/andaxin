@@ -136,6 +136,24 @@ class CaptureDormBoard(private val school: School, private val session: SessionS
         }
     }
 
+    /**
+     * 首页那一格只要"下一次查寝几点"。
+     *
+     * 原来那一格读的是 ywlz 待办里第一条晚点名消息的**收到时间** —— 那条口只在采集窗口
+     * 打开时才来消息，所以 10-21 凌晨装机时它显示的是 10-20 21:00：昨晚那次，
+     * 而 fdygl 这条列表里今天 21:00 那条明明挂着"未开始"。所以换成从任务列表里挑：
+     * 只看今天和以后的，自己按日期排一次 —— 不靠服务端给的顺序。
+     * 一条都没有（这月没排晚点名）就回 null，让首页退回原来那个来源。
+     */
+    suspend fun nextTask(): DormTask? {
+        val code = session.identity()?.userCode.orEmpty()
+        if (code.isBlank()) return null
+        val today = LocalDate.now().toString()
+        return page("/app/dorm/pageStudentSignIn", code, "3")
+            .filter { it.date >= today }
+            .minByOrNull { it.date + it.startAt }
+    }
+
     /** 任务列表那一族：数组挂根节点 `rows`，`data` 是 null。 */
     private suspend fun page(path: String, code: String, majorType: String): List<DormTask> {
         val root = school.postJson(

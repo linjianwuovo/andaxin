@@ -76,6 +76,7 @@ class DashboardSource(
     private val tasks: YwlzTasks,
     private val messages: MessageFeed,
     private val sports: SportsFeed,
+    private val dormBoard: CaptureDormBoard,
 ) : DashboardFeed {
 
     override suspend fun snapshot(): Result<Dashboard> {
@@ -85,6 +86,7 @@ class DashboardSource(
             val counts = async { school.post("$SCPS/msgCenter/notReadCount.do").getOrNull() }
             val week = async { today.week(0).getOrDefault(emptyList()) }
             val dorm = async { tasks.all().getOrNull() }
+            val nextDormTask = async { dormBoard.nextTask() }
             val msgs = async { messages.page(0).getOrNull() }
             val run = async { sports.summary() }
             val data = counts.await()?.optJSONObject("data")
@@ -95,9 +97,16 @@ class DashboardSource(
             val slots = week.await().filter { it.day == com.andaxin.core.schedule.Periods.today() }
             val next = slots.firstOrNull { it.startPeriod >= com.andaxin.core.schedule.Periods.current() }
                 ?: slots.lastOrNull()
-            // 最近一次晚点名：列表本来就是新的在前，取第一条查寝类的时间，去掉年份
+            // 这一格要的是"下一次查寝几点"。原来读的是 ywlz 待办里第一条晚点名消息的收到时间，
+            // 那条口只在采集窗口打开时才来消息 —— 10-21 凌晨装机时它显示 10-20 21:00（昨晚那次），
+            // 而 fdygl 列表里今天 21:00 那条明明挂着"未开始"。所以先问 fdygl，它没排任务才退回原来那个来源。
             val bed = dorm.await()?.firstOrNull { it.isBedCheck }
-            val bedAt = bed?.receiveTime?.let { t -> if (t.length > 5) t.substring(5) else t }.orEmpty()
+            val upcoming = nextDormTask.await()
+            val bedAt = if (upcoming != null) {
+                "${upcoming.date.takeLast(5)} ${upcoming.startAt}".trim()
+            } else {
+                bed?.receiveTime?.let { t -> if (t.length > 5) t.substring(5) else t }.orEmpty()
+            }
             val runR = run.await()
             val sports0 = runR.getOrNull()
             Result.success(
