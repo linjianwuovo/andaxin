@@ -66,6 +66,12 @@ fun MessageScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        // 标已读没成，红点就还在那儿 —— 这时候必须说一句为什么，不然看着像点了没反应
+        state.readError?.let {
+            Spacer(Modifier.height(Gap.md))
+            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+        }
+
         Spacer(Modifier.height(Gap.lg))
         val lastRun by graph.poller.lastRunAt.collectAsStateWithLifecycle(0L)
         val busy by graph.poller.busy.collectAsStateWithLifecycle(false)
