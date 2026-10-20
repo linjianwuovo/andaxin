@@ -213,6 +213,12 @@ class AppGraph(val context: Context) {
     val fifApi: com.andaxin.data.capture.FifApi by lazy { com.andaxin.data.capture.FifApi(fif) }
 
     /** 课程列表：走 FIF 自己的 myClassroom（抓包清点里是 A 级实样那条）。 */
+    /**
+     * 笔记站（FIF 的独立子域）。八条口 10-20 现打全通，取证见 `NoteApi` 顶上那段 ——
+     * **`schoolId` 是隐式必填**，只发 `userId` 会静默回空数组。
+     */
+    val notes: com.andaxin.data.capture.NoteApi by lazy { com.andaxin.data.capture.NoteApi(fif) }
+
     val aiCourses: com.andaxin.data.capture.AiCourseFeed by lazy {
         com.andaxin.data.capture.AiCourseFeed(fif, fifApi)
     }
