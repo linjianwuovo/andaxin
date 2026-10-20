@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,10 +79,14 @@ fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
     }
 }
 
-/** 校园卡。17wanxiao 是第三方，要先用校方会话换它的会话，所以这一块接起来是两步。 */
+/**
+ * 校园卡。17wanxiao 是第三方，要先用校方会话换它的会话，所以这一块接起来是三跳
+ * （取证与坑见 `data/capture/CaptureCampusCard.kt` 顶上那段）。
+ */
 @Composable
 fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ink = LocalInk.current
+    val (card, why) = rememberCard()
     ScaffoldPage(title = "校园卡", onBack = onBack) {
         Box(
             Modifier
@@ -91,18 +96,44 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 .padding(Gap.lg),
         ) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                Text("安徽大学 · 校园卡", fontSize = 13.sp, color = Palette.Cream)
+                Text("安徽信息工程学院 · 校园卡", fontSize = 13.sp, color = Palette.Cream)
                 Column {
-                    Text("¥ —", fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = Palette.Cream)
-                    Text("余额要等会话交换那一步接上", fontSize = 11.sp, color = Palette.Cream.copy(alpha = 0.7f))
+                    Text(
+                        card?.let { "¥ %.2f".format(it.balance) } ?: "¥ —",
+                        fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = Palette.Cream,
+                    )
+                    Text(
+                        text = when {
+                            card != null -> "补助钱包 ¥ %.2f · ${card.statusText}".format(card.subsidy)
+                            why != null -> "没拉到：" + why
+                            else -> "正在换校园卡会话…"
+                        },
+                        fontSize = 11.sp, color = Palette.Cream.copy(alpha = 0.78f),
+                    )
                 }
             }
         }
         Spacer(Modifier.height(Gap.lg))
         Sheet {
-            Labeled(label = "最近一笔", value = "—")
+            Labeled(
+                label = "最近一笔",
+                value = card?.flows?.firstOrNull()?.let {
+                    "%s · %s".format(it.at.take(16), money(it)) } ?: "—",
+            )
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "上月支出", value = "—")
+            Labeled(
+                label = "今天支出",
+                value = card?.let { "¥ %.2f".format(it.todayOut) } ?: "—",
+            )
+            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
+            Labeled(
+                label = "近 30 天支出",
+                value = card?.let { "¥ %.2f".format(it.windowOut) } ?: "—",
+            )
+            if (card != null && card.validUntil.isNotBlank()) {
+                Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
+                Labeled(label = "卡有效期", value = card.validUntil)
+            }
         }
         Spacer(Modifier.height(Gap.lg))
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
@@ -124,7 +155,72 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             color = ink.faint,
         )
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("挂失、充值这类写操作一律不代做：接上之后也只会把你送到最后一步。")
+        PlaceholderNote(
+            "余额、有效期、流水都是校方那台新开普给的；「今天支出」「近 30 天支出」" +
+                "是我们自己按流水加的 —— 服务端那四条统计口在这个租户上是坏的，没有现成的合计。",
+        )
+    }
+}
+
+/** 卡片数据只给校园卡两屏用，就地取，不再多开一个 Model。 */
+@Composable
+private fun rememberCard(): Pair<com.andaxin.data.capture.CampusCardClient.Card?, String?> {
+    val graph = LocalAppGraph.current
+    var card by remember { mutableStateOf<com.andaxin.data.capture.CampusCardClient.Card?>(null) }
+    var why by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        val r = graph.card.card()
+        card = r.getOrNull()
+        why = r.exceptionOrNull()?.message
+    }
+    return card to why
+}
+
+private fun money(f: com.andaxin.data.capture.CampusCardClient.Flow): String =
+    (if (f.income) "+" else "-") + "%.2f".format(f.yuan) + (if (f.what.isBlank()) "" else " ${f.what}")
+
+/**
+ * 流水。服务端**不给合计、不给余额快照**，所以这里只列它给的行。
+ * 分页键是 `count`（不是 pageSize）—— 少这一个键它只回总数不回行，见契约文件那条坑。
+ */
+@Composable
+fun CardFlowsScreen(onBack: () -> Unit) {
+    val ink = LocalInk.current
+    val (card, why) = rememberCard()
+    ScaffoldPage(title = "校园卡流水", onBack = onBack) {
+        if (card == null) {
+            Text(
+                text = why ?: "正在换校园卡会话…",
+                fontSize = 13.sp,
+                color = if (why == null) ink.faint else MaterialTheme.colorScheme.error,
+            )
+        }
+        card?.flows?.forEach { f ->
+            Sheet {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(f.at.take(16), fontSize = 13.sp, color = ink.muted)
+                        Text(
+                            money(f), fontSize = 14.sp,
+                            color = if (f.income) Palette.Teal else ink.body,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    Spacer(Modifier.height(Gap.xs))
+                    Text(
+                        text = listOf(f.what, f.term).filter { it.isNotBlank() }.joinToString(" · ")
+                            .ifBlank { "（这一笔服务端没给说明）" },
+                        fontSize = 11.sp, color = ink.faint,
+                    )
+                }
+            }
+            Spacer(Modifier.height(Gap.sm))
+        }
+        PlaceholderNote(
+            if (card != null && card.flows.isEmpty())
+                "近 30 天没有一笔消费记录（服务端回的是空行，不是没连上）。"
+            else "这一屏是近 30 天的行，最多 200 条；消费点名字是校方给的，没做翻译。",
+        )
     }
 }
 
@@ -249,20 +345,3 @@ fun OnboardingScreen(onAgree: () -> Unit) {
 }
 
 
-/** 校园卡流水：形状和别的列表一样，只是每行右边是金额。 */
-@Composable
-fun CardFlowsScreen(onBack: () -> Unit) {
-    val ink = LocalInk.current
-    ScaffoldPage(title = "校园卡流水", onBack = onBack) {
-        listOf("10-18 12:04" to "-8.50", "10-17 07:31" to "-6.00", "10-15 18:22" to "+50.00").forEach { (when_, money) ->
-            Sheet {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(when_, fontSize = 13.sp, color = ink.muted)
-                    Text(money, fontSize = 14.sp, color = if (money.startsWith("-")) ink.body else Palette.Teal)
-                }
-            }
-            Spacer(Modifier.height(Gap.sm))
-        }
-        PlaceholderNote("流水要等校园卡那套会话交换接上，现在这几行是占位。")
-    }
-}

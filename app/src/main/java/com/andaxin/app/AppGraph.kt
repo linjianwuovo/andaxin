@@ -34,6 +34,9 @@ import com.andaxin.data.brief.DetailSource
 import com.andaxin.data.brief.ListSource
 import com.andaxin.data.capture.CaptureMessages
 import com.andaxin.data.capture.CaptureProfile
+import com.andaxin.data.capture.CampusCardClient
+import com.andaxin.data.capture.CaptureRepairDetail
+import com.andaxin.data.capture.CaptureRepairList
 import com.andaxin.data.capture.DetailSwitch
 import com.andaxin.data.local.Affair
 import com.andaxin.data.local.Credit
@@ -53,6 +56,7 @@ import com.andaxin.data.local.LocalNotices
 import com.andaxin.data.local.LocalSports
 import com.andaxin.data.local.LocalTimetable
 import com.andaxin.data.local.Labor
+import com.andaxin.data.local.Repair
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -155,6 +159,24 @@ class AppGraph(val context: Context) {
     val dormList: ListSource by lazy { BriefSwitch(dormCapture, Dorm.list, session) }
     val dormDetail: DetailSource by lazy {
         DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
+    }
+
+    /**
+     * 报修。10-20 现打接上的：单据列表、单据详情、流程轨迹三条读口都在
+     * `repair.aiit.edu.cn/bxjlSjd/` 那一族上，取证见 `CaptureRepair.kt` 顶上那段。
+     * 新建那张单子的**提交**仍然没接（写口一次没发过），所以表单还是占位。
+     */
+    val repairList: ListSource by lazy { BriefSwitch(CaptureRepairList(school), Repair.list, session) }
+    val repairDetail: DetailSource by lazy {
+        DetailSwitch(CaptureRepairDetail(school), Repair.detail, session)
+    }
+
+    /**
+     * 校园卡（第三方新开普）。10-20 现打把三跳会话交换接通了，取证见 `CampusCardClient` 顶上那段。
+     * 换出来的那把第三方 token 落在 `filesDir/ecard_token.txt` 复用 —— 每重换一次会踢掉上一把。
+     */
+    val card: CampusCardClient by lazy {
+        CampusCardClient(school, session, File(context.filesDir, "ecard_token.txt"))
     }
 
     /**
