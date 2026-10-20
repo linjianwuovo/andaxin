@@ -237,6 +237,101 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 )
             }
         }
+        Spacer(Modifier.height(Gap.xl))
+        SectionTitle("上课提醒")
+        ReminderCard()
         Spacer(Modifier.height(Gap.xxl))
+    }
+}
+
+/**
+ * 上课提醒那一格。
+ *
+ * 三句话得说明白，少一句都会让人误解它：
+ * ① 节次时间是我们自己排的那张表，校方没有一条接口给过；
+ * ② 它用系统闹钟那条路，状态栏会亮一个闹钟图标；
+ * ③ 重启之后能不能自己排回去，看的是 ROM 的"自启动"，那个开关我们碰不到。
+ */
+@Composable
+private fun ReminderCard() {
+    val graph = LocalAppGraph.current
+    val scope = rememberCoroutineScope()
+    val ink = LocalInk.current
+    var on by remember { mutableStateOf(false) }
+    var lead by remember { mutableStateOf(com.andaxin.core.schedule.ClassReminder.DEFAULT_LEAD) }
+    var status by remember { mutableStateOf("正在看本机存了什么…") }
+
+    // 通知权限没给的话，闹钟会照点、通知一条都出不来 —— 那是最难查的一种"没反应"
+    var needPermission by remember { mutableStateOf(false) }
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        needPermission = false
+        if (granted) status = "通知权限有了，下一节开始前会提醒一次。"
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val p = graph.store.snapshot()
+        on = com.andaxin.core.schedule.ClassReminder.isOn(p, graph.store)
+        lead = com.andaxin.core.schedule.ClassReminder.leadOf(p, graph.store)
+        status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable)
+    }
+
+    fun write(nv: Boolean, nLead: Int) {
+        on = nv; lead = nLead
+        scope.launch {
+            graph.store.setMany(
+                com.andaxin.core.schedule.ClassReminder.KEY_ON to if (nv) "1" else "0",
+                com.andaxin.core.schedule.ClassReminder.KEY_LEAD to nLead.toString(),
+            )
+            status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable)
+        }
+        if (nv && !androidx.core.app.NotificationManagerCompat.from(graph.context).areNotificationsEnabled()) {
+            needPermission = true
+            ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    Sheet {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.weight(1f)) {
+                Text("提前提醒", fontSize = 14.sp, color = ink.strong)
+                Spacer(Modifier.height(Gap.xs))
+                Text("开关于下一节课开始前 $lead 分钟响一次", fontSize = 11.sp, color = ink.muted)
+            }
+            top.yukonga.miuix.kmp.basic.Switch(
+                checked = on,
+                onCheckedChange = { write(it, lead) },
+            )
+        }
+        Spacer(Modifier.height(Gap.md))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            com.andaxin.core.schedule.ClassReminder.LEADS.forEach { n ->
+                val picked = n == lead && on
+                Text(
+                    text = "$n 分",
+                    fontSize = 13.sp,
+                    fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
+                    color = if (picked) MaterialTheme.colorScheme.primary else ink.muted,
+                    modifier = Modifier
+                        .background(if (picked) MaterialTheme.colorScheme.surfaceVariant else ink.hairline, Radius.pill)
+                        .clickable { write(on, n) }
+                        .padding(horizontal = Gap.md, vertical = Gap.sm),
+                )
+            }
+        }
+        Spacer(Modifier.height(Gap.md))
+        Text(status, fontSize = 11.sp, color = if (needPermission) MaterialTheme.colorScheme.error else ink.faint)
+        Spacer(Modifier.height(Gap.sm))
+        Hairline()
+        Spacer(Modifier.height(Gap.sm))
+        Text(
+            text = "几点上课这张表是我们自己排的 —— 校方那些接口里没有一条给节次时间，" +
+                "所以学校改作息而这张表没跟着改的时候，它会按老点提醒你。" +
+                "它走的是系统闹钟那条路，状态栏会亮一个小闹钟图标；重启后能不能自己排回去，" +
+                "看的是 ROM 给没给「自启动」，那个开关我们读不到，稳妥起见开机后打开一次 App。",
+            fontSize = 11.sp,
+            color = ink.faint,
+        )
     }
 }
