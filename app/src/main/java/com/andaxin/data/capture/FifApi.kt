@@ -74,11 +74,21 @@ class FifApi(private val fif: FifSession) {
      * 条目 17 键：`id(6) resourceId(32) coursewareId(24) resourceName resourceUrl fileType createTime
      * lockState isExamine chapterId isCollect …`。
      */
-    suspend fun courseware(courseId: String, teachClassId: String, memberUserId: String): List<AiItem> {
+    suspend fun courseware(
+        courseId: String,
+        teachClassId: String,
+        memberUserId: String,
+        /**
+         * 「其他资源」**不是另一条接口** —— 10-20 现打定死：同一条
+         * `queryCoursewareResourceList`，只有这个值不同，**教学课件=1、其他资源=2**；
+         * 填 `""/0/3/4/5/6` 一律 `data:null`，只有 1 和 2 是有定义的档。
+         */
+        resourceType: String = "1",
+    ): List<AiItem> {
         val root = get(
             "$STTP/coursecenter-interaction/courseware/queryCoursewareResourceList" +
                 "?courseId=${enc(courseId)}&teachClassId=${enc(teachClassId)}" +
-                "&resourceType=1&userId=${enc(memberUserId)}",
+                "&resourceType=${enc(resourceType)}&userId=${enc(memberUserId)}",
         ) ?: return emptyList()
         return objs(root.opt("data")).mapIndexed { i, o ->
             AiItem(
@@ -93,6 +103,64 @@ class FifApi(private val fif: FifSession) {
                 ),
             )
         }
+    }
+
+    /**
+     * 课程成员。〔现打 10-20 16:3x，真数据：74 名学生 + 1 名教师〕
+     * `GET course/getCourseMemberList?teachClassId=<19>&type=0|1`，两个参数都**必带**：
+     *  - 缺 `type` → `{"data":"","code":"1000","message":"服务端异常，请联系管理员"}`；
+     *  - 缺 `teachClassId` → `status:"error"` + `message:"查询失败，不能访问"`；
+     *  - **把键名写成 `courseId=<19>`（H5 调用点就是这么写的）→ HTTP 200 + status success + `data:{}`**，
+     *    静默空，最阴的一种。键名以实测为准，别照 H5。
+     *
+     * 学生与教师**两套条目形状不一样**，这是本块最容易写错的地方：
+     * 学生有 `studentId`(8 位数值)/`jobNo`(10 位学号)/`phone`/`email`，**没有 `userId`**；
+     * 教师多了 `userId`(32 位成员 id)、**没有 `studentId`/`phone`**，且 `id` 位数不稳（3 位和 6 位都见过）。
+     * `phone`/`email` 服务端返回了但全空串，界面别指望有联系方式。
+     */
+    suspend fun members(teachClassId: String, student: Boolean): List<AiItem> {
+        val root = get(
+            "$STTP/coursecenter-interaction/course/getCourseMemberList" +
+                "?teachClassId=${enc(teachClassId)}&type=${if (student) "0" else "1"}",
+        ) ?: return emptyList()
+        val arr = root.optJSONObject("data")?.optJSONArray("dataList") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val name = o.optString("chineseName").ifBlank { o.optString("nickname") }
+                .ifBlank { o.optString("jobNo") }
+            AiItem(
+                id = o.optString("jobNo").ifBlank { o.optString("id") },
+                title = name,
+                // joinTime 实测长度不统一（学生 19、教师 22），还夹过换行和制表符，压一下再显示
+                sub = o.optString("jobNo"),
+                right = if (student) "" else "教师",
+                extra = mapOf("userId" to o.optString("userId")),
+            )
+        }
+    }
+
+    /**
+     * 班级码两跳，回的是 **PNG 的 data-URI**（实测 `data` 是 1494 字符的串，不是对象）。
+     * `GET course/getJoinCourseQRcodeTokenForMobileV3?scene_str=<19 位班号>&userName=<14 位登录名>`
+     * → `GET qrcodeV2/getQrcodeByToken?token=<40 位>&size=500`。
+     *
+     * 两条实测出来的注意：① `userName` 要的是 `aiit`+学号那个 14 位登录名，
+     * 只给 `scene_str` 不给 `userName` 会回「服务端异常，请联系管理员」；
+     * ② `scene_str` 服务端**不校验**（填空串照样给 40 位 token），所以别把这个码当"绑定这门课"的依据；
+     * ③ 这是**加入课堂/邀请**用的码，不是签到码 —— 签到扫码那一族（`checkQrcodeHandler` 等）
+     *    至今零报文零证据，别混。
+     */
+    suspend fun classCode(teachClassId: String, userName: String): String? {
+        val first = get(
+            "$STTP/coursecenter-interaction/course/getJoinCourseQRcodeTokenForMobileV3" +
+                "?scene_str=${enc(teachClassId)}&userName=${enc(userName)}",
+        ) ?: return null
+        val token = first.optString("data")
+        if (token.length < 20) return null
+        val second = get(
+            "$STTP/coursecenter-interaction/qrcodeV2/getQrcodeByToken?token=${enc(token)}&size=500",
+        ) ?: return null
+        return second.optString("data").takeIf { it.startsWith("data:image") }
     }
 
     /**

@@ -1,11 +1,13 @@
 package com.andaxin.feature.aiclass
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -63,6 +65,8 @@ private const val TAB_LIVE = 1
 private const val TAB_SIGN = 2
 private const val TAB_CLASS = 3
 private const val TAB_GROUP = 4
+private const val TAB_OTHER = 5
+private const val TAB_MEMBER = 6
 
 /**
  * 拉不到的原因写成一句人话。
@@ -96,12 +100,25 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             TAB_LIVE -> "这一门没有直录播记录。"
             TAB_SIGN -> "这门课一次签到都没发起过。"
             TAB_CLASS -> "这个学期这门课还没有开课记录。"
+            TAB_OTHER -> "这一门没归到「其他资源」里的东西。"
+            TAB_MEMBER -> "成员那一发没回数据。"
             else -> "这门课还没建小组。"
         }
         loads[tab] = (
             when (tab) {
                 TAB_COURSEWARE -> graph.fif.ensure().mapCatching { ids ->
                     graph.fifApi.courseware(c.courseId, c.teachClassId, ids.memberUserId)
+                }
+
+                // 「其他资源」和「教学课件」是同一条口，只有 resourceType 不同（1 / 2）—— 现打定的
+                TAB_OTHER -> graph.fif.ensure().mapCatching { ids ->
+                    graph.fifApi.courseware(c.courseId, c.teachClassId, ids.memberUserId, resourceType = "2")
+                }
+
+                TAB_MEMBER -> graph.fif.ensure().mapCatching {
+                    // 教师和学生是两套条目形状（教师多 userId、学生多 phone/email），所以分两发再拼
+                    graph.fifApi.members(c.teachClassId, student = false) +
+                        graph.fifApi.members(c.teachClassId, student = true)
                 }
 
                 TAB_LIVE -> graph.fif.ensure().mapCatching {
@@ -151,8 +168,12 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
     }
 
     ScaffoldPage(title = course?.name ?: "课堂详情", onBack = onBack) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            listOf("课件", "直录播", "考勤", "上课", "小组").forEachIndexed { i, name ->
+        // 七个 tab 一排放不下，改成横向可滑；顺序照官方那套（课件在前、成员殿后）
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        ) {
+            listOf("课件", "直录播", "考勤", "上课", "小组", "其他资源", "成员").forEachIndexed { i, name ->
                 val on = i == tab
                 Text(
                     text = name,
