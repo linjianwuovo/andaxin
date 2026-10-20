@@ -50,6 +50,7 @@ import com.andaxin.data.brief.Flag
 import com.andaxin.data.brief.FormSpec
 import com.andaxin.data.brief.FormSource
 import com.andaxin.data.brief.ListSource
+import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
@@ -405,15 +406,8 @@ private fun FieldRow(
             Spacer(Modifier.height(Gap.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
                 field.options.forEach { opt ->
-                    Text(
-                        text = opt,
-                        fontSize = 13.sp,
-                        color = ink.body,
-                        modifier = Modifier
-                            .background(ink.hairline, Radius.pill)
-                            .clickable { put(field.key, opt) }
-                            .padding(horizontal = Gap.md, vertical = Gap.sm),
-                    )
+                    // 原来这一排每个选项都是同一层 hairline，选了哪个完全看不出来
+                    Chip(opt, get(field.key) == opt) { put(field.key, opt) }
                 }
             }
         }

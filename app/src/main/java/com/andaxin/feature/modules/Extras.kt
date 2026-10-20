@@ -136,12 +136,12 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.lg))
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
             Box(
-                Modifier.weight(1f).height(46.dp).background(ink.hairline, Radius.field)
+                Modifier.weight(1f).height(46.dp).background(ink.offFill, Radius.field)
                     .clickable { open("card/flows") }.padding(Gap.md),
                 contentAlignment = Alignment.Center,
             ) { Text("流水", fontSize = 14.sp, color = ink.body) }
             Box(
-                Modifier.weight(1f).height(46.dp).background(ink.hairline, Radius.field)
+                Modifier.weight(1f).height(46.dp).background(ink.offFill, Radius.field)
                     .clickable { }.padding(Gap.md),
                 contentAlignment = Alignment.Center,
             ) { Text("挂失", fontSize = 14.sp, color = ink.body) }
@@ -280,7 +280,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             Box(
                 Modifier
                     .size(30.dp)
-                    .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.hairline, Radius.field)
+                    .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.offFill, Radius.field)
                     .clickable { rememberPw = !rememberPw },
                 contentAlignment = Alignment.Center,
             ) {

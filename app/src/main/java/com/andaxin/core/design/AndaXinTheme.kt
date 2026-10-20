@@ -27,6 +27,7 @@ private val LightInk = InkSet(
     faint = Palette.InkFaint,
     ghost = Palette.InkGhost,
     hairline = Palette.Hairline,
+    offFill = Palette.Sand,
 )
 
 private val DarkInk = InkSet(
@@ -36,6 +37,7 @@ private val DarkInk = InkSet(
     faint = Palette.NightInkFaint,
     ghost = Palette.NightInkGhost,
     hairline = Palette.NightHairline,
+    offFill = Palette.NightSand,
 )
 
 /**
@@ -51,6 +53,14 @@ data class InkSet(
     val faint: Color,
     val ghost: Color,
     val hairline: Color,
+    /**
+     * 控件"关着 / 没选中"时的那层灰底。
+     *
+     * 单独立一档是因为以前这些地方全用 `hairline`（6% 黑），在浅色主题下几乎看不见：
+     * 没选中的胶囊看着像没画完，选中的那颗（surfaceVariant）反而才是灰的 —— 状态是反的。
+     * 他 10-20 深夜就一句话：按钮关闭时用灰底。
+     */
+    val offFill: Color = Palette.Sand,
 )
 
 val LocalInk: ProvidableCompositionLocal<InkSet> = staticCompositionLocalOf { LightInk }
