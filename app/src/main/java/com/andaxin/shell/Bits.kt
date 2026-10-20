@@ -244,6 +244,9 @@ fun MetricCell(
                 color = accent ?: ink.strong,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                // 数字先占位、单位才不会被挤成竖排（极端数据那一趟量出来的：
+                // 九位数跑量把"公里"顶成了两行「公/里」）
+                modifier = Modifier.weight(1f, fill = false),
             )
             if (unit.isNotBlank()) {
                 Spacer(Modifier.width(Gap.xxs))
@@ -251,12 +254,13 @@ fun MetricCell(
                     text = unit,
                     fontSize = Type.meta,
                     color = ink.faint,
+                    maxLines = 1,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
         }
         Spacer(Modifier.height(Gap.xxs))
-        Text(label, fontSize = Type.micro, color = ink.faint)
+        Text(label, fontSize = Type.micro, color = ink.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
