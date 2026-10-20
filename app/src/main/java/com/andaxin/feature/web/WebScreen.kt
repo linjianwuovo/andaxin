@@ -75,8 +75,6 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var canGoBack by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
-    // 首屏那一层说明只要页面真的动起来就收起来，不占着第一行
-    var started by remember { mutableStateOf(false) }
 
     BackHandler(enabled = canGoBack) { webView?.goBack() }
 
@@ -108,17 +106,17 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                 Text("地址是空的，进不来。", fontSize = 14.sp, color = ink.faint, modifier = Modifier.padding(Gap.lg))
                 return@Column
             }
-            if (!started) {
-                Sheet(modifier = Modifier.padding(horizontal = Gap.screen, vertical = Gap.sm)) {
-                    Text(
-                        "这一页是学校自己的 H5。校方给的链接里没有拼登录参数，而我们还没有证据" +
-                            "官方是怎么把登录态带进这种页面的（抓包里这类 GET 一条都不带 token）。" +
-                            "所以它要是打开就是登录页，那不是坏了，是我们这条路还没打通。",
-                        fontSize = 11.sp,
-                        color = ink.faint,
-                        lineHeight = 16.sp,
-                    )
-                }
+            // 这一句一直挂着，不在页面动起来之后收起来：它解释的是"为什么点进来是个登录页"，
+            // 摘掉之后就只剩他自己猜了
+            Sheet(modifier = Modifier.padding(horizontal = Gap.screen, vertical = Gap.sm)) {
+                Text(
+                    "这一页是学校自己的 H5。校方给的链接里没有拼登录参数，而我们还没有证据" +
+                        "官方是怎么把登录态带进这种页面的（抓包里这类 GET 一条都不带 token）。" +
+                        "所以它要是打开就是登录页，那不是坏了，是我们这条路还没打通。",
+                    fontSize = 11.sp,
+                    color = ink.faint,
+                    lineHeight = 16.sp,
+                )
             }
             Box(Modifier.fillMaxSize()) {
                 AndroidView(
@@ -142,7 +140,6 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                                 }
 
                                 override fun onPageStarted(view: WebView?, url: String?, picture: Bitmap?) {
-                                    started = true
                                     loading = true
                                 }
 
