@@ -122,14 +122,14 @@ class DashboardSource(
 }
 
 /**
- * 拉不到的原因写成一句人话 —— 跟 AI 课堂那一屏同一条规矩。
+ * 拉不到的原因写成一句人话 —— 首页和运动那几屏共用这一份措辞。
  *
  * 我们自己抛的那些本来就带中文（"本机还没登录…"），原话显示；
  * OkHttp 那串（`Failed to connect to sports.aiit.edu.cn/10.x.x.x:8082`）留着，
  * 因为"连不上"和"服务器拒了"是两回事，得让他分得清。
  * 光秃秃一个英文类名（connect 超时有时就这样）后面补一句中文，别只给类名。
  */
-private fun whyOf(t: Throwable?): String? {
+internal fun whyOf(t: Throwable?): String? {
     if (t == null) return null
     val m = t.message?.takeIf { it.isNotBlank() } ?: return "没连上学校那台 sports（${t.javaClass.simpleName}）"
     return if (m.any { it.code in 0x4e00..0x9fff }) m else "没连上学校那台 sports：" + m

@@ -126,7 +126,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("运动记录是占位数据；上传报文还没接，跑完只能看，不能交。")
+        PlaceholderNote("记录是校方给的；上传那一条报文还没抓到，跑完只能看，不能交。")
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -206,7 +206,15 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     var items by remember { mutableStateOf<List<com.andaxin.data.RunRecord>>(emptyList()) }
-    LaunchedLoad { items = graph.sports.records(0).getOrDefault(emptyList()) }
+    // 空列表有两种完全不同的意思：真的一条没跑，和这台 sports 没连上。
+    // 以前只用 getOrDefault(emptyList()) 把失败咽掉了，界面上就是一屏空白，
+    // 看着像他没跑步 —— 10-20 中午明文那条坑就是被这样掩盖的。
+    var why by remember { mutableStateOf<String?>(null) }
+    LaunchedLoad {
+        val r = graph.sports.records(0)
+        items = r.getOrDefault(emptyList())
+        why = com.andaxin.data.capture.whyOf(r.exceptionOrNull())
+    }
 
     Page("运动记录", onBack) {
         items.forEach { r ->
@@ -230,8 +238,21 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
             HalfButton("考勤维护记录") { open("sport/maintain") }
         }
+        if (items.isEmpty() && why != null) {
+            Spacer(Modifier.height(Gap.md))
+            Text(
+                text = "这一屏没拉到：" + why,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("这三条记录是占位数据，不是学校给的。")
+        PlaceholderNote(
+            if (items.isEmpty() && why == null)
+                "这一栏是校方 `getCheckList` 给的，这个月没有行＝这个月真没跑够记录，不是坏了。"
+            else "记录是校方给的；有效/不足那一格服务端只回 `exerciseState` 的数字，含义没有枚举表，所以原样把码带出来。"
+        )
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -241,12 +262,25 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     var detail by remember { mutableStateOf<com.andaxin.data.RunDetail?>(null) }
-    LaunchedLoad { detail = graph.sports.detail(recordId).getOrNull() }
+    var why by remember { mutableStateOf<String?>(null) }
+    LaunchedLoad {
+        val r = graph.sports.detail(recordId)
+        detail = r.getOrNull()
+        why = com.andaxin.data.capture.whyOf(r.exceptionOrNull())
+    }
 
     Page("运动明细", onBack) {
         val d = detail
         if (d == null) {
-            Text("加载中…", fontSize = 13.sp, color = ink.faint)
+            // 这一条现在**必然**是失败：单次轨迹的报文一次都没抓到，`CaptureSports.detail`
+            // 明确回失败。所以这里绝不许停在"加载中…"上装还在转 —— 那会让人白等，
+            // 也把我们早就知道"这条没接"这件事藏起来了。
+            Text(
+                text = why ?: "明细拉取中…",
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                color = if (why == null) ink.faint else MaterialTheme.colorScheme.error,
+            )
             return@Page
         }
         Box(
@@ -284,15 +318,33 @@ fun SportMaintainScreen(onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     var log by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    LaunchedLoad { log = graph.sports.maintenanceLog().getOrDefault(emptyList()) }
+    var why by remember { mutableStateOf<String?>(null) }
+    LaunchedLoad {
+        val r = graph.sports.maintenanceLog()
+        log = r.getOrDefault(emptyList())
+        why = com.andaxin.data.capture.whyOf(r.exceptionOrNull())
+    }
 
     Page("考勤维护记录", onBack) {
         log.forEach { (day, what) ->
             Sheet { Labeled(label = day, value = what) }
             Spacer(Modifier.height(Gap.sm))
         }
+        if (log.isEmpty() && why != null) {
+            Text(
+                text = "这一屏没拉到：" + why,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Spacer(Modifier.height(Gap.md))
+        }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("这一块接口一个报文都没抓到过，列表是占位；申请提交更是不可能生效。")
+        PlaceholderNote(
+            if (log.isEmpty() && why == null)
+                "读这一条的接口已经通了（`getApplyRecordList` 实样回的是空列表），空的＝这学期确实没提过维护申请。"
+            else "申请提交那一条（`putApplyRecord.do`）的报文还没抓到，所以这里只能看，不能提。"
+        )
         Spacer(Modifier.height(Gap.xxl))
     }
 }
