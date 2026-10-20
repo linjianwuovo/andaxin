@@ -19,7 +19,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -56,6 +55,7 @@ import com.andaxin.shell.Labeled
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
@@ -335,10 +335,11 @@ private fun FieldRow(
         is Field.Text -> Column {
             Text(field.label, fontSize = 12.sp, color = ink.muted)
             Spacer(Modifier.height(Gap.xs))
-            TextField(
+            MiuixTextField(
                 value = get(field.key),
                 onValueChange = { put(field.key, it) },
-                placeholder = { Text(field.hint, fontSize = 12.sp, color = ink.ghost) },
+                // Miuix 这个输入框没有 placeholder 槽，提示语走 `label`
+                label = field.hint,
                 singleLine = true,
             )
         }
@@ -349,7 +350,51 @@ private fun FieldRow(
             value = dorm.ifBlank { "没填 · 去「我的 · 宿舍」填一下" },
         )
         is Field.Number -> Labeled(label = field.label, value = "未填 · ${field.unit}")
-        is Field.Date -> Labeled(label = field.label, value = "点选日期（日期控件批次三补）")
+        // 日期终于能点了。以前这一行只写着"（日期控件批次三补）"，
+        // 而 DatePicker 的 import 一直挂在这个文件里没人用 —— 表单里所有日期字段都填不上。
+        is Field.Date -> {
+            if (picking) {
+                val ps = rememberDatePickerState()
+                DatePickerDialog(
+                    onDismissRequest = { picking = false },
+                    confirmButton = {
+                        Text(
+                            text = "选定",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable {
+                                    ps.selectedDateMillis?.let(::formatUtcDay)?.let { put(field.key, it) }
+                                    picking = false
+                                }
+                                .padding(horizontal = Gap.md, vertical = Gap.sm),
+                        )
+                    },
+                    dismissButton = {
+                        Text(
+                            text = "取消",
+                            fontSize = 14.sp,
+                            color = ink.muted,
+                            modifier = Modifier
+                                .clickable { picking = false }
+                                .padding(horizontal = Gap.md, vertical = Gap.sm),
+                        )
+                    },
+                ) {
+                    DatePicker(state = ps, showModeToggle = false)
+                }
+            }
+            val chosen = get(field.key)
+            Column(Modifier.clickable { picking = true }) {
+                Text(field.label, fontSize = 12.sp, color = ink.muted)
+                Spacer(Modifier.height(Gap.xs))
+                Text(
+                    text = chosen.ifBlank { "点选日期" },
+                    fontSize = 15.sp,
+                    color = if (chosen.isBlank()) ink.ghost else ink.strong,
+                )
+            }
+        }
         is Field.Choice -> Column {
             Text(field.label, fontSize = 12.sp, color = ink.muted)
             Spacer(Modifier.height(Gap.sm))
@@ -369,6 +414,15 @@ private fun FieldRow(
         }
     }
 }
+
+/**
+ * M3 的 DatePicker 给的是 **UTC 零点**的毫秒数，所以这里也按 UTC 格式化。
+ * 换成机器时区的话，在东八区没事、在西五区就会把用户点的日期整整挪后一天。
+ */
+private fun formatUtcDay(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis)
+        .atZone(java.time.ZoneOffset.UTC)
+        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
 /**
  * 三种页共用的那一层壳。
