@@ -28,6 +28,8 @@ object Palette {
     val NightCard = Color(0xFF161A21)
     val NightSand = Color(0xFF21262F)
     val NightSandDeep = Color(0xFF2C323C)
+    /** 夜间那张校园卡：白天用 #2563EB 整块饱和蓝，在黑底上是一块刺眼的灯板，压深一档。 */
+    val NightCardBlue = Color(0xFF1E2F5C)
     val NightHairline = Color(0x14FFFFFF)
 
     val NightInk = Color(0xFFE7EAF0)

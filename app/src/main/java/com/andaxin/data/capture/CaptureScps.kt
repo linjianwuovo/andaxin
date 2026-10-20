@@ -297,7 +297,17 @@ class CaptureTimetable(private val school: School) : TimetableFeed {
             .post("${School.CSH}/mobile/selectStuSelfTimeTable.do", "xn" to year, "xq" to term, "zc" to zc.toString())
             .mapCatching { root ->
                 val days = root.optJSONArray("rows") ?: JSONArray()
-                buildList {
+                // 整周一天都没给 = 这一发没成，不是"这周没课"。
+                // 10-21 凌晨装机撞上一次：课表屏写"这一周没有课"、首页写"今天有课 0 节"，
+                // 同一时刻拿同一把 token 现打这一发回的是 7 天 20 节。当失败处理，
+                // 上层（TimetableModel / DashboardSource）才留得住上一次的好数据、界面改口说"没拿到"。
+                if (days.length() == 0) throw IllegalStateException("校方这周一天都没给")
+                // 有天数、有课名，却一节都没解析出来 —— 那是节次字段变了形状，同样不许装成"没课"
+                val named = (0 until days.length()).sumOf { i ->
+                    val ks = days.optJSONObject(i)?.optJSONArray("kcVoList") ?: JSONArray()
+                    (0 until ks.length()).count { (ks.optJSONObject(it)?.optString("kcmc") ?: "").isNotBlank() }
+                }
+                val slots = buildList {
                     for (i in 0 until days.length()) {
                         val day = days.getJSONObject(i)
                         val weekday = day.optInt("xq", i + 1)
@@ -327,6 +337,9 @@ class CaptureTimetable(private val school: School) : TimetableFeed {
                         }
                     }
                 }.sortedWith(compareBy({ it.day }, { it.startPeriod }, { -it.periodCount }))
+                // 给了课名却一节都没解析出来 = 节次字段变了形状，同样不许装成"这周没课"
+                if (named > 0 && slots.isEmpty()) throw IllegalStateException("校方给了 $named 节课，一节都没解析出来")
+                slots
             }
     }
 

@@ -53,7 +53,8 @@ data class NoticeBody(
 @Immutable
 data class Dashboard(
     val greeting: String,
-    val todayLessons: Int,
+    /** null = 这一周整份没拿到（网络挂了、会话被顶了）；0 = 真的一节没有。两者不能都写成 0。 */
+    val todayLessons: Int?,
     val nextLesson: String?,
     val unreadMessages: Int,
     val dormCheckState: String,

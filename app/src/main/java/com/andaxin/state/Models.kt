@@ -88,15 +88,18 @@ class TimetableModel(private val feed: TimetableFeed) : ViewModel() {
     }
 
     fun load(offset: Int) {
-        viewModelScope.launch {
-            val r = try { feed.week(offset) } catch (e: Exception) { Result.failure(e) }
-            _state.value = TimetableUiState(
-                firstLoad = false,
-                weekOffset = offset,
-                slots = r.getOrDefault(_state.value.slots),
-                error = r.exceptionOrNull()?.message,
-            )
-        }
+        viewModelScope.launch { refresh(offset) }
+    }
+
+    /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
+    suspend fun refresh(offset: Int = _state.value.weekOffset) {
+        val r = try { feed.week(offset) } catch (e: Exception) { Result.failure(e) }
+        _state.value = TimetableUiState(
+            firstLoad = false,
+            weekOffset = offset,
+            slots = r.getOrDefault(_state.value.slots),
+            error = r.exceptionOrNull()?.message,
+        )
     }
 }
 

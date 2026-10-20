@@ -38,6 +38,7 @@ private val DarkInk = InkSet(
     ghost = Palette.NightInkGhost,
     hairline = Palette.NightHairline,
     offFill = Palette.NightSand,
+    dark = true,
 )
 
 /**
@@ -61,6 +62,14 @@ data class InkSet(
      * 他 10-20 深夜就一句话：按钮关闭时用灰底。
      */
     val offFill: Color = Palette.Sand,
+    /**
+     * 这一套是不是夜间。
+     *
+     * 立这么一个标志，是为了别再靠"读文字亮度猜明暗"：`TimetableScreen` 原来写的是
+     * `strong.luminance() < 0.5f` 才算夜间，而夜间那套 `strong` 是浅灰白（亮度 0.9）——
+     * 判断整个是反的，夜间下拿到的还是浅色那五档淡底。
+     */
+    val dark: Boolean = false,
 )
 
 val LocalInk: ProvidableCompositionLocal<InkSet> = staticCompositionLocalOf { LightInk }

@@ -94,7 +94,8 @@ class DashboardSource(
             // 未读只数列表里 readFlag=0 的那几条，理由见上面那段取证
             val unread = msgs.await()?.count { it.unread } ?: 0
             // 全周接口一次给七天，首页那一格只要今天
-            val slots = week.await().filter { it.day == com.andaxin.core.schedule.Periods.today() }
+            val allWeek = week.await()
+            val slots = allWeek.filter { it.day == com.andaxin.core.schedule.Periods.today() }
             val next = slots.firstOrNull { it.startPeriod >= com.andaxin.core.schedule.Periods.current() }
                 ?: slots.lastOrNull()
             // 这一格要的是"下一次查寝几点"。原来读的是 ywlz 待办里第一条晚点名消息的收到时间，
@@ -112,7 +113,9 @@ class DashboardSource(
             Result.success(
                 Dashboard(
                     greeting = greeting,
-                    todayLessons = slots.size,
+                    // 整周一条都没有 = 这份数据没拿到，别报成"今天 0 节" ——
+                    // 10-21 凌晨装机就撞上这一条：课表那一屏还有课，首页已经写"今天有课 0 节"
+                    todayLessons = if (allWeek.isEmpty()) null else slots.size,
                     nextLesson = next?.let { "第${it.startPeriod}节 · ${it.course} · ${it.room}" },
                     unreadMessages = unread,
                     dormCheckState = bedAt.ifBlank { "—" },

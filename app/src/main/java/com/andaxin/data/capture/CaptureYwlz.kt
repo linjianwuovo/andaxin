@@ -452,7 +452,7 @@ internal suspend fun dormDetailByDateId(school: School, dateId: String, fallback
         return Result.success(
             fallback.copy(
                 paragraphs = fallback.paragraphs +
-                    "查寝详情这条接口没打通，服务端/网络给的原话是：${r.exceptionOrNull()?.message}",
+                    ("详情没取到（${r.exceptionOrNull()?.message ?: "网络不通"}），下面这几行是列表里已有的。"),
             )
         )
     }
@@ -483,8 +483,7 @@ internal suspend fun dormDetailByDateId(school: School, dateId: String, fallback
             title = d.optString("title").ifBlank { fallback.title },
             fields = fields,
             paragraphs = listOf(
-                "这一屏的字段来自 fdygl 的 getTaskInfoByDateId（查寝详情）。",
-                "签到是写操作，要定位、拍照或扫码，这一版没接，所以这儿只给你看当天是什么要求、你签了没有。",
+                "要签到得回学校的 App —— 那一步要定位、拍照或扫码。",
             ),
         )
     )
@@ -528,14 +527,13 @@ internal fun bedDetail(a: YwlzTask): BriefDetail {
         fields = buildList {
             add("收到时间" to a.receiveTime.ifBlank { "—" })
             if (a.creator.isNotBlank()) add("发起人" to a.creator)
-            add("校方状态原文" to a.statusTxt.ifBlank { a.status })
+            add("状态" to a.statusTxt.ifBlank { a.status })
             p["dateId"]?.let { add("日期 ID" to it) }
             p["taskId"]?.let { add("任务 ID" to it) }
             p["id"]?.let { add("记录 ID" to it) }
         },
         paragraphs = listOf(
-            "查寝（晚点名）这一条就是待办列表里 msgType=2 的消息，校方给到的字段就这些。",
-            "这一屏是没打通 fdygl 详情接口时的兜底。签到本身是写操作（要定位/拍照/扫码），这一版不接。",
+            "要签到得回学校的 App —— 那一步要定位、拍照或扫码。",
         ),
     )
 }
@@ -634,7 +632,7 @@ class CaptureAffairDetail(
 
         val paragraphs = buildList {
             if (nodes.length() == 0) {
-                add("审批链是空的：那条接口回了 flag:true，但一行环节都没有。")
+                add("还没有审批环节。")
             } else {
                 add("审批链（校方给的顺序）：")
                 for (i in 0 until nodes.length()) {
@@ -649,8 +647,7 @@ class CaptureAffairDetail(
                 }
             }
             if (needXj) {
-                add("这一单现在轮到你自己销假。下面那颗键连按两次才真发：发的是 getForm 回显的 dataJson 原样，跟真 App 那次销假的报文同构。")
-                add("提醒一句：agree.do 的成功响应我没有实样（当时被本地抓包插件拦了），所以\"成功\"只看服务端回没回 flag:true。")
+                add("这一单等你自己销假。下面那颗键要连按两次才发得出去。")
             }
         }
 

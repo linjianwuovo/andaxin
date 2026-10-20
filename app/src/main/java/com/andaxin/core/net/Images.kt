@@ -95,7 +95,7 @@ fun RemoteImage(
     } else {
         Box(modifier, contentAlignment = Alignment.Center) {
             Text(
-                text = if (failed) "图没拉到" else if (url.isNullOrBlank()) "" else "…",
+                text = "",
                 fontSize = 11.sp,
                 color = LocalInk.current.ghost,
             )
