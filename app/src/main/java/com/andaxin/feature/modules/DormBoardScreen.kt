@@ -135,9 +135,9 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     Text(b.staticsWhy ?: "签到统计没拿到。", fontSize = Type.micro, color = ink.faint)
                 } else {
                     Row(Modifier.fillMaxWidth()) {
-                        StatCell("已签", st.signed, Palette.Teal, Modifier.weight(1f))
+                        StatCell("已签", st.signed, if (ink.dark) Palette.NightTeal else Palette.TealInk, Modifier.weight(1f))
                         StatCell("未签", st.notSigned, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                        StatCell("本月总计", st.monthTotal, Palette.Amber, Modifier.weight(1f))
+                        StatCell("本月总计", st.monthTotal, if (ink.dark) Palette.NightAmber else Palette.AmberInk, Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(Gap.md))
                     Row(Modifier.fillMaxWidth()) {

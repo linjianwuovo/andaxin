@@ -200,7 +200,7 @@ fun CardFlowsScreen(onBack: () -> Unit) {
                         Text(f.at.take(16), fontSize = Type.body, color = ink.muted)
                         Text(
                             money(f), fontSize = Type.body,
-                            color = if (f.income) Palette.Teal else ink.body,
+                            color = if (f.income) (if (ink.dark) Palette.NightTeal else Palette.TealInk) else ink.body,
                             fontWeight = FontWeight.Medium,
                         )
                     }

@@ -241,7 +241,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
                         text = "${p.studied} / ${p.target} 个点位",
                         fontSize = Type.body,
                         fontWeight = FontWeight.Medium,
-                        color = if (p.studied >= p.target) Palette.Teal else ink.strong,
+                        color = if (p.studied >= p.target) (if (ink.dark) Palette.NightTeal else Palette.TealInk) else ink.strong,
                     )
                 }
                 Spacer(Modifier.height(Gap.md))
@@ -292,7 +292,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
                                 else -> "${c.learned}/${c.items}"
                             },
                             fontSize = Type.meta,
-                            color = if (c.finished) Palette.Teal else ink.faint,
+                            color = if (c.finished) (if (ink.dark) Palette.NightTeal else Palette.TealInk) else ink.faint,
                         )
                     }
                     if (c != chapters.last()) Hairline()

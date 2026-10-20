@@ -228,7 +228,8 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     Text(
                         text = if (r.valid) "有效" else r.invalidReason,
                         fontSize = Type.meta,
-                        color = if (r.valid) Palette.Teal else MaterialTheme.colorScheme.error,
+                        color = if (r.valid) (if (ink.dark) Palette.NightTeal else Palette.TealInk)
+                        else MaterialTheme.colorScheme.error,
                     )
                 }
             }

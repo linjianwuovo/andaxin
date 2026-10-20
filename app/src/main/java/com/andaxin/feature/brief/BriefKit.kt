@@ -292,7 +292,8 @@ fun BriefDetailPage(
         }
         state.done?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = Type.body, color = Palette.Teal, lineHeight = Type.bodyLine)
+            Text(it, fontSize = Type.body, color = if (ink.dark) Palette.NightTeal else Palette.TealInk,
+                lineHeight = Type.bodyLine)
         }
         state.error?.let { Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.md))
@@ -367,7 +368,8 @@ fun BriefFormPage(
         }
         state.done?.let {
             Spacer(Modifier.height(Gap.md))
-            Text("已提交：$it", fontSize = Type.body, color = Palette.Teal)
+            Text("已提交：$it", fontSize = Type.body,
+                color = if (ink.dark) Palette.NightTeal else Palette.TealInk)
         }
         if (state.error != null) {
             Spacer(Modifier.height(Gap.md))
