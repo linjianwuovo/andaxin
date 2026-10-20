@@ -25,6 +25,11 @@ data class Session(
     val remembered: Boolean = false,
     /** 上一次"记住密码"为什么没成（Keystore 报错原话）。成了就是 null。 */
     val rememberedWhy: String = "", 
+    /**
+     * 每次成功拿到新票都换一个值。界面用它当"重新拉一次"的 key ——
+     * 理由写在 `SessionStore.save` 那段（冷启动自动重登和首页并发撞车那次）。
+     */
+    val generation: Long = 0L,
 )
 
 /**
@@ -53,10 +58,22 @@ class SessionStore(private val store: Store) {
             dorm = store.peekString(p, KEY_DORM).orEmpty(),
             remembered = !store.peekString(p, KEY_PW_BLOB).isNullOrBlank(),
             rememberedWhy = store.peekString(p, KEY_PW_WHY).orEmpty(),
+            generation = store.peekString(p, KEY_GEN)?.toLongOrNull() ?: 0L,
         )
     }
 
-    /** 登录成功后落盘。token 只存本机这一份文件里，不进日志、不进仓。 */
+    /**
+     * 登录成功后落盘。token 只存本机这一份文件里，不进日志、不进仓。
+     *
+     * 顺手把 `auth.generation` 一起写：界面要靠它知道"手里这把 token 换过了"。
+     * 装机撞到的那条race 值得记一笔（10-20 晚，0.2-全接 第一次读屏）：冷启动时
+     * `Gate` 的自动重登和首页那一路并发撞在一起 —— 首页四条里有三条先拿**旧**token 发出去，
+     * 服务端回"没有访问权限"，于是屏幕上就写着"轮播图没拉到：登录已在别处被顶掉"，
+     * 而同一屏的校历（后发的那条）却是真数据。看着像我们只接好了一半。
+     * `loggedIn`/`userName` 这些字段在重登前后是一样的，界面订阅不到这次换票，
+     * 所以留一个纯计数器性质的时间戳在这儿，谁要"重登之后重新拉一次"就 key 在它上面。
+     * 存的是毫秒时间戳，不含任何凭据。
+     */
     suspend fun save(token: com.andaxin.data.capture.TokenBundle) {
         store.setMany(
             Store.KEY_TOKEN to token.accessToken,
@@ -66,6 +83,7 @@ class SessionStore(private val store: Store) {
             KEY_USER_TYPE to token.userType,
             KEY_EXPIRES_AT to (System.currentTimeMillis() / 1000 + token.expiresInSeconds).toString(),
             KEY_BROWSING to null,
+            KEY_GEN to System.currentTimeMillis().toString(),
         )
     }
 
@@ -154,5 +172,8 @@ class SessionStore(private val store: Store) {
         const val KEY_EXPIRES_AT = "auth.expiresAt"
         const val KEY_PW_BLOB = "auth.pwBlob"
         const val KEY_PW_WHY = "auth.pwWhy"
+
+        /** 换票计数（存的是毫秒时间戳，不含凭据）。见 `Session.generation`。 */
+        const val KEY_GEN = "auth.generation"
     }
 }
