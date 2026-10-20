@@ -5,7 +5,6 @@ import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -108,7 +108,7 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
                                 if (on) MaterialTheme.colorScheme.surfaceVariant else ink.hairline,
                                 Radius.pill,
                             )
-                            .clickable { picked = i }
+                            .pressClick { picked = i }
                             .padding(horizontal = Gap.md, vertical = Gap.sm),
                     )
                 }

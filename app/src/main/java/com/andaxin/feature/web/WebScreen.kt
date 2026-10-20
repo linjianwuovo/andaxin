@@ -7,7 +7,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -88,7 +88,7 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                         fontSize = 14.sp,
                         color = ink.muted,
                         modifier = Modifier
-                            .clickable { if (canGoBack) webView?.goBack() else onBack() }
+                            .pressClick { if (canGoBack) webView?.goBack() else onBack() }
                             .padding(horizontal = Gap.md, vertical = Gap.sm),
                     )
                 },

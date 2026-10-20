@@ -2,7 +2,6 @@ package com.andaxin.feature.home
 
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +49,8 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.MetricCell
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.enterFade
+import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.ErrorLine
 import com.andaxin.state.HomeModel
@@ -108,7 +109,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.md))
-        Sheet {
+        Sheet(modifier = Modifier.enterFade(session.generation)) {
             Row(Modifier.fillMaxWidth()) {
                 MetricCell("今天有课", d?.let { "${it.todayLessons}" } ?: "—", "节", modifier = Modifier.weight(1f))
                 MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
@@ -154,7 +155,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         if (state.today.isNotEmpty()) {
             // 一门课一张卡是上一版最"肿"的地方：三张卡之间的缝比内容还显眼
             SectionBlock("今日课程")
-            Sheet {
+            Sheet(modifier = Modifier.enterFade()) {
                 state.today.forEachIndexed { i, slot ->
                     RowLine(
                         title = slot.course,
@@ -212,7 +213,7 @@ private fun Extras(e: HomeExtras, open: (String) -> Unit) {
     if (e.services.isNotEmpty()) {
         SectionBlock("校方服务清单")
         // 四列图标网格：一行一个拉七行、右边还挂个域名，是这一屏最肿的一段
-        Sheet {
+        Sheet(modifier = Modifier.enterFade(e.services.size)) {
             e.services.chunked(4).forEachIndexed { rowIdx, row ->
                 Row(Modifier.fillMaxWidth()) {
                     row.forEach { s -> ServiceTile(s, graph, ink, Modifier.weight(1f)) { url -> open(url) } }
@@ -226,7 +227,7 @@ private fun Extras(e: HomeExtras, open: (String) -> Unit) {
 
     if (e.contacts.isNotEmpty()) {
         SectionBlock("求助电话")
-        Sheet {
+        Sheet(modifier = Modifier.enterFade(e.contacts.size)) {
             e.contacts.forEachIndexed { i, c ->
                 // 这发的 `infoName` 里装的是电话号码（真值见 CaptureHome 顶上第①条），键名骗人
                 RowLine(title = c.label, right = c.contact)
@@ -252,7 +253,7 @@ private fun ServiceTile(
     val clickable = s.targetUrl.startsWith("http")
     Column(
         modifier
-            .then(if (clickable) Modifier.clickable { go(target) } else Modifier)
+            .then(if (clickable) Modifier.pressClick { go(target) } else Modifier)
             .padding(vertical = Gap.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

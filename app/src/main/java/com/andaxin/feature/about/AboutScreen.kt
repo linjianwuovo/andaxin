@@ -1,7 +1,6 @@
 package com.andaxin.feature.about
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.pressClick
 import com.andaxin.BuildConfig
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -46,7 +46,7 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             .padding(horizontal = Gap.screen),
     ) {
         Spacer(Modifier.height(Gap.xl))
-        Text("‹ 返回", fontSize = 14.sp, color = ink.muted, modifier = Modifier.clickable(onClick = onBack).padding(vertical = Gap.sm))
+        Text("‹ 返回", fontSize = 14.sp, color = ink.muted, modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm))
         Spacer(Modifier.height(Gap.sm))
         Text("关于", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
 
@@ -153,7 +153,7 @@ private fun VersionCard() {
                 fontSize = 13.sp,
                 color = if (busy) ink.ghost else MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .clickable(enabled = !busy) { query(ref) }
+                    .pressClick(shrink = false, enabled = !busy) { query(ref) }
                     .padding(horizontal = Gap.md, vertical = Gap.sm),
             )
         }

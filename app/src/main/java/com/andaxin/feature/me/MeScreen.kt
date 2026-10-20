@@ -1,7 +1,6 @@
 package com.andaxin.feature.me
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +48,8 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
+import com.andaxin.shell.enterFade
+import com.andaxin.shell.pressClick
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import kotlinx.coroutines.launch
 
@@ -210,14 +211,14 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 @Composable
 private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
     val ink = LocalInk.current
-    Sheet {
+    Sheet(modifier = Modifier.enterFade()) {
         entries.chunked(3).forEachIndexed { rowIdx, row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { e ->
                     Column(
                         Modifier
                             .weight(1f)
-                            .clickable { e.route?.let(open) }
+                            .pressClick { e.route?.let(open) }
                             .padding(vertical = Gap.md),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -292,7 +293,7 @@ private fun DormRow() {
                     fontSize = Type.body,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
-                        .clickable {
+                        .pressClick(shrink = false) {
                             scope.launch { graph.session.setDorm(draft.trim()) }
                             editing = false
                         }
@@ -303,7 +304,7 @@ private fun DormRow() {
                     fontSize = Type.body,
                     color = ink.muted,
                     modifier = Modifier
-                        .clickable {
+                        .pressClick(shrink = false) {
                             draft = session.dorm
                             editing = false
                         }
@@ -328,7 +329,6 @@ private fun ReminderRow() {
     var on by remember { mutableStateOf(false) }
     var lead by remember { mutableStateOf(com.andaxin.core.schedule.ClassReminder.DEFAULT_LEAD) }
     var status by remember { mutableStateOf("正在看本机存了什么…") }
-    var open by remember { mutableStateOf(false) }
 
     var needPermission by remember { mutableStateOf(false) }
     val ask = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -391,15 +391,6 @@ private fun ReminderRow() {
         Spacer(Modifier.height(Gap.xs))
         Text(status, fontSize = Type.micro, color = ink.faint)
     }
-    if (open) {
-    } else {
-        Text(
-            "它按什么时间提醒？",
-            fontSize = Type.micro,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clickable { open = true }.padding(vertical = Gap.xs),
-        )
-    }
 }
 
 /**
@@ -415,7 +406,6 @@ private fun PasswordRow() {
     val scope = rememberCoroutineScope()
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     var usable by remember { mutableStateOf<Boolean?>(null) }
-    var open by remember { mutableStateOf(false) }
     LaunchedEffect(session.remembered) {
         // 解一次才算数：`vault.usable` 里要读 DataStore（挂起），所以整段放在协程里
         usable = if (!session.remembered) {
@@ -440,14 +430,5 @@ private fun PasswordRow() {
             { scope.launch { graph.session.forgetPassword() } }
         } else null,
     )
-    if (open) {
-    } else {
-        Text(
-            "记着它有什么用？",
-            fontSize = Type.micro,
-            color = ink.faint,
-            modifier = Modifier.clickable { open = true }.padding(bottom = Gap.xs),
-        )
-    }
 }
 

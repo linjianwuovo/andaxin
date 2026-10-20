@@ -1,7 +1,6 @@
 package com.andaxin.feature.modules
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -80,7 +80,7 @@ fun AffairTabsScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.lg))
 
         if (tab == 0) {
-            Sheet(modifier = Modifier.clickable { open("affair/form") }) {
+            Sheet(modifier = Modifier.pressClick { open("affair/form") }) {
                 Text("＋ 发起请假", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(Gap.sm))

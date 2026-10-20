@@ -1,7 +1,6 @@
 package com.andaxin.feature.aiclass
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -107,7 +107,7 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(Gap.sm),
             ) {
                 list.forEach { c ->
-                    Sheet(modifier = Modifier.width(210.dp).clickable { open("opencourse/detail/${c.id}") }) {
+                    Sheet(modifier = Modifier.width(210.dp).pressClick { open("opencourse/detail/${c.id}") }) {
                         CourseLine(c, graph, ink, compact = true)
                     }
                 }
@@ -116,7 +116,7 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
 
         courses.forEach { c ->
-            Sheet(modifier = Modifier.clickable { open("opencourse/detail/${c.id}") }) {
+            Sheet(modifier = Modifier.pressClick { open("opencourse/detail/${c.id}") }) {
                 CourseLine(c, graph, ink, compact = false)
             }
             Spacer(Modifier.height(Gap.sm))

@@ -1,7 +1,6 @@
 package com.andaxin.feature.modules
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +37,8 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.enterFade
+import com.andaxin.shell.pressClick
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -77,7 +78,7 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         why?.let { Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error) }
 
         if (b != null) {
-            Sheet {
+            Sheet(modifier = Modifier.enterFade()) {
                 Text(
                     text = "${b.month.substringBefore('-')} 年 ${b.month.substringAfter('-').trimStart('0')} 月签到概览",
                     fontSize = Type.title,
@@ -117,7 +118,8 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
         if (picked != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                Chip("只看 $picked", picked = true) { }
+                // 两颗都可点：点"只看这天"等于取消筛选，不然它只是一块长得像按钮的字
+                Chip("只看 $picked", picked = true) { picked = null }
                 Chip("看整月", picked = false) { picked = null }
             }
             Spacer(Modifier.height(Gap.md))
@@ -199,7 +201,7 @@ private fun MonthCalendar(
                                 },
                                 CircleShape,
                             )
-                            .clickable { onPick(if (picked == iso) null else iso) },
+                            .pressClick { onPick(if (picked == iso) null else iso) },
                         verticalArrangement = Arrangement.Center,
                     ) {
                         Text(

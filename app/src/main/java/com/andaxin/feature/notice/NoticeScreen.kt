@@ -1,6 +1,5 @@
 package com.andaxin.feature.notice
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -50,7 +50,7 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
                 "‹ 返回列表",
                 fontSize = 14.sp,
                 color = LocalInk.current.muted,
-                modifier = Modifier.clickable { model.close() }.padding(vertical = Gap.sm),
+                modifier = Modifier.pressClick(shrink = false) { model.close() }.padding(vertical = Gap.sm),
             )
             Spacer(Modifier.height(Gap.sm))
             Text(open.title, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
