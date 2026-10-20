@@ -63,7 +63,8 @@ sealed class Field {
 }
 
 @Immutable
-data class FormSpec(val title: String, val fields: List<Field>)
+/** [sample] = 这是没登录时那份形状占位的表：字段是编的，提交也是发不出去的。 */
+data class FormSpec(val title: String, val fields: List<Field>, val sample: Boolean = false)
 
 interface ListSource {
     suspend fun rows(): Result<List<BriefRow>>

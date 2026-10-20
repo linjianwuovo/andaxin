@@ -57,6 +57,7 @@ import com.andaxin.data.brief.ListSource
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Refreshable
+import com.andaxin.shell.SampleTag
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
@@ -311,7 +312,21 @@ fun BriefFormPage(
     }
 
     ScaffoldPage(title = state.spec?.title ?: title, onBack = onBack) {
-        state.spec?.fields?.forEach { field ->
+        val sample = state.spec?.sample == true
+        if (sample) {
+            // 没登录时这张表是编的形状：字段是假的、提交也发不出去。
+            // 原来照样摆一颗蓝色「提交」，按下去只会回一句失败 —— 一颗点了没用的主按钮
+            // 比少一颗按钮坏得多。所以这一屏只留一句话。
+            Text(
+                text = "登录后才能填这张表。",
+                fontSize = Type.body,
+                color = ink.muted,
+                modifier = Modifier.padding(top = Gap.md),
+            )
+            Spacer(Modifier.height(Gap.md))
+            SampleTag()
+        }
+        if (!sample) state.spec?.fields?.forEach { field ->
             FieldRow(
                 field,
                 get = { values[it].orEmpty() },
@@ -320,7 +335,7 @@ fun BriefFormPage(
             )
             Spacer(Modifier.height(Gap.md))
         }
-        MiuixButton(
+        if (!sample) MiuixButton(
             onClick = { model.submit(values.toMap()) },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColorsPrimary(),
