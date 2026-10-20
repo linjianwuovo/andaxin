@@ -152,10 +152,11 @@ class MessageModel(private val feed: MessageFeed) : ViewModel() {
         viewModelScope.launch {
             val r = try { feed.markRead(id) } catch (e: Exception) { Result.failure(e) }
             if (r.isSuccess) {
-                _state.value = _state.value.copy(
-                    readError = null,
-                    items = _state.value.items.map { if (it.id == id) it.copy(unread = false) else it },
-                )
+                val next = _state.value.items.map { if (it.id == id) it.copy(unread = false) else it }
+                _state.value = _state.value.copy(readError = null, items = next)
+                // 底栏那颗角标跟着这一份重算：不然把最后一条点成已读，
+                // 红圈还挂在「消息」那一格上，得等下一次进首页/下拉才肯掉
+                com.andaxin.core.store.Unread.messages.value = next.count { it.unread }
             } else {
                 _state.value = _state.value.copy(readError = r.exceptionOrNull()?.message ?: "服务端没认这条")
             }
