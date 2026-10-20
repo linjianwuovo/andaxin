@@ -168,6 +168,15 @@ fun BriefListPage(
         if (state.rows.isEmpty() && !state.loading) {
             Text(empty, fontSize = 14.sp, color = ink.faint)
         }
+        // 「新建」那一行放在**列表上面**。它原来画在所有行的下面 —— 待办那一屏有 21 行，
+        // 于是「＋ 发起请假」被推到屏幕外，装机时读屏根本找不到它（10-20 读屏验出来）。
+        // 有 onNew 才画这一行，没有就一行都不多。
+        if (newLabel != null && onNew != null) {
+            Sheet(modifier = Modifier.clickable(onClick = onNew)) {
+                Text(newLabel, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.height(Gap.sm))
+        }
         state.rows.forEach { row ->
             Sheet(modifier = Modifier.clickable { onRow(row.id) }) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -196,14 +205,6 @@ fun BriefListPage(
             Spacer(Modifier.height(Gap.sm))
         }
         state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
-        // 「新建」那一行：以前那三张表单（报修、发起请假、离返校登记）根本没有入口，
-        // 页面写了却谁也进不去。有 onNew 才画这一行，没有就一行都不多。
-        if (newLabel != null && onNew != null) {
-            Spacer(Modifier.height(Gap.sm))
-            Sheet(modifier = Modifier.clickable(onClick = onNew)) {
-                Text(newLabel, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-            }
-        }
         Spacer(Modifier.height(Gap.sm))
         PlaceholderNote(note)
     }
