@@ -430,7 +430,13 @@ private fun FieldRow(
         is Field.Choice -> Column {
             Text(field.label, fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.sm))
-            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            // 必须是会换行的流式排：原来是一整排不折行的 Row，
+            // 「学院」这种十几个选项被硬挤进一屏宽 —— 每颗字都竖着排成三四行，
+            // 高的那颗撑到 600 多像素，后面几颗直接挤出屏幕外看不见。
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                verticalArrangement = Arrangement.spacedBy(Gap.sm),
+            ) {
                 field.options.forEach { opt ->
                     // 原来这一排每个选项都是同一层 hairline，选了哪个完全看不出来
                     Chip(opt, get(field.key) == opt) { put(field.key, opt) }
