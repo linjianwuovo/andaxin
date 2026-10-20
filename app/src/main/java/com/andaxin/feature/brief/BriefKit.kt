@@ -97,6 +97,12 @@ internal data class DetailUi(
     val error: String? = null,
     val done: String? = null,
     val acting: Boolean = false,
+    /**
+     * 详情那一屏以前没有这一档：数据没回来、错误也没有的时候，页面就是一片空白加底下那句说明，
+     * 看着像"这单什么都没有了"。10-20 读待办详情时实测过：审批链加表单要七八秒，
+     * 那七八秒里屏幕上就是空的。
+     */
+    val loading: Boolean = true,
 )
 
 internal class DetailModel(private val source: DetailSource, private val id: String) : ViewModel() {
@@ -106,7 +112,11 @@ internal class DetailModel(private val source: DetailSource, private val id: Str
     init {
         viewModelScope.launch {
             val r = try { source.detail(id) } catch (e: Exception) { Result.failure(e) }
-            _state.value = DetailUi(data = r.getOrNull(), error = r.exceptionOrNull()?.message)
+            _state.value = DetailUi(
+                data = r.getOrNull(),
+                error = r.exceptionOrNull()?.message,
+                loading = false,
+            )
         }
     }
 
@@ -226,6 +236,9 @@ fun BriefDetailPage(
 
     ScaffoldPage(title = state.data?.title ?: title, onBack = onBack) {
         val d = state.data
+        if (d == null && state.loading && state.error == null) {
+            Text("正在拉这一条…", fontSize = 13.sp, color = ink.faint)
+        }
         if (d != null) {
             Sheet {
                 d.fields.forEachIndexed { i, (label, value) ->

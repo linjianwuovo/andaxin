@@ -649,7 +649,7 @@ class FifApi(private val fif: FifSession) {
      * encryptionSchoolId ifShowRobot` 实测**全是 null** —— 所以这一屏不给"课程简介"，它没有。
      */
     suspend fun adaptDetail(courseUid: String): AdaptCourse? {
-        val root = get("$STTP/adapt-app/courseApi/courseDetail?courseId=${enc(courseUid)}") ?: return null
+        val root = adaptGet("/adapt-app/courseApi/courseDetail?courseId=${enc(courseUid)}") ?: return null
         val d = data(root)
         if (d.length() == 0) return null
         return AdaptCourse(
@@ -676,7 +676,7 @@ class FifApi(private val fif: FifSession) {
      * `currentRate` 实测是 null，别拿它当百分比显示。
      */
     suspend fun adaptChapters(courseUid: String): Pair<AdaptProgress, List<AiChapter>> {
-        val root = get("$STTP/adapt-app/courseApi/newCourseChapterList?courseId=${enc(courseUid)}")
+        val root = adaptGet("/adapt-app/courseApi/newCourseChapterList?courseId=${enc(courseUid)}")
             ?: return AdaptProgress(0, 0) to emptyList()
         val d = data(root)
         val progress = AdaptProgress(d.optInt("studiedNumber"), d.optInt("targetNumber"))
@@ -708,7 +708,7 @@ class FifApi(private val fif: FifSession) {
      * 拿到非空就走候选键，并明写"字段名未证实"。
      */
     suspend fun adaptQuizzes(courseUid: String): List<AiItem> {
-        val root = get("$STTP/adapt-app/courseApi/getQuizList?courseId=${enc(courseUid)}") ?: return emptyList()
+        val root = adaptGet("/adapt-app/courseApi/getQuizList?courseId=${enc(courseUid)}") ?: return emptyList()
         val arr = data(root).optJSONArray("quizDtoList") ?: JSONArray()
         return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i) }.mapIndexed { k, o ->
             AiItem(
@@ -718,6 +718,24 @@ class FifApi(private val fif: FifSession) {
                 right = "字段名未证实",
             )
         }
+    }
+
+    /**
+     * `adapt-app` 那一族**单独一条 GET**：`Authorization` 要**裸 JWT**（不带 `Basic ` 前缀），
+     * 还要带 `Referer: https://sttp.fifedu.com/adaptive/`。
+     *
+     * 【取证 · ③ 真 App 发出的请求头 + ② 我们现打撞出来的】
+     * 10-20 晚装机点公开课详情，照主站习惯发 `Basic <jwt>`，服务器回的是
+     * `{"status":401,"message":"The string '…' doesn't have a valid JSON format"}` ——
+     * 它把 "Basic " 后面那段当 base64 解、解出来不是 JSON，所以报这句（`lxtmp/_adapt_probe.txt`）。
+     * 把官方那几发的请求头从抓包里逐条读出来才对上：`Authorization: eyJ0…`（裸 JWT）
+     * + `Referer: …/adaptive/`，`Visit-Type` 这一族**没有**（`lxtmp/_adapt_headers.md`）。
+     * 也就是说：这一族的判法跟 studycenter 相反，照别处的习惯带头就是 401。
+     */
+    private suspend fun adaptGet(pathWithQuery: String): JSONObject? {
+        val jwt = fif.bareJwt() ?: return null
+        return runCatching { fif.getAdapt("$STTP$pathWithQuery", jwt, "$STTP/adaptive/") }
+            .getOrNull()?.let { if (passed(it)) it else null }
     }
 
     /* ── 发请求与解析的小工具 ── */

@@ -86,7 +86,9 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     // 校方那条 checkIsInternStu 只回一个布尔（真值：`data{isInternStu:false}`），
     // 所以这一行就照它说"是/不是"，不推断它背后的含义（什么算实习生，服务端没给过口径）。
     var intern by remember { mutableStateOf<Boolean?>(null) }
-    androidx.compose.runtime.LaunchedEffect(session.loggedIn) {
+    androidx.compose.runtime.LaunchedEffect(session.loggedIn, session.generation) {
+        // 跟着 generation 再来一遍：被顶号后自动重登时 loggedIn 没变，光 key 它的话
+        // 这一屏会一直挂着上一次失败的结果（首页那一屏同理会写到，装机撞到的就是这一族）
         if (session.loggedIn) {
             graph.profile.load().onSuccess { profile = it }
             graph.home.intern().onSuccess { intern = it }

@@ -270,8 +270,9 @@ private fun ExtrasSection(e: com.andaxin.data.capture.HomeExtras, open: (String)
                         }
                         Column(Modifier.weight(1f)) {
                             Text(s.name, fontSize = 15.sp, color = ink.strong)
-                            // `sjdfwdz` 实测就是完整 https 直链，尾巴那截路径给出来才知道进的是哪个页面
-                            if (s.targetUrl.isNotBlank()) {
+                            // 只有真是链接才把域名摆出来当副标题。「智慧运动」那一格实测 `sjdfwdz` 就是字面 "1"
+                            // （校方给的是原生路由号不是 URL），以前直接印出来就是个孤零零的 1，看着像数据坏了。
+                            if (s.targetUrl.startsWith("http")) {
                                 Spacer(Modifier.height(Gap.xxs))
                                 Text(
                                     text = Uri.parse(s.targetUrl).host ?: s.targetUrl,
