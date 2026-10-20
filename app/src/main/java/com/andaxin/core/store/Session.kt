@@ -153,7 +153,11 @@ class SessionStore(private val store: Store) {
      */
     suspend fun signOut(keepPassword: Boolean = false) = store.setMany(
         Store.KEY_TOKEN to null,
-        Store.KEY_USER_CODE to null,
+        // 学号跟着口令走：留了口令却把学号擦掉，那份密文就成了解不开的孤儿 ——
+        // `reloginFromVault()` 第一步要的就是学号。10-21 凌晨装机撞中的正是这个：
+        // 会话掉了、「我的」上明明写着"已记住，到期或被顶号时能自己重登"，
+        // 结果那颗「用这台机器记住的口令登进去」按下去只会说"登不进去"。
+        Store.KEY_USER_CODE to if (keepPassword) store.peekString(store.snapshot(), Store.KEY_USER_CODE) else null,
         KEY_REFRESH to null,
         KEY_USER_NAME to null,
         KEY_USER_TYPE to null,

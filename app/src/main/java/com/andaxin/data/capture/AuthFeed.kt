@@ -40,6 +40,20 @@ data class TokenBundle(
     val expiresInSeconds: Long,
 )
 
+/**
+ * 登录这一类失败的两种结局，必须分开 —— 因为它决定「记住的那份口令还要不要留」。
+ *
+ * [AuthRejected] 是学校**答了、并且说不行**（口令错了、要先改口令、账号被锁）。这时候本机那份
+ * 密文已经没有价值，留着它每次过闸门都去撞一遍服务器，该忘掉。
+ *
+ * [AuthUnreachable] 是根本没问成（连不上、网关给了一坨 HTML、结构不对）。这种失败**不能**把口令擦掉：
+ * 一次网络抖动并不说明口令错了，而擦掉它等于永久废掉自动重登 —— 登录页上那颗一键重登的键会消失，
+ * 屏幕上只留一句"登不进去"，可坏的根本不是口令。
+ */
+class AuthRejected(override val message: String) : Exception(message)
+
+class AuthUnreachable(override val message: String) : Exception(message)
+
 class AuthFeed {
 
     private val client = Http.client.newBuilder()
@@ -77,21 +91,24 @@ class AuthFeed {
             client.newCall(request).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    return@use Result.failure(Exception("服务器回了 ${resp.code}"))
+                    // 非 2xx 不算"学校否掉了口令"：网关/服务器的问题不该把记的口令擦掉
+                    return@use Result.failure(AuthUnreachable("学校那边回了 ${resp.code}"))
                 }
                 val root = runCatching { JSONObject(body) }.getOrNull()
-                    ?: return@use Result.failure(Exception("回来的不是 JSON，可能被网关拦了"))
-                if (!root.optBoolean("flag", false) && root.optString("msg").isNotBlank()) {
-                    return@use Result.failure(Exception(root.getString("msg")))
+                    ?: return@use Result.failure(AuthUnreachable("回来的不是 JSON，可能被网关拦了"))
+                // flag:false 就是校方自己的"不行"。空 POST 也回这个形状（`{"flag":false,"code":"S9999999"}`，
+                // 10-19 现打），但它不带 msg —— 没 msg 不等于没答，照样按否掉处理。
+                if (!root.optBoolean("flag", false)) {
+                    return@use Result.failure(AuthRejected(
+                        root.optString("msg").ifBlank { "账号或口令不对，或者要先改口令" }
+                    ))
                 }
                 // token 在 data.token 这一层，只钻根节点会静默拿到空串
                 val token = root.optJSONObject("data")?.optJSONObject("token")
-                    ?: return@use Result.failure(Exception("没拿到 token：回来的结构不对"))
+                    ?: return@use Result.failure(AuthUnreachable("没拿到 token：回来的结构不对"))
                 val access = token.optString("access_token")
                 if (access.isBlank()) {
-                    return@use Result.failure(Exception(
-                        root.optString("msg").ifBlank { "账号或口令不对，或者要先改口令" }
-                    ))
+                    return@use Result.failure(AuthRejected("账号或口令不对，或者要先改口令"))
                 }
                 Result.success(
                     TokenBundle(
@@ -105,7 +122,7 @@ class AuthFeed {
                 )
             }
         } catch (e: Exception) {
-            Result.failure(Exception("连不上学校：${e.message ?: e.javaClass.simpleName}"))
+            Result.failure(AuthUnreachable("连不上学校：${e.message ?: e.javaClass.simpleName}"))
         }
     }
 }
