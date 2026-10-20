@@ -29,6 +29,7 @@ import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.spec
 import com.andaxin.feature.about.AboutScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
+import com.andaxin.feature.aiclass.RecordPlayScreen
 import com.andaxin.feature.aiclass.ScanScreen
 import com.andaxin.feature.home.HomeScreen
 import com.andaxin.feature.me.MeScreen
@@ -128,6 +129,7 @@ object Route {
     const val AICLASS = "aiclass"
     const val AICLASS_DETAIL = "aiclass/detail/{id}"
     const val AICLASS_SCAN = "aiclass/scan"
+    const val AICLASS_PLAY = "aiclass/play/{id}"
 }
 
 /** 详情路由都带一个 {id}，注册时统一走这个，省掉二十行重复。 */
@@ -206,7 +208,10 @@ fun RootShell() {
         composable(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         composable(Route.AICLASS_SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
         composable(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
-            CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), open = { nav.navigate(it) }) { nav.popBackStack() }
+        }
+        composable(Route.AICLASS_PLAY, arguments = listOf(idPattern())) { e ->
+            RecordPlayScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
         }
     }
 }
