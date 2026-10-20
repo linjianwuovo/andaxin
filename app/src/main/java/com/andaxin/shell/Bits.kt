@@ -148,9 +148,18 @@ fun FillHeight(modifier: Modifier = Modifier) = Spacer(modifier.fillMaxHeight())
  * 接口挂了界面就是一屏空白加一句无关的话，看着像我们没做，其实是被服务器挡了。
  *
  * [scheduleNote] 给课表那一屏用：它接上的只有"今天"，整周那条还没取证，措辞不一样。
+ *
+ * [weakReason] 给首页用：某一格单独拉不到（比如校内那台 sports 出校门就连不上）时，
+ * 别把那串英文异常塞进格子里当值 —— 10-20 那版就是那么干的，格子里显示半截异常，
+ * 看着像数据坏了其实是文案位置放错了。格子一律显示「—」，原因挂在这句话后面补一句。
  */
 @Composable
-fun DataCaveat(error: String? = null, scheduleNote: Boolean = false, modifier: Modifier = Modifier) {
+fun DataCaveat(
+    error: String? = null,
+    scheduleNote: Boolean = false,
+    weakReason: String? = null,
+    modifier: Modifier = Modifier,
+) {
     val graph = LocalAppGraph.current
     val session by graph.session.state.collectAsStateWithLifecycle(Session())
     Column(modifier = modifier.fillMaxWidth()) {
@@ -164,5 +173,14 @@ fun DataCaveat(error: String? = null, scheduleNote: Boolean = false, modifier: M
             Spacer(Modifier.height(Gap.sm))
         }
         PlaceholderNote(if (scheduleNote) TIMETABLE_NOTE else graph.placeholderNote(session.loggedIn))
+        if (!weakReason.isNullOrBlank()) {
+            Spacer(Modifier.height(Gap.xs))
+            Text(
+                text = "这一格这次没拉到：" + weakReason,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = LocalInk.current.faint,
+            )
+        }
     }
 }

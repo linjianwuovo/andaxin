@@ -5,6 +5,7 @@ import com.andaxin.data.Dashboard
 import com.andaxin.data.DashboardFeed
 import com.andaxin.data.MessageFeed
 import com.andaxin.data.NoticeFeed
+import com.andaxin.data.SportsFeed
 import com.andaxin.data.TimetableFeed
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -74,16 +75,18 @@ class DashboardSource(
     private val today: TimetableFeed,
     private val tasks: YwlzTasks,
     private val messages: MessageFeed,
+    private val sports: SportsFeed,
 ) : DashboardFeed {
 
     override suspend fun snapshot(): Result<Dashboard> {
         if (!session.signedIn()) return local.snapshot()
-        // 四路互不相干，一起发：首页要"一次出"，不该一路加载一路蹦
+        // 五路互不相干，一起发：首页要"一次出"，不该一路加载一路蹦
         return coroutineScope {
             val counts = async { school.post("$SCPS/msgCenter/notReadCount.do").getOrNull() }
             val week = async { today.week(0).getOrDefault(emptyList()) }
             val dorm = async { tasks.all().getOrNull() }
             val msgs = async { messages.page(0).getOrNull() }
+            val run = async { sports.summary() }
             val data = counts.await()?.optJSONObject("data")
             val greeting = data?.optString("date").orEmpty().ifBlank { "你好" }
             // 未读只数列表里 readFlag=0 的那几条，理由见上面那段取证
@@ -95,16 +98,18 @@ class DashboardSource(
             // 最近一次晚点名：列表本来就是新的在前，取第一条查寝类的时间，去掉年份
             val bed = dorm.await()?.firstOrNull { it.isBedCheck }
             val bedAt = bed?.receiveTime?.let { t -> if (t.length > 5) t.substring(5) else t }.orEmpty()
-            // 半占位：跑量这一格还是假值，所以这块整体不算"全接上了"
-            val base = local.snapshot().getOrNull()
+            val runR = run.await()
+            val sports0 = runR.getOrNull()
             Result.success(
                 Dashboard(
                     greeting = greeting,
                     todayLessons = slots.size,
                     nextLesson = next?.let { "第${it.startPeriod}节 · ${it.course} · ${it.room}" },
                     unreadMessages = unread,
-                    dormCheckState = bedAt.ifBlank { base?.dormCheckState ?: "—" },
-                    runThisWeekKm = base?.runThisWeekKm ?: 0.0,
+                    dormCheckState = bedAt.ifBlank { "—" },
+                    runSemesterKm = sports0?.semesterKm,
+                    runMorningKm = sports0?.morningKm,
+                    runWhy = if (sports0 == null) whyOf(runR.exceptionOrNull()) else null,
                 )
             )
         }
@@ -114,4 +119,18 @@ class DashboardSource(
     private companion object {
         const val SCPS = School.SCPS
     }
+}
+
+/**
+ * 拉不到的原因写成一句人话 —— 跟 AI 课堂那一屏同一条规矩。
+ *
+ * 我们自己抛的那些本来就带中文（"本机还没登录…"），原话显示；
+ * OkHttp 那串（`Failed to connect to sports.aiit.edu.cn/10.x.x.x:8082`）留着，
+ * 因为"连不上"和"服务器拒了"是两回事，得让他分得清。
+ * 光秃秃一个英文类名（connect 超时有时就这样）后面补一句中文，别只给类名。
+ */
+private fun whyOf(t: Throwable?): String? {
+    if (t == null) return null
+    val m = t.message?.takeIf { it.isNotBlank() } ?: return "没连上学校那台 sports（${t.javaClass.simpleName}）"
+    return if (m.any { it.code in 0x4e00..0x9fff }) m else "没连上学校那台 sports：" + m
 }

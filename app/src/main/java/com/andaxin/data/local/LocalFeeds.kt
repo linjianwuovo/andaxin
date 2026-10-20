@@ -77,7 +77,8 @@ class LocalDashboard(
 ) : DashboardFeed {
     override suspend fun snapshot(): Result<Dashboard> {
         val unread = messages.page(0).getOrDefault(emptyList()).count { it.unread }
-        val lessons = timetable.week(0).getOrDefault(emptyList()).count { it.day == 1 }
+        val lessons = timetable.week(0).getOrDefault(emptyList())
+            .count { it.day == com.andaxin.core.schedule.Periods.today() }
         return Result.success(
             Dashboard(
                 greeting = greetAt(java.time.LocalTime.now().hour),
@@ -85,7 +86,11 @@ class LocalDashboard(
                 nextLesson = "第 3 节 · 大学英语 · 教二 111",
                 unreadMessages = unread,
                 dormCheckState = "今晚 22:30",
-                runThisWeekKm = 3.2,
+                // 跑量那两格没有可编的口径 —— 校方那发只给"一共/其中晨跑"，
+                // 编一个"3.2 公里"会让人拿假数当真数看，所以给 null，界面上是"—"。
+                runSemesterKm = null,
+                runMorningKm = null,
+                runWhy = null,
             )
         )
     }

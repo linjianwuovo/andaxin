@@ -90,12 +90,24 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             Hairline()
             Spacer(Modifier.height(Gap.sm))
             Labeled(
-                label = "本周跑步",
-                value = state.data?.let { "%.1f 公里".format(it.runThisWeekKm) } ?: "—",
+                label = "本学期跑步",
+                value = state.data?.runSemesterKm?.let { "%.2f 公里".format(it) } ?: "—",
+            )
+            Spacer(Modifier.height(Gap.sm))
+            Hairline()
+            Spacer(Modifier.height(Gap.sm))
+            Labeled(
+                label = "其中晨跑",
+                value = state.data?.runMorningKm?.let { "%.2f 公里".format(it) } ?: "—",
             )
         }
 
-        DataCaveat(state.error)
+        // 跑量那一格挂不上时，原因写在下面这句里，不塞进格子里当值。
+        // 只有真去拉过又没拉到才说：没登录 / 本地演示数据那两种情况 runWhy 本来就是 null。
+        DataCaveat(
+            state.error,
+            weakReason = if (state.data?.runSemesterKm == null) state.data?.runWhy else null,
+        )
 
         if (state.today.isNotEmpty()) {
             Text(
