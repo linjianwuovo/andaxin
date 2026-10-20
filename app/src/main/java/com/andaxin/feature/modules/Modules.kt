@@ -118,19 +118,24 @@ fun HolidayDetailScreen(id: String, onBack: () -> Unit) =
 fun HolidayFormScreen(onBack: () -> Unit) =
     BriefFormPage(title = "离返校登记", source = Holiday.form, onBack = onBack)
 
-/* ── 报修（抓包 3 处、14 个 .do，最接近能直接接的一块） ── */
+/* ── 报修（单据列表 / 详情 / 流程轨迹 10-20 现打接上；提交那条仍是写口，没发过） ── */
 
 @Composable
-fun RepairListScreen(open: (String) -> Unit, onBack: () -> Unit) = BriefListPage(
-    title = "报修", source = Repair.list, onBack = onBack, onRow = { open("repair/detail/$it") },
-    newLabel = "＋ 新建报修单", onNew = { open("repair/form") },
-    note = "报修：单据列表那 14 个 .do 是读到的接口名，提交那条（bxjlSjd）我们一条报文都没有 —— " +
-        "所以这一屏还是占位，新建按下去也只会告诉你没接。",
-)
+fun RepairListScreen(open: (String) -> Unit, onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    BriefListPage(
+        title = "报修", source = graph.repairList, onBack = onBack, onRow = { open("repair/detail/$it") },
+        newLabel = "＋ 新建报修单", onNew = { open("repair/form") },
+        note = "单据是校方 `repair.aiit.edu.cn` 给的，一次回全部、服务端不分页也不给筛，" +
+            "所以状态那一列原样显示它给的中文名。新建按下去只会告诉你提交那条没接 —— 那是写口。",
+    )
+}
 
 @Composable
-fun RepairDetailScreen(id: String, onBack: () -> Unit) =
-    BriefDetailPage(title = "报修单", source = Repair.detail, id = id, onBack = onBack)
+fun RepairDetailScreen(id: String, onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    BriefDetailPage(title = "报修单", source = graph.repairDetail, id = id, onBack = onBack)
+}
 
 @Composable
 fun RepairFormScreen(onBack: () -> Unit) =

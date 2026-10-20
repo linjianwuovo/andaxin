@@ -28,9 +28,9 @@ import org.json.JSONObject
  * 两个坑：① `createDate` 是 Java `LocalDateTime` 序列化出来的**对象**，不是字符串，别去 parse 它，
  * 要时间看 `sendDate`；② 我试过 `dealFlag=0` 不带 `sourceType`，回的是 0 条 —— 所以 `sourceType` 是必填。
  *
- * 分类映射没验：界面那四档（学业/查寝/运动/系统）是界面自己的分组，校方给的是 `sourceType` 数字 +
- * `contentTypeCode` 短码（实样里见过 `grrcts`）。现在只按短码猜了两条，其余归"系统"，
- * 猜的都在代码里标出来，等抓到分类表再换。
+ * 分类：10-20 现打 30 条全量定死了 —— **`contentTypeCode` 没有字典口**，`contentTypeName` 恒空串，
+ * 那 28 条 `getSystemInfoDict.do` 管的是来源系统不是消息类型。所以只按有实样的短码分，
+ * 判据和踩过的坑写在 `categorize` 那条注释上。
  */
 class CaptureMessages(private val school: School, private val session: SessionStore) : MessageFeed {
 
@@ -92,11 +92,29 @@ class CaptureMessages(private val school: School, private val session: SessionSt
         }
     }
 
-    private fun categorize(code: String): MessageCategory = when {
-        code.contains("ts", ignoreCase = true) -> MessageCategory.Dorm      // 猜：查寝类短码含 ts
-        code.contains("ty", ignoreCase = true) -> MessageCategory.Sports    // 猜：体育类短码含 ty
-        code.contains("jw", ignoreCase = true) || code.contains("ks", ignoreCase = true) ->
-            MessageCategory.Academic                                        // 猜：教务/考试类短码
+    /**
+     * 分类：**只按有实样的短码分，不许再拿子串猜。**
+     *
+     * 原来这五条 `contains("ts")` / `contains("ty")` / `contains("jw")` / `contains("ks")`
+     * 全部没有服务端依据，而且第一条是**真出过错的**：30 条实样里 27 条的短码是 `grrcts`，
+     * 它结尾正好是 `ts`，于是那 27 条全被判成了"查寝"（10-20 现打 30 条全量去重对出来的，
+     * 见 `lxtmp/契约_表单与角标现打.md` §3.2）。
+     *
+     * 现打定下来的三件事，别再去找第四条路：
+     * ① `contentTypeCode` **没有任何字典口** —— 扫过 247 个 JS + 7 份 dex 的字符串池，
+     *    命中处全是字段读取，没有一处带 `.do`；
+     * ② 响应里 `contentTypeName` 这个键**存在但 30/30 是空串**（老那一代 feed 有值，
+     *    `mesDetailListNew` 这条路不给），所以"直接读现成分类名"也不行；
+     * ③ `msgCenter/getSystemInfoDict.do` 那条字典管的是**来源系统**（28 个 code，如
+     *    `ywlz`/`swp`/`labour`），能当列表的 `systemCode` 筛选用（实测 `ywlz` 把 30 条筛成 2 条），
+     *    但推送件的 `systemCode` 全是 `null`，逐条反查不了名字。
+     *
+     * 所以下面这张表**每加一条都要有实样**（一条消息 + 它的 title/content 形态）。
+     * 现在只有 `grrcts` 这一条落得下去：27 条实样标题清一色「今日日程信息」，是课表日程，归学业。
+     * `dysx`(2 条) / `xfsqshtg`(1 条) 语义没证据，一律归"系统"，别硬凑中文名。
+     */
+    private fun categorize(code: String): MessageCategory = when (code) {
+        "grrcts" -> MessageCategory.Academic
         else -> MessageCategory.System
     }
 

@@ -244,7 +244,7 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean) {
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
                 color = ink.strong,
-                maxLines = 3,
+                maxLines = if (span >= 2) 5 else 3,
                 lineHeight = 12.sp,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),

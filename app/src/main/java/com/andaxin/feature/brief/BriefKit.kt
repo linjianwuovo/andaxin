@@ -215,7 +215,7 @@ fun BriefDetailPage(
     source: DetailSource,
     id: String,
     onBack: () -> Unit,
-    note: String = "字段还没接真实报文，正文里不放编出来的话。",
+    note: String = "上面每一项都是校方接口给的；没取到的那几项空着，不编。",
 ) {
     val model = adxViewModel { DetailModel(source, id) }
     val state by model.state.collectAsStateWithLifecycle()
