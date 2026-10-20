@@ -28,15 +28,18 @@ import com.andaxin.data.capture.CaptureHoliday
 import com.andaxin.data.capture.CaptureHolidayDetail
 import com.andaxin.data.capture.CaptureLabor
 import com.andaxin.data.capture.CaptureLaborDetail
+import com.andaxin.data.capture.CaptureLeaveForm
 import com.andaxin.data.capture.CaptureSports
 import com.andaxin.data.capture.YwlzTasks
 import com.andaxin.data.brief.DetailSource
+import com.andaxin.data.brief.FormSource
 import com.andaxin.data.brief.ListSource
 import com.andaxin.data.capture.CaptureMessages
 import com.andaxin.data.capture.CaptureProfile
 import com.andaxin.data.capture.CampusCardClient
 import com.andaxin.data.capture.CaptureRepairDetail
 import com.andaxin.data.capture.CaptureRepairList
+import com.andaxin.data.capture.FormSwitch
 import com.andaxin.data.capture.DetailSwitch
 import com.andaxin.data.local.Affair
 import com.andaxin.data.local.Credit
@@ -160,6 +163,12 @@ class AppGraph(val context: Context) {
     val dormDetail: DetailSource by lazy {
         DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
     }
+
+    /**
+     * 发起请假那张表：10-20 现打接通了**读侧**（流程清单 → flowSheet 那个 JSON 串 → 递归收字段），
+     * 取证见 `CaptureLeaveForm` 顶上那段。提交仍是死的，`submit()` 明确回失败。
+     */
+    val affairForm: FormSource by lazy { FormSwitch(CaptureLeaveForm(school, session), Affair.form, session) }
 
     /**
      * 报修。10-20 现打接上的：单据列表、单据详情、流程轨迹三条读口都在
