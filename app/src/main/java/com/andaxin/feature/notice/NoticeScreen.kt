@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.net.RemoteImage
 import com.andaxin.data.NoticeItem
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.DataCaveat
@@ -57,6 +58,23 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.lg))
             open.paragraphs.forEach {
                 Text(it, fontSize = 15.sp, color = LocalInk.current.body, modifier = Modifier.padding(bottom = Gap.md))
+            }
+            /*
+             * 正文里的图。校方那批通知（周会议安排、放假安排）正文其实就是一张图，
+             * 光有段落等于没正文，所以这几张必须画出来。
+             * 走的是本仓自己那套 OkHttp + 解码（`core/net/Images.kt`），不是 Coil ——
+             * 那层在这仓里没接网络引擎，远程图会一声不吭地不出（新闻封面就空白过一阵）。
+             */
+            open.attachments.forEach { url ->
+                RemoteImage(
+                    url = url,
+                    contentDescription = "公告配图",
+                    cacheDir = graph.context.cacheDir,
+                    adaptAspect = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = Gap.md),
+                )
             }
             Spacer(Modifier.height(Gap.xxl))
         }

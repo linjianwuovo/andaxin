@@ -137,8 +137,75 @@ class CaptureNotices(private val school: School) : NoticeFeed {
         }
     }
 
+    /**
+     * 公告正文。
+     *
+     * 【取证 · ② 10-20 上午现打到的】`POST ${SCPS}/news/getNewsDetail.do`，参数就一个 `id`（新闻 id），
+     * 回 `{flag:true, data:{…21 键}}`，真用到的那几个：
+     * `bt`(标题) `content`(**一整段 HTML**) `urlList`(图片直链数组) `publishPerson` `publishTime` `collect`。
+     * 列表那一发里 `content` 是 null，正文只有这一发给。
+     *
+     * 两条绕过来的弯路记在这儿别再走：
+     * ① 官方**原生包里没有 `getNewsDetail` 这个字样**（四个 dex 全扫过 0 命中）—— 详情是 H5 那一层做的，
+     *    原生只是开 WebView 指向 `index.do#/headline/news/<id>`；
+     * ② H5 的 bundle 里写的是 `/api/news/getNewsDetail.do`，但那个前缀从 PC 直发**404**
+     *    （`/zhxy-new-scps/api/…` 全 404，`in.aiit.edu.cn/api/…` 是 nginx 静态层回 405），
+     *    能通的只有原生那个不带 `/api` 的前缀。所以别照 H5 的字面量抄。
+     *
+     * `content` 是服务端拼的 HTML（`<p style='text-align: center;'>…<img src=…>`），
+     * 仓里没有富文本依赖（离线只能解析缓存里已有的包），所以这里自己按块级标签切段、
+     * 把标签和实体清掉，图片单独交给 `attachments` 让界面画 —— 比塞一个 WebView 进去轻得多。
+     */
     override suspend fun detail(id: String): Result<NoticeBody> =
-        Result.failure(Exception("正文那条（news/getNewsDetail.do）我发过但没验成，先不装成功"))
+        school.post("${School.SCPS}/news/getNewsDetail.do", "id" to id).mapCatching { root ->
+            val d = root.optJSONObject("data")
+                ?: throw Exception(if (root.optBoolean("flag", false)) "服务端回了数据但没有 data 这一层" else "服务端没给正文")
+            NoticeBody(
+                title = d.optString("bt").ifBlank { d.optString("title") },
+                publishedAt = listOf(
+                    d.optString("publishTime").substringBeforeLast(':'),
+                    d.optString("publishPerson"),
+                ).filter { it.isNotBlank() }.joinToString(" · "),
+                paragraphs = htmlParagraphs(d.optString("content").ifBlank { d.optString("contentExceptPic") }),
+                attachments = imagesOf(d),
+            )
+        }
+
+    /** 图片优先用服务端自己算好的 `urlList`，没有再退回从 HTML 里抠 `<img src>`。 */
+    private fun imagesOf(d: org.json.JSONObject): List<String> {
+        val arr = d.optJSONArray("urlList")
+        if (arr != null) {
+            val direct = (0 until arr.length()).map { arr.optString(it) }.filter { it.startsWith("http") }
+            if (direct.isNotEmpty()) return direct
+        }
+        return Regex("src=['\"]?([^'\"\\s>]+)").findAll(d.optString("content"))
+            .map { it.groupValues[1] }.filter { it.startsWith("http") }.toList()
+    }
+}
+
+/**
+ * 把校方那段 HTML 切成自然段。
+ *
+ * 只在**块级标签边界**断行 —— 校方正文里 `<br>` 用得很随意，按 `<br>` 断会切出一堆一行两行的碎段，
+ * 读起来像坏了。标签一律去掉，实体手工解几个常见的（`HtmlCompat` 能用但会把 `<img>` 的 alt 混进正文，
+ * 我们图片走单独的键，不需要它）。
+ */
+internal fun htmlParagraphs(html: String): List<String> {
+    if (html.isBlank()) return emptyList()
+    return html
+        .replace(Regex("(?i)</(p|div|li|h[1-6]|tr|table|section|blockquote)>"), "\n")
+        .replace(Regex("(?i)<li[^>]*>"), "\n· ")
+        .replace(Regex("(?s)<(script|style)[^>]*>.*?</\\1>"), " ")
+        .replace(Regex("<[^>]+>"), " ")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .lines()
+        .map { Regex("\\s+").replace(it, " ").trim() }
+        .filter { it.isNotEmpty() }
 }
 
 /**
