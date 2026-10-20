@@ -21,7 +21,15 @@ data class Session(
     val account: String = "",
     val userName: String = "",
     val dorm: String = "",
-    /** 本机存了加密后的登录口令。能不能解开是另一回事：解不开时 `TokenKeepAlive` 会把它清掉并请人重输。 */
+    /**
+     * 本机存了加密后的登录口令，**而且这份口令还能用来重登**。
+     *
+     * 判据是"密文和学号都还在"，不是只看密文 —— 自动重登两样都要，只留着密文的那一份是解不开的孤儿
+     * （10-21 04:4x 从米11 上读回来的正是这一份：`auth.pwBlob` 有值、`auth.userCode` 这个键不存在）。
+     * 按"密文在不在"算，「我的」那一格会写着"已记住，到期或被顶号时能自己重登"，
+     * 而登录页压根不给那颗键 —— 同一件事两屏互相打脸。
+     * 能不能真解开是另一回事，`MeScreen.PasswordRow` 现解一次再补一句。
+     */
     val remembered: Boolean = false,
     /** 上一次"记住密码"为什么没成（Keystore 报错原话）。成了就是 null。 */
     val rememberedWhy: String = "", 
@@ -56,7 +64,8 @@ class SessionStore(private val store: Store) {
             account = store.peekString(p, Store.KEY_USER_CODE).orEmpty(),
             userName = store.peekString(p, KEY_USER_NAME).orEmpty(),
             dorm = store.peekString(p, KEY_DORM).orEmpty(),
-            remembered = !store.peekString(p, KEY_PW_BLOB).isNullOrBlank(),
+            remembered = !store.peekString(p, KEY_PW_BLOB).isNullOrBlank() &&
+                !store.peekString(p, Store.KEY_USER_CODE).isNullOrBlank(),
             rememberedWhy = store.peekString(p, KEY_PW_WHY).orEmpty(),
             generation = store.peekString(p, KEY_GEN)?.toLongOrNull() ?: 0L,
         )
