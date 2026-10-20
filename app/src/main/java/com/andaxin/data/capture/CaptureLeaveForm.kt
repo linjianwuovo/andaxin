@@ -68,25 +68,21 @@ class CaptureLeaveForm(
             }.getOrElse { return Result.failure(it) }
 
         val fields = ArrayList<Field>()
-        val skipped = ArrayList<String>()
-        walk(sheet.optJSONArray("list"), fields, skipped)
+        walk(sheet.optJSONArray("list"), fields)
         val name = pick.optString("flowName").ifBlank { "发起流程" }
-        return Result.success(
-            FormSpec(
-                title = name,
-                // 一个字段都没解析出来时明确报错，别给一屏空白让他以为学校没设字段
-                fields = fields.ifEmpty {
-                    return Result.failure(Exception("表单解开了但一个字段都没认出来（容器键名可能变了）"))
-                },
-            ).withSkipped(skipped),
-        )
+        if (fields.isEmpty()) return Result.failure(Exception("表单解开了但一个字段都没认出来（容器键名可能变了）"))
+        return Result.success(FormSpec(title = name, fields = fields))
     }
 
     /**
      * 递归收字段。容器认 `card` / `grid` / `batch` 三种（H5 的渲染分支里就这三个带子 `list`）。
-     * 认不出来的类型**不丢**：记进 skipped，界面上会写明"这一条要传附件/选地址，本机渲染不了"。
+     *
+     * 认不出来的类型**不当错误抛**：就在原位放一条带说明的只读项，写清"这一项本机渲染不了"。
+     * 10-20 第一版是把它们攒成一句塞进标题，装机回读就成了
+     * 「学生请假申请（「」这一条是 grid 控件，本机没实现；「地址」…）」——
+     * 空标签的容器被当成字段报了出来，一整串还压在标题那一行里，谁都得读三遍。
      */
-    private fun walk(items: JSONArray?, out: ArrayList<Field>, skipped: ArrayList<String>) {
+    private fun walk(items: JSONArray?, out: ArrayList<Field>) {
         if (items == null) return
         for (i in 0 until items.length()) {
             val o = items.optJSONObject(i) ?: continue
@@ -96,9 +92,10 @@ class CaptureLeaveForm(
             val props = o.optJSONObject("properties") ?: JSONObject()
             val children = o.optJSONArray("list")
             if (children != null && children.length() > 0) {
-                walk(children, out, skipped)
+                walk(children, out)
                 continue
             }
+            if (type in CONTAINERS) continue          // 空容器只是排版，不是字段，别报成"没实现"
             if (props.optBoolean("hidden", false)) continue
             when (type) {
                 "input", "textarea", "text" ->
@@ -108,8 +105,10 @@ class CaptureLeaveForm(
                 "radio", "checkbox", "select", "m-select", "dept", "course", "person" ->
                     out.add(Field.Choice(key, label, options(props)))
                 "date", "dateRange" -> out.add(Field.Date(key, label))
-                "" -> {}                                  // 纯排版节点，没有 type
-                else -> skipped.add("「$label」这一条是 $type 控件，本机没实现")
+                "" -> {}
+                else -> out.add(
+                    Field.Text(key, label, hint = "这一项是 $type 控件，本机没实现，去官方 App 填"),
+                )
             }
         }
     }
@@ -129,12 +128,11 @@ class CaptureLeaveForm(
 
     private companion object {
         const val YWLZ = "https://ywlz.aiit.edu.cn/zhxy-bfc"
+
+        /** H5 的渲染分支里带子 list 的三种排版节点。 */
+        val CONTAINERS = setOf("card", "grid", "batch")
     }
 }
-
-/** FormSpec 没有放"没实现的控件"的位置，塞进标题里，界面上那句说明会带着它。 */
-private fun FormSpec.withSkipped(skipped: List<String>): FormSpec =
-    if (skipped.isEmpty()) this else copy(title = "$title（${skipped.joinToString("；")}）")
 
 /** 登录了走校方那张动态表，没登录才回占位 —— 和列表/详情同一个规矩。 */
 class FormSwitch(
