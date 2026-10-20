@@ -428,8 +428,20 @@ class CaptureDormDetail(
  * 打不通就退回 [bedDetail]（列表里已有的真字段 + 服务端原话），不装成功。
  */
 internal suspend fun dormDetailOf(school: School, a: YwlzTask): Result<BriefDetail> {
-    val fallback = bedDetail(a)
     val dateId = a.query["dateId"].orEmpty()
+    if (dateId.isBlank()) return Result.success(bedDetail(a))
+    return dormDetailByDateId(school, dateId, bedDetail(a))
+}
+
+/**
+ * 查寝详情按 `dateId` 直接打。
+ *
+ * 拆出来是因为新那屏（`CaptureDormBoard`）的任务条目**天生就有 dateId** ——
+ * `pageStudentSignIn` 那条 19 键里的 `id` 就是它（10-20 晚现打验过：拿这个 id 打
+ * `getTaskInfoByDateId` 回 113 个键、22KB 数据）。老的调用方是从待办那条 url 里拆 dateId，
+ * 两条路最后都汇到这里，字段映射只有一份。
+ */
+internal suspend fun dormDetailByDateId(school: School, dateId: String, fallback: BriefDetail): Result<BriefDetail> {
     if (dateId.isBlank()) return Result.success(fallback)
 
     val r = school.postJson(

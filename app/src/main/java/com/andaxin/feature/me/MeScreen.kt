@@ -386,8 +386,12 @@ private fun ReminderRow() {
             }
         }
     }
-    Spacer(Modifier.height(Gap.xs))
-    Text(status, fontSize = Type.micro, color = ink.faint)
+    // 状态那句和上面那行副标题是两套话（一个说开关、一个说排程结果），
+    // 撞车的时候（两边都是"没开"）就别重复印两遍 —— 装机读屏看到的就是连着两行"没开"
+    if (status.isNotBlank() && !(status.startsWith("没开") && !on)) {
+        Spacer(Modifier.height(Gap.xs))
+        Text(status, fontSize = Type.micro, color = ink.faint)
+    }
     if (open) {
         NoteBlock(
             listOf(

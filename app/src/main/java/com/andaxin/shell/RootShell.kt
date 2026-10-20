@@ -83,6 +83,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.feature.modules.DormBoardScreen
+import com.andaxin.feature.brief.BriefDetailPage
 
 /**
  * 底栏五格。格数与顺序是他定的，不许增删改序 —— 要动先问。
@@ -114,6 +116,7 @@ object Route {
     const val LOGIN = "login"
     const val DORM = "dorm"
     const val DORM_DETAIL = "dorm/detail/{id}"
+    const val DORM_TASK = "dorm/task/{id}"
     const val EXAM = "exam"
     const val EXAM_DETAIL = "exam/detail/{id}"
     const val CREDIT = "credit"
@@ -187,7 +190,15 @@ fun RootShell() {
         composable(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
         composable(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
 
-        composable(Route.DORM) { DormListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.DORM) { DormBoardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.DORM_TASK, arguments = listOf(idPattern())) { e ->
+            BriefDetailPage(
+                title = "签到详情", source = graph.dormTaskDetail, id = e.arguments?.getString(ID_ARG).orEmpty(),
+                onBack = { nav.popBackStack() },
+                note = "这一屏的字段来自 fdygl 的 getTaskInfoByDateId（dateId 就是列表那条的 id）。" +
+                    "签到是写操作（定位/拍照/扫码），这一版不接。",
+            )
+        }
         composable(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
             DormDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }

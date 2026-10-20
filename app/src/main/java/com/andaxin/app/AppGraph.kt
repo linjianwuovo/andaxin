@@ -69,6 +69,8 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import com.andaxin.data.capture.CaptureDormBoard
+import com.andaxin.data.capture.CaptureDormTaskDetail
 
 /**
  * 手写的依赖图。全应用唯一允许 `new` 业务对象的地方。
@@ -195,6 +197,14 @@ class AppGraph(val context: Context) {
         DetailSwitch(CaptureAffairDetail(school, ywlz, affairCapture), Affair.detail, session)
     }
     val dormList: ListSource by lazy { BriefSwitch(dormCapture, Dorm.list, session) }
+
+    /**
+     * 查寝那一屏新的数据源：月概览 + 月历 + 两节任务，全走 fdygl 直连。
+     * 契约是 10-20 晚拿我们自己那把活 token 四发逐条现打验的（`CaptureDormBoard` 顶上那段）。
+     * 老的 `dormList`（从 ywlz 待办里挑 msgType=2）留着给待办那一屏用，两条路不互相覆盖。
+     */
+    val dormBoard by lazy { CaptureDormBoard(school, session) }
+    val dormTaskDetail: DetailSource by lazy { CaptureDormTaskDetail(school, dormBoard) }
     val dormDetail: DetailSource by lazy {
         DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
     }
