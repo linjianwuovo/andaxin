@@ -101,10 +101,15 @@ class YwlzTasks(private val school: School) {
     }
 
     /**
-     * 待办红点计数。【取证】`getYwdtCount.do`，44 条实样 + 我 10-19 现打一条，
-     * 挂 `data.redDot{myExeCount 我的申请, dyCount 待阅, hiCount 抄送, runCount 待办}`。
-     * 这条接口不需要 tab 参数，一次给全部四个数（"approvedType=tab 号"是列表那条的事，别张冠李戴）。
+     * 待办红点计数。**这条现在没人用，也别接回去** —— 10-20 现打把它定死了：
+     * `getYwdtCount.do` 零业务参数，`approvedType` 收了完全忽略（无参 / 1 / 2 / 0 / 99 / 带分页
+     * 六次响应**逐字节相同 171 B**），键是 `data.redDot{runCount, hiCount, myExeCount, dyCount, url}`。
+     * 问题是同一把会话下 `getRunTaskByUserCode` 回 21 条、`myExecution` 的 total 回 2，
+     * 而 redDot 四个数**全是 0** —— 两边不是一个口径。
+     * 所以角标要用哪个 tab 的数，就去数那个 tab 自己那条列表口的 total，别拿这条当权威。
+     * 出处：`lxtmp/契约_表单与角标现打.md` §2。
      */
+    @Suppress("unused")
     suspend fun counts(): RedDot? =
         school.postH5("$YWLZ/mobile/flowRuTask/getYwdtCount.do")
             .getOrNull()

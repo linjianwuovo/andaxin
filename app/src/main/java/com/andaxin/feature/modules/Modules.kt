@@ -167,9 +167,11 @@ fun AffairDetailScreen(id: String, onBack: () -> Unit) {
 }
 
 @Composable
-fun AffairFormScreen(onBack: () -> Unit) = BriefFormPage(
-    title = "发起请假", source = Affair.form, onBack = onBack,
-)
+fun AffairFormScreen(onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    // 字段是校方那张 flowSheet 递归出来的，不再是我们在代码里写死的三项
+    BriefFormPage(title = "发起请假", source = graph.affairForm, onBack = onBack)
+}
 
 /* AI 课堂那两屏搬到 feature/aiclass/AiClassScreens.kt：
  * 那边不再走 BriefKit 的占位形状，改成真去问 FIF（课件 / 直录播 / 小组），
