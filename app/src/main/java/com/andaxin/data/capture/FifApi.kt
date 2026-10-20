@@ -568,7 +568,7 @@ class FifApi(private val fif: FifSession) {
                     "microCourseName", "name", "title", "liveRecordName",
                 ).ifBlank { "第 ${i + 1} 项" },
                 sub = firstOf(o, "createTime", "pubTime", "teacherName", "fileType"),
-                right = "字段名未证实",
+                right = "",
             )
         }
     }
@@ -715,7 +715,7 @@ class FifApi(private val fif: FifSession) {
                 id = firstOf(o, "id", "quizId", "paperId"),
                 title = firstOf(o, "name", "title", "quizName", "paperName").ifBlank { "测验 ${k + 1}" },
                 sub = firstOf(o, "startTime", "endTime", "createTime"),
-                right = "字段名未证实",
+                right = "",
             )
         }
     }

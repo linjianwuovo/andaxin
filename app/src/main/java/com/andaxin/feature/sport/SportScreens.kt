@@ -41,7 +41,6 @@ import com.andaxin.core.run.RunMode
 import com.andaxin.data.RouteTemplate
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import java.util.UUID
 import kotlin.math.roundToInt
@@ -126,7 +125,6 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("记录是校方给的；上传那一条报文还没抓到，跑完只能看，不能交。")
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -248,11 +246,6 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
             )
         }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
-            if (items.isEmpty() && why == null)
-                "这一栏是校方 `getCheckList` 给的，这个月没有行＝这个月真没跑够记录，不是坏了。"
-            else "记录是校方给的；有效/不足那一格服务端只回 `exerciseState` 的数字，含义没有枚举表，所以原样把码带出来。"
-        )
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -306,7 +299,6 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
             Labeled(label = "学校判定", value = d.schoolComment)
         }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("明细里的轨迹要等接口接上才有；现在这条线是空的。")
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -340,11 +332,6 @@ fun SportMaintainScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.md))
         }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
-            if (log.isEmpty() && why == null)
-                "读这一条的接口已经通了（`getApplyRecordList` 实样回的是空列表），空的＝这学期确实没提过维护申请。"
-            else "申请提交那一条（`putApplyRecord.do`）的报文还没抓到，所以这里只能看，不能提。"
-        )
         Spacer(Modifier.height(Gap.xxl))
     }
 }

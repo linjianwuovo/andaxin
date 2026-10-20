@@ -284,24 +284,9 @@ class AppGraph(val context: Context) {
     val engine: RunEngine by lazy { RunEngine(engineScope) }
 
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    /**
-     * 界面上那条"哪些还是占位"的说明。
-     *
-     * 登录了就没有占位数据了 —— 六格里最后一格（跑量）10-20 接上了真接口
-     * （`sports:8082/mobile/check/getTotalInfo`，见 `CaptureSports`），
-     * 所以这句从"哪几格是假的"改成"哪几格可能拉不到"：
-     * 那台 sports 是 **http 明文且只有校内可达**，出校门就会是"—"，那不是坏了。
-     * 宁可屏幕上一直挂着提醒，也不要让用户以为看到的是必然有的数。
-     */
-    fun placeholderNote(loggedIn: Boolean): String =
-        if (!loggedIn) "没登录：这一屏全是占位数据，不是校方给的。"
-        else "跑量那两格来自学校那台 sports（校内网才连得上），出校门会显示「—」，那不是没跑过。"
 }
 
-/** 课表那一屏单独一句：整周是真的，缺的是教师。 */
-const val TIMETABLE_NOTE = "整周课表是校方给的；这份数据里没有教师字段，所以那一行留空，不是没排课。"
-
+/** 全应用共用这一份依赖图；没提供就直接报错，不给静默降级到空实现的机会。 */
 val LocalAppGraph = staticCompositionLocalOf<AppGraph> {
     error("还没在 AndaXinApp 里提供 AppGraph")
 }

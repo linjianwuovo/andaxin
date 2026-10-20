@@ -46,7 +46,6 @@ import com.andaxin.core.design.Type
 import com.andaxin.data.brief.Flag
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.NoteBlock
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
@@ -60,7 +59,7 @@ import kotlinx.coroutines.launch
  * ① 入口是 15 行「左名字 右灰字」的长列表，一行只有五个字，中间空一大片，
  *    要滚两屏才看完 —— 改成**三列文字格**，五行排完，副说明缩到名字下面一行小字；
  * ② 每块设置底下糊着一大段 11sp 灰字（上课提醒那段有六行）——
- *    改成 [NoteBlock]：一句一行、默认只露一行，剩下的点「为什么」再看。
+ *    那些解释全部拿掉了：界面只留一句状态，话留在 docs/接入清单.md。
  *
  * 名字、学号是从登录那次落盘的键里读的，不发网络请求 —— 这一页要能在离线时照常打开。
  */
@@ -77,7 +76,7 @@ private val ENTRIES = listOf(
     Entry("考试成绩", "列表与明细", "exam"),
     Entry("素质学分", "五育分类", "credit"),
     Entry("劳动教育", "工时认定", "labor"),
-    Entry("离返校", "登记没接", "holiday"),
+    Entry("离返校", "记录与登记", "holiday"),
     Entry("运动", "开始与记录", "sport"),
     Entry("运动记录", "明细/维护", "sport/records"),
     Entry("更多功能", "全部入口", "more"),
@@ -393,15 +392,6 @@ private fun ReminderRow() {
         Text(status, fontSize = Type.micro, color = ink.faint)
     }
     if (open) {
-        NoteBlock(
-            listOf(
-                "几点上课这张表是我们自己排的 —— 校方那些接口里没有一条给节次时间。",
-                "学校改了作息而这张表没跟着改，它会按老点提醒你。",
-                "它走系统闹钟那条路，状态栏会亮一个小闹钟图标。",
-                "重启后能不能自己排回去看 ROM 给没给「自启动」，那个开关我们读不到 —— 开机后打开一次 App 最稳。",
-            ),
-            shown = 1,
-        )
     } else {
         Text(
             "它按什么时间提醒？",
@@ -451,13 +441,6 @@ private fun PasswordRow() {
         } else null,
     )
     if (open) {
-        NoteBlock(
-            listOf(
-                "口令用系统 Keystore 里一把不可导出的密钥加密后只存本机，不进日志、不备份、不上传。",
-                "到期或被别的客户端顶号时，App 会用它自动重登一次 —— 那会把对方挤下线。",
-            ),
-            shown = 1,
-        )
     } else {
         Text(
             "记着它有什么用？",

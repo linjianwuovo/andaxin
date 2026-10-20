@@ -36,9 +36,7 @@ import com.andaxin.data.capture.DormTask
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.NoteBlock
 import com.andaxin.shell.RowLine
-import com.andaxin.shell.noteLines
 import com.andaxin.shell.Sheet
 import java.time.LocalDate
 import java.time.YearMonth
@@ -129,17 +127,6 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         TaskSection("主题签到", shownSubject, subject.isEmpty(), open, "这个月没有主题签到。")
 
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(
-            noteLines(
-                "六个数来自 collectionStudentStatics，月历来自 listDateCheck，两节任务各来自 " +
-                    "dorm 和 signinSubject 那两条 pageStudentSignIn（都是 10-20 晚我们自己现打验过的）。" +
-                    "点月历上有点的日期就只看那一天的任务，再点「看整月」回到全月。" +
-                    "点一条任务进详情：签到方式、采集窗口、你签没签、几点签的，都是 fdygl 给的。" +
-                    "**签到本身是写操作**（要定位、拍照或扫码），这一版不接 —— 只给你看当天是什么要求、你签了没有。" +
-                    "主题签到那一节现在回的是空列表：信封验过，条目字段是照查寝那一节同一形状读的。",
-            ),
-            shown = 2,
-        )
         Spacer(Modifier.height(Gap.xxl))
     }
 }

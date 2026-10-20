@@ -32,12 +32,9 @@ import com.andaxin.data.brief.Flag
 import com.andaxin.data.brief.ListSource
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.Chip
-import com.andaxin.shell.NoteBlock
 import com.andaxin.shell.RowLine
-import com.andaxin.shell.noteLines
 import com.andaxin.core.design.Type
 
 /*
@@ -94,9 +91,8 @@ fun AffairTabsScreen(open: (String) -> Unit, onBack: () -> Unit) {
         } else if (rows.isEmpty()) {
             Text(
                 text = why ?: when (tab) {
-                    1 -> "我的申请这一栏回的是空列表。"
-                    // 已办那条口现存抓包里每次都是 0 条，所以这句是实话；条目形状本身还没被真数据证实过
-                    2 -> "已办这一栏回的是空列表（这条口的条目形状至今没有一条真数据证实过）。"
+                    1 -> "还没有发起过的申请。"
+                    2 -> "没有已办。"
                     else -> "现在没有待办。"
                 },
                 fontSize = 14.sp, color = ink.faint,
@@ -128,14 +124,5 @@ fun AffairTabsScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(
-            noteLines(
-            "三栏各发各的口：待办是 getRunTaskByUserCode、我的申请是 myExecution、已办是 getHiTaskByUserCode，" +
-                "数组都挂在根节点 rows。「我的申请」那一栏服务端只给了 status=3 这一档的实样（回的都是已完结），" +
-                "其它状态值我们没证据，所以这一栏不假装能列出在办的那些 —— 在办的本来就在第一栏。" +
-                "点进详情还能看见校方给这一环开的按钮（getButtons 实样是「抄送」），但那些提交口一条报文都没有，只念不办。",
-            ),
-            shown = 1,
-        )
     }
 }

@@ -44,11 +44,11 @@ import com.andaxin.core.schedule.Periods
 import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.TimetableSlot
 import com.andaxin.shell.Chip
-import com.andaxin.shell.DataCaveat
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
+import com.andaxin.shell.ErrorLine
 import com.andaxin.state.TimetableModel
 import kotlinx.coroutines.delay
 
@@ -133,7 +133,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.lg))
-        DataCaveat(state.error, scheduleNote = true)
+        state.error?.let { ErrorLine(it) }
         Spacer(Modifier.height(Gap.xxl))
     }
 }
