@@ -38,6 +38,7 @@ import com.andaxin.data.capture.CaptureMessages
 import com.andaxin.data.capture.CaptureProfile
 import com.andaxin.data.capture.CampusCardClient
 import com.andaxin.data.capture.CaptureRepairDetail
+import com.andaxin.data.capture.CaptureRepairForm
 import com.andaxin.data.capture.CaptureRepairList
 import com.andaxin.data.capture.FormSwitch
 import com.andaxin.data.capture.DetailSwitch
@@ -179,6 +180,9 @@ class AppGraph(val context: Context) {
     val repairDetail: DetailSource by lazy {
         DetailSwitch(CaptureRepairDetail(school), Repair.detail, session)
     }
+
+    /** 新建报修那张表：下拉的可选值全部来自校方三条字典（见 `CaptureRepairForm` 顶上那段取证）。 */
+    val repairForm: FormSource by lazy { FormSwitch(CaptureRepairForm(school), Repair.form, session) }
 
     /**
      * 校园卡（第三方新开普）。10-20 现打把三跳会话交换接通了，取证见 `CampusCardClient` 顶上那段。

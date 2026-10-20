@@ -138,8 +138,11 @@ fun RepairDetailScreen(id: String, onBack: () -> Unit) {
 }
 
 @Composable
-fun RepairFormScreen(onBack: () -> Unit) =
-    BriefFormPage(title = "新建报修", source = Repair.form, onBack = onBack)
+fun RepairFormScreen(onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    // 故障类型 57 项、地点 98 项、时间段 12 项，全是校方字典现拉，不是代码里列的那五个词
+    BriefFormPage(title = "新建报修", source = graph.repairForm, onBack = onBack)
+}
 
 /* ── 待办事务 / 请假（ywlz，列表与审批链已接真报文；"发起请假"仍是零证据） ── */
 
