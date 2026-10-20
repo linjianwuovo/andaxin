@@ -48,6 +48,10 @@ private const val REPAIR = "https://repair.aiit.edu.cn/bxjlSjd"
 private suspend fun School.repair(method: String, vararg fields: Pair<String, String>): Result<JSONObject> =
     postH5("$REPAIR/$method.do", *fields)
 
+/** 同包的表单那一半（`CaptureRepairForm`）也要走这一条，所以留一个 internal 的口子。 */
+internal suspend fun School.repairJson(method: String, vararg fields: Pair<String, String>): Result<JSONObject> =
+    repair(method, *fields)
+
 class CaptureRepairList(private val school: School) : ListSource {
     override suspend fun rows(): Result<List<BriefRow>> {
         val root = school.repair("getWdbxListForSjd").getOrElse { return Result.failure(it) }
