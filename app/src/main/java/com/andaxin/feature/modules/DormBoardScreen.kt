@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,10 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -60,6 +65,8 @@ import java.time.YearMonth
 fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
+    val scope = rememberCoroutineScope()
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     var board by remember { mutableStateOf<DormBoard?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(true) }
@@ -83,7 +90,35 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     ScaffoldPage(title = "查寝签到", onBack = onBack, onRefresh = { reload() }) {
         val b = board
         if (b == null && busy) Text("正在拉…", fontSize = Type.meta, color = ink.faint)
-        why?.let { Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error) }
+        /*
+         * 「没拿到」和「没有」是两句话，这一处以前两样都犯了（10-21 凌晨深色扫屏看到的）：
+         * ① 拉不到的时候下面照样画"这个月没有查寝任务。"—— 那是把空列表当成了结论；
+         * ② 不管什么原因拉不到都涂成红色，可"还没登录"是一种状态，不是出了故障。
+         * 所以：没登录 → 灰字 + 一颗「去登录」；真失败 → 才用红色那句。
+         */
+        if (b == null && !busy && !session.loggedIn) {
+            Text(
+                text = "这一屏要校方数据，登录后才看得到。",
+                fontSize = Type.meta,
+                color = ink.muted,
+                lineHeight = Type.metaLine,
+            )
+            Spacer(Modifier.height(Gap.lg))
+            MiuixButton(
+                onClick = { scope.launch { graph.session.leaveBrowsing() } },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColorsPrimary(),
+            ) {
+                Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
+            }
+        } else {
+            why?.let {
+                Text(
+                    it, fontSize = Type.meta,
+                    color = if (b == null) MaterialTheme.colorScheme.error else ink.faint,
+                )
+            }
+        }
 
         if (b != null) {
             Sheet(modifier = Modifier.enterFade()) {
@@ -133,8 +168,11 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.md))
         }
 
-        TaskSection("查寝签到", shownTasks, tasks.isEmpty(), open, "这个月没有查寝任务。")
-        TaskSection("主题签到", shownSubject, subject.isEmpty(), open, "这个月没有主题签到。")
+        // 只有真拿到过这一板的任务，才有资格说"这个月没有"
+        if (b != null) {
+            TaskSection("查寝签到", shownTasks, tasks.isEmpty(), open, "这个月没有查寝任务。")
+            TaskSection("主题签到", shownSubject, subject.isEmpty(), open, "这个月没有主题签到。")
+        }
 
         Spacer(Modifier.height(Gap.md))
         Spacer(Modifier.height(Gap.xxl))
