@@ -82,10 +82,22 @@ class School(private val session: SessionStore) {
      * H5 这套回 21 条数据；换成原生那套（`access_token`/`appId`/`_userName`/`userId`）
      * 回 `flag:false result:"非法访问"`。所以这不是风格差异，是服务端真在挑。
      */
-    suspend fun postH5(url: String, vararg fields: Pair<String, String>): Result<JSONObject> {
+    suspend fun postH5(url: String, vararg fields: Pair<String, String>): Result<JSONObject> =
+        postH5Timed(url, null, *fields)
+
+    /**
+     * 只给这一发限时的那一个口。为什么单开一个函数：`vararg` 只能待在参数表最后，
+     * 中间插一个带默认值的参数，所有按位置传字段的调用点就全撞位了（编译器直接把 Pair
+     * 往 Long? 上塞）。
+     */
+    suspend fun postH5Timed(
+        url: String,
+        timeoutMs: Long?,
+        vararg fields: Pair<String, String>,
+    ): Result<JSONObject> {
         val id = session.identity()
             ?: return Result.failure(Exception("还没登录，这一屏要校方数据"))
-        return send(url, dedupe(h5IdentityFields(id), fields.toList()))
+        return send(url, dedupe(h5IdentityFields(id), fields.toList()), timeoutMs)
     }
 
     /**
@@ -150,15 +162,20 @@ class School(private val session: SessionStore) {
         return identity.filterNot { it.first in given } + extra
     }
 
-    private suspend fun send(url: String, pairs: List<Pair<String, String>>) =
+    private suspend fun send(url: String, pairs: List<Pair<String, String>>, timeoutMs: Long? = null) =
         withContext(Dispatchers.IO) {
             val form = FormBody.Builder().apply { pairs.forEach { (k, v) -> add(k, v) } }.build()
             val request = Request.Builder().url(url).post(form)
                 .header("Accept", "application/json")
                 .header("User-Agent", AGENT)
                 .build()
+            // 单发限时：整个客户端的读超时是 20 秒，那一档是给"课表、成绩这种真在算的"留的。
+            // 有些口（`process/getForm.do`）校方现在给到 46 秒还只回 214 字节 ——
+            // 跟着 20 秒等，就是详情白屏 20 秒换几行没有的字段。这种口自己报一个短得多的数。
+            val call = client.newCall(request)
+            if (timeoutMs != null) call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
             try {
-                client.newCall(request).execute().use { resp ->
+                call.execute().use { resp ->
                     val body = resp.body?.string().orEmpty()
                     if (!resp.isSuccessful) {
                         return@use Result.failure(Exception("服务器回了 ${resp.code}"))

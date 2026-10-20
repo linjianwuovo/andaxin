@@ -5,11 +5,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
@@ -244,6 +247,12 @@ fun BriefDetailPage(
                     }
                 }
             }
+            if (d.steps.isNotEmpty()) {
+                Spacer(Modifier.height(Gap.md))
+                Sheet {
+                    d.steps.forEachIndexed { i, s -> StepRow(s, last = i == d.steps.lastIndex) }
+                }
+            }
             d.paragraphs.forEach {
                 Spacer(Modifier.height(Gap.md))
                 Text(it, fontSize = Type.body, color = ink.body, lineHeight = Type.bodyLine)
@@ -424,6 +433,54 @@ private fun formatUtcDay(millis: Long): String =
     java.time.Instant.ofEpochMilli(millis)
         .atZone(java.time.ZoneOffset.UTC)
         .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+
+/**
+ * 审批链的一环：左边一个圆点 + 一根连到下一环的竖线，右边"环节 · 谁 · 状态 · 时间"。
+ *
+ * 原来这些是一整段"1. …\n2. …"的文字（paragraph），一屏审批下来就是一堵字。
+ * 竖线用 `IntrinsicSize.Min` 撑：外层是 verticalScroll，高度是无限的，
+ * 直接 fillMaxHeight 拿不到这一行的高度。
+ */
+@Composable
+private fun StepRow(s: com.andaxin.data.brief.Step, last: Boolean) {
+    val ink = LocalInk.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+    ) {
+        Column(
+            Modifier
+                .width(16.dp)
+                .fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(5.dp))
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
+            )
+            if (!last) {
+                Spacer(Modifier.height(2.dp))
+                Box(Modifier.width(1.dp).weight(1f).background(ink.hairline))
+            }
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = Gap.sm, bottom = if (last) 0.dp else Gap.md),
+        ) {
+            if (s.head.isNotBlank()) {
+                Text(s.head, fontSize = Type.meta, fontWeight = FontWeight.Medium, color = ink.strong)
+                Spacer(Modifier.height(1.dp))
+            }
+            Text(s.who, fontSize = Type.body, color = ink.body)
+            if (s.what.isNotBlank()) Text(s.what, fontSize = Type.meta, color = ink.muted)
+            if (s.at.isNotBlank()) Text(s.at, fontSize = Type.micro, color = ink.faint)
+        }
+    }
+}
 
 /**
  * 三种页共用的那一层壳。
