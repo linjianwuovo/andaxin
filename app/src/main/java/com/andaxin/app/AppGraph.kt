@@ -24,6 +24,10 @@ import com.andaxin.data.capture.CaptureDorm
 import com.andaxin.data.capture.CaptureDormDetail
 import com.andaxin.data.capture.CaptureExamDetail
 import com.andaxin.data.capture.CaptureExamList
+import com.andaxin.data.capture.CaptureHoliday
+import com.andaxin.data.capture.CaptureHolidayDetail
+import com.andaxin.data.capture.CaptureLabor
+import com.andaxin.data.capture.CaptureLaborDetail
 import com.andaxin.data.capture.YwlzTasks
 import com.andaxin.data.brief.DetailSource
 import com.andaxin.data.brief.ListSource
@@ -34,6 +38,7 @@ import com.andaxin.data.local.Affair
 import com.andaxin.data.local.Credit
 import com.andaxin.data.local.Dorm
 import com.andaxin.data.local.Exam
+import com.andaxin.data.local.Holiday
 import com.andaxin.data.capture.CaptureNotices
 import com.andaxin.data.capture.CaptureTimetable
 import com.andaxin.data.capture.DashboardSource
@@ -46,6 +51,7 @@ import com.andaxin.data.local.LocalMessages
 import com.andaxin.data.local.LocalNotices
 import com.andaxin.data.local.LocalSports
 import com.andaxin.data.local.LocalTimetable
+import com.andaxin.data.local.Labor
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -113,6 +119,25 @@ class AppGraph(val context: Context) {
     val creditDetail: DetailSource by lazy { DetailSwitch(CaptureCreditDetail(creditCapture), Credit.detail, session) }
 
     /**
+     * 劳动教育五类工时 与 节假日离返校登记。
+     * 两块以前是直接摆 `Labor.list` / `Holiday.list` 那两行编出来的假条目，
+     * 现在走同一套开关：登录了只走校方，没登录才给占位（界面上那条说明也不许摘）。
+     * 报文出处见 `CaptureStudent.kt` 顶上那段 —— 关键是那两条当年回"非法访问"
+     * 不是报文错，是抓包抓在了会话最前面，10-20 拿活 token 原样重发全回 flag:true。
+     */
+    private val laborCapture by lazy { CaptureLabor(school) }
+
+    val laborList: ListSource by lazy { BriefSwitch(laborCapture, Labor.list, session) }
+    val laborDetail: DetailSource by lazy { DetailSwitch(CaptureLaborDetail(school), Labor.detail, session) }
+
+    private val holidayCapture by lazy { CaptureHoliday(school, session) }
+
+    val holidayList: ListSource by lazy { BriefSwitch(holidayCapture, Holiday.list, session) }
+    val holidayDetail: DetailSource by lazy {
+        DetailSwitch(CaptureHolidayDetail(holidayCapture), Holiday.detail, session)
+    }
+
+    /**
      * 业务流转（ywlz）那一套：待办事务、请假读链、销假、查寝。
      * 待办和查寝是**同一份数据**（查寝就是列表里 msgType=2 的那批），所以共用一个取数口，
      * 60 秒内不重复发；详情才按条目去拉审批链和表单回显。
@@ -152,6 +177,9 @@ class AppGraph(val context: Context) {
 
     /** 运动：记录是占位，路线规划是真的（存本机文件） */
     val sports: SportsFeed by lazy { LocalSports(File(context.filesDir, "sport_routes.json")) }
+
+    /** 录播看到第几分（服务端那两条进度上报实测被拒，所以本机存，见 core/media/PlayProgress）。 */
+    val playProgress by lazy { com.andaxin.core.media.PlayProgress(context.filesDir) }
 
     /** 消息轮询：应用活着的时候每五分钟拉一次 */
     val poller: Poller by lazy { Poller(messages, engineScope) }
