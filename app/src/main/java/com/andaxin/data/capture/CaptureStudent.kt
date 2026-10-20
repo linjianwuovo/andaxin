@@ -64,7 +64,6 @@ class CaptureLabor(private val school: School) : ListSource {
             BriefRow(
                 id = key,
                 title = cn,
-                sub = "服务端字段 $key",
                 right = "$hours 小时",
                 flag = if ((hours.toDoubleOrNull() ?: 0.0) > 0.0) Flag.Ok else Flag.None,
             )
@@ -92,8 +91,6 @@ class CaptureLaborDetail(private val school: School) : DetailSource {
                 title = LABOR_LABELS.toMap()[id] ?: id,
                 fields = listOf(
                     "已认定" to d.optString(id, "0") + " 小时",
-                    "口径" to "服务端字段 $id",
-                    "明细" to "这一族只有总数，没有分项接口",
                 ),
             )
         }
@@ -119,13 +116,13 @@ class CaptureHoliday(private val school: School, private val session: SessionSto
                 for (i in 0 until arr.length()) {
                     val o = arr.optJSONObject(i) ?: continue
                     val title = firstOf(o, "title", "name", "holidayName", "jqmc")
-                        ?: "第 ${i + 1} 条登记（键名没一个对得上，见文件注释）"
+                        ?: "第 ${i + 1} 条登记"
                     val state = firstOf(o, "statusTxt", "stateTxt", "registrationStatus", "sfj").orEmpty()
                     add(
                         BriefRow(
                             id = o.optString("id").ifBlank { i.toString() },
                             title = title,
-                            sub = "这一条服务端给了 ${o.length()} 个键",
+                            sub = firstOf(o, "startTime", "createTime", "fqsj", "date").orEmpty(),
                             right = state,
                             flag = when {
                                 state.isBlank() -> Flag.None

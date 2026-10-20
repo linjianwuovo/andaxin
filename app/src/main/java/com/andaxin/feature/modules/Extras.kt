@@ -85,13 +85,13 @@ fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
 @Composable
 fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ink = LocalInk.current
-    val (card, why) = rememberCard()
-    ScaffoldPage(title = "校园卡", onBack = onBack) {
+    val (card, why, reload) = rememberCard()
+    ScaffoldPage(title = "校园卡", onBack = onBack, onRefresh = { reload() }) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(150.dp)
-                .background(Palette.Blue, Radius.card)
+                .background(if (ink.dark) Palette.NightCardBlue else Palette.Blue, Radius.card)
                 .padding(Gap.lg),
         ) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
@@ -104,8 +104,8 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     Text(
                         text = when {
                             card != null -> "补助钱包 ¥ %.2f · ${card.statusText}".format(card.subsidy)
-                            why != null -> "没拉到：" + why
-                            else -> "正在换校园卡会话…"
+                            why != null -> "余额暂时没取到 · 下拉再试一次"
+                            else -> "正在取余额…"
                         },
                         fontSize = 11.sp, color = Palette.Cream.copy(alpha = 0.78f),
                     )
@@ -160,16 +160,18 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
 /** 卡片数据只给校园卡两屏用，就地取，不再多开一个 Model。 */
 @Composable
-private fun rememberCard(): Pair<com.andaxin.data.capture.CampusCardClient.Card?, String?> {
+private fun rememberCard(): Triple<com.andaxin.data.capture.CampusCardClient.Card?, String?, suspend () -> Unit> {
     val graph = LocalAppGraph.current
     var card by remember { mutableStateOf<com.andaxin.data.capture.CampusCardClient.Card?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
+
+    suspend fun reload() {
         val r = graph.card.card()
         card = r.getOrNull()
         why = r.exceptionOrNull()?.message
     }
-    return card to why
+    LaunchedEffect(Unit) { reload() }
+    return Triple(card, why, { reload() })
 }
 
 private fun money(f: com.andaxin.data.capture.CampusCardClient.Flow): String =
@@ -182,11 +184,11 @@ private fun money(f: com.andaxin.data.capture.CampusCardClient.Flow): String =
 @Composable
 fun CardFlowsScreen(onBack: () -> Unit) {
     val ink = LocalInk.current
-    val (card, why) = rememberCard()
-    ScaffoldPage(title = "校园卡流水", onBack = onBack) {
+    val (card, why, reload) = rememberCard()
+    ScaffoldPage(title = "校园卡流水", onBack = onBack, onRefresh = { reload() }) {
         if (card == null) {
             Text(
-                text = why ?: "正在换校园卡会话…",
+                text = why ?: "正在取…",
                 fontSize = 13.sp,
                 color = if (why == null) ink.faint else MaterialTheme.colorScheme.error,
             )
@@ -345,7 +347,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(Gap.lg))
         Text(
-            text = "先不登录，用占位数据看看界面",
+            text = "先不登录，随便看看",
             fontSize = 13.sp,
             color = ink.muted,
             modifier = Modifier.pressClick(shrink = false) {

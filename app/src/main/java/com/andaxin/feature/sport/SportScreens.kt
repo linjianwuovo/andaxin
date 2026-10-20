@@ -239,7 +239,7 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
         if (items.isEmpty() && why != null) {
             Spacer(Modifier.height(Gap.md))
             Text(
-                text = "这一屏没拉到：" + why,
+                text = "这一屏暂时没数：" + why,
                 fontSize = 13.sp,
                 lineHeight = 19.sp,
                 color = MaterialTheme.colorScheme.error,
@@ -324,7 +324,7 @@ fun SportMaintainScreen(onBack: () -> Unit) {
         }
         if (log.isEmpty() && why != null) {
             Text(
-                text = "这一屏没拉到：" + why,
+                text = "这一屏暂时没数：" + why,
                 fontSize = 13.sp,
                 lineHeight = 19.sp,
                 color = MaterialTheme.colorScheme.error,

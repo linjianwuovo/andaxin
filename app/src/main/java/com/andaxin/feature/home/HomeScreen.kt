@@ -119,7 +119,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.md))
             Sheet(modifier = Modifier.enterFade(session.generation)) {
                 Row(Modifier.fillMaxWidth()) {
-                    MetricCell("今天有课", d?.let { "${it.todayLessons}" } ?: "—", "节", modifier = Modifier.weight(1f))
+                    MetricCell("今天有课", d?.todayLessons?.let { "$it" } ?: "—", "节", modifier = Modifier.weight(1f))
                     MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
                     MetricCell(
                         label = "查寝",

@@ -45,6 +45,7 @@ import com.andaxin.data.TimetableSlot
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
+import com.andaxin.shell.Refreshable
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
@@ -91,51 +92,50 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
     val periodNow = remember(minute) { Periods.periodNow() }
     var showDayMode by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
-    ) {
-        Spacer(Modifier.height(Gap.md))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text("课程表", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
-            Text(
-                text = if (showDayMode) "看整周" else "只看今天",
-                fontSize = Type.meta,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.pressClick(shrink = false) { showDayMode = !showDayMode }.padding(vertical = Gap.sm),
-            )
-        }
-
-        // 周次切换原来单占一行、离标题 16dp，看着像两个不相干的控件；现在贴着标题下面一排
-        Spacer(Modifier.height(Gap.xxs))
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            Chip("本周", state.weekOffset == 0) { model.load(0) }
-            Chip("下周", state.weekOffset == 1) { model.load(1) }
-        }
-
-        Spacer(Modifier.height(Gap.md))
-
-        if (showDayMode) {
-            DayList(state.slots.filter { it.day == today }.ifEmpty { state.slots }, today)
-        } else {
-            Grid(state.slots, today, periodNow)
-        }
-
-        if (state.slots.isEmpty() && !state.firstLoad) {
-            Spacer(Modifier.height(Gap.xl))
-            Text("这一周没有课。", fontSize = Type.body, color = ink.faint)
-        }
-
-        state.error?.let {
+    // 这一屏也支持下拉：整周没拿到时，下面会给一条「重试」，但用户更习惯直接拽一下
+    Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Gap.screen),
+        ) {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
-        }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                Text("课程表", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
+                Text(
+                    text = if (showDayMode) "看整周" else "只看今天",
+                    fontSize = Type.meta,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.pressClick(shrink = false) { showDayMode = !showDayMode }.padding(vertical = Gap.sm),
+                )
+            }
 
-        Spacer(Modifier.height(Gap.lg))
-        state.error?.let { ErrorLine(it) }
-        Spacer(Modifier.height(Gap.xxl))
+            // 周次切换原来单占一行、离标题 16dp，看着像两个不相干的控件；现在贴着标题下面一排
+            Spacer(Modifier.height(Gap.xxs))
+            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                Chip("本周", state.weekOffset == 0) { model.load(0) }
+                Chip("下周", state.weekOffset == 1) { model.load(1) }
+            }
+
+            Spacer(Modifier.height(Gap.md))
+
+            if (showDayMode) {
+                DayList(state.slots.filter { it.day == today }.ifEmpty { state.slots }, today)
+            } else {
+                Grid(state.slots, today, periodNow)
+            }
+
+            if (state.slots.isEmpty() && !state.firstLoad && state.error == null) {
+                Spacer(Modifier.height(Gap.xl))
+                Text("这一周没有课。", fontSize = Type.body, color = ink.faint)
+            }
+
+            // 原来这里连着摆两遍同一个原因（一行灰字 + 一条 ErrorLine），只留带「重试」的那条
+            Spacer(Modifier.height(Gap.lg))
+            state.error?.let { ErrorLine(it, retry = { model.load(state.weekOffset) }) }
+            Spacer(Modifier.height(Gap.xxl))
+        }
     }
 }
 
@@ -285,7 +285,7 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean) {
  */
 @Composable
 private fun courseInk(course: String): Pair<Color, Color> {
-    val dark = LocalInk.current.strong.luminance() < 0.5f
+    val dark = LocalInk.current.dark
     val i = (course.hashCode() % 5 + 5) % 5
     return if (!dark) {
         listOf(
