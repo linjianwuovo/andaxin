@@ -1,0 +1,217 @@
+package com.andaxin.data.capture
+
+import com.andaxin.core.store.SessionStore
+import java.time.LocalDate
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import org.json.JSONArray
+import org.json.JSONObject
+
+/*
+ * 查寝那一屏的数据：月概览 + 签到月历 + 当天任务（查寝 / 主题签到两节）。
+ *
+ * 为什么不用现在那套"从 ywlz 待办列表里挑 msgType=2"：那条口给的只有
+ * 「签到时间到达」这一句和收到时间，**没有采集窗口、也没有"我签没签"**。
+ * 10-20 晚拿我们自己那把活 token 把 fdygl 这四发逐条现打了一遍（`lxtmp/_dorm_probe.md`、
+ * `_dorm_subject.md`），三条读口的真值都对上了，所以这一屏换成 fdygl 直连：
+ *
+ * - `POST /app/dorm/collectionStudentStatics` 体 `{staticDate:"2026-10", createBy:<学号>, taskMajorType:"3"}`
+ *   → `data{signinedNum:13, notSigninedNum:1, signiningNum:20, leaveNum:0, leaveSchoolNum:6, qrCodeNum:0}`。
+ *   **`createBy` 必带**：同一个体不带 `createBy` 打出去回的是 `data:null`（长度 57），
+ *   而 `data:null` 在这套信封里和"这个月一次没签"长得一模一样 —— 所以拿不到就当失败，不渲染成六个 0。
+ * - `POST /app/dorm/listDateCheck` 体 `{startTime:"2026-10-01", endTime:"2026-10-31"}`
+ *   → `data[]` 实测 30 条 `{taskDate:"2026-10-01", taskNum:1}`，就是月历上那些点。
+ * - `POST /app/dorm/pageStudentSignIn` 体 `{pageNum, pageSize, createBy, taskMajorType:"3"}`
+ *   → 数组挂**根节点 `rows`**（`data` 是 null），一条 19 键，实测用到的：
+ *   `id`(19 位，就是详情那条 `getTaskInfoByDateId` 要的 `dateId`) `title` `taskDate`
+ *   `timedStartTime`/`timedEndTime`(`2026-10-20 21:00`) `executionedStatus`("1"=已签)
+ *   `executionedStatusTxt`("已签到") `signinMode` `collectionMethod` `createByName` `unit`。
+ * - `POST /app/signinSubject/pageStudentSignIn` 同一条形状，**这是"主题签到"那一节**：
+ *   现打回的 `rows[]` 是 0 条（这账号今天没有），信封是对的。
+ *   注意别指望用 `taskMajorType` 把上面那条查寝的口切成主题签到 ——
+ *   我把 3 换成 2 打过，**回的是同一条任务、同一个 id**，也就是这一族这个参数在服务端不作数，
+ *   两节靠的是**两个不同路径**。
+ *
+ * 身份在**请求头**里、体是 JSON（`School.postJson`），跟 in.aiit 那套表单身份不通用。
+ */
+
+/** 月概览那六个数。名字照服务端那四个键的意思来，不是我另起的一套。 */
+data class DormStatics(
+    val signed: Int,
+    val notSigned: Int,
+    val monthTotal: Int,
+    val leave: Int,
+    val offCampus: Int,
+    val qrCode: Int,
+)
+
+/** 月历上的一天：`taskNum` 大于 0 才画点。 */
+data class DormDay(val date: String, val taskNum: Int)
+
+/** 一条签到任务。`dateId` 是进详情那条 `getTaskInfoByDateId` 的入参。 */
+data class DormTask(
+    val dateId: String,
+    val title: String,
+    val date: String,
+    val startAt: String,
+    val endAt: String,
+    val signed: Boolean,
+    val statusTxt: String,
+    val mode: String,
+    val creator: String,
+    val unit: String,
+) {
+    val isToday: Boolean get() = date == LocalDate.now().toString()
+}
+
+/** 一屏要的一次拉齐的东西。 */
+data class DormBoard(
+    val month: String,
+    val statics: DormStatics?,
+    val days: List<DormDay>,
+    val dormTasks: List<DormTask>,
+    val subjectTasks: List<DormTask>,
+    val staticsWhy: String?,
+)
+
+class CaptureDormBoard(private val school: School, private val session: SessionStore) {
+
+    /**
+     * 一次拉四发（概览、月历、查寝任务、主题签到任务），任何一发挂了都不拖垮整屏：
+     * 概览挂了界面说"统计没拿到"，任务挂了说任务没拿到，各说各的。
+     */
+    suspend fun load(date: LocalDate = LocalDate.now()): Result<DormBoard> {
+        val code = session.identity()?.userCode.orEmpty()
+        if (code.isBlank()) return Result.failure(Exception("还没登录，这一屏要校方数据"))
+        val month = "%04d-%02d".format(date.year, date.monthValue)
+        val first = date.withDayOfMonth(1).toString()
+        val last = date.withDayOfMonth(date.lengthOfMonth()).toString()
+        return coroutineScope {
+            val statics = async {
+                school.postJson(
+                    "$FDY/app/dorm/collectionStudentStatics",
+                    JSONObject().put("staticDate", month).put("createBy", code).put("taskMajorType", "3"),
+                )
+            }
+            val days = async {
+                school.postJson(
+                    "$FDY/app/dorm/listDateCheck",
+                    JSONObject().put("startTime", first).put("endTime", last),
+                )
+            }
+            val dorm = async { page("/app/dorm/pageStudentSignIn", code, "3") }
+            val subject = async { page("/app/signinSubject/pageStudentSignIn", code, "2") }
+            val s = statics.await()
+            remember(dorm.await() + subject.await())
+            Result.success(
+                DormBoard(
+                    month = month,
+                    // `data:null` 和"六个 0"是两回事，见文件头：拿不到对象就是失败
+                    statics = s.getOrNull()?.optJSONObject("data")?.let {
+                        DormStatics(
+                            signed = it.optInt("signinedNum"),
+                            notSigned = it.optInt("notSigninedNum"),
+                            monthTotal = it.optInt("signiningNum"),
+                            leave = it.optInt("leaveNum"),
+                            offCampus = it.optInt("leaveSchoolNum"),
+                            qrCode = it.optInt("qrCodeNum"),
+                        )
+                    },
+                    days = days.await().getOrNull()?.let { root ->
+                        val a = root.optJSONArray("data") ?: JSONArray()
+                        (0 until a.length()).mapNotNull { i ->
+                            a.optJSONObject(i)?.let { o ->
+                                val d = o.optString("taskDate")
+                                if (d.isBlank()) null else DormDay(d, o.optInt("taskNum"))
+                            }
+                        }
+                    }.orEmpty(),
+                    dormTasks = dorm.await(),
+                    subjectTasks = subject.await(),
+                    staticsWhy = if (s.getOrNull()?.optJSONObject("data") == null) {
+                        s.exceptionOrNull()?.message ?: "签到统计那条口没回数据"
+                    } else null,
+                )
+            )
+        }
+    }
+
+    /** 任务列表那一族：数组挂根节点 `rows`，`data` 是 null。 */
+    private suspend fun page(path: String, code: String, majorType: String): List<DormTask> {
+        val root = school.postJson(
+            "$FDY$path",
+            JSONObject()
+                .put("pageNum", 1).put("pageSize", 30)
+                .put("createBy", code).put("taskMajorType", majorType),
+        ).getOrNull() ?: return emptyList()
+        val rows = root.optJSONArray("rows") ?: JSONArray()
+        return (0 until rows.length()).mapNotNull { i ->
+            rows.optJSONObject(i)?.let { o ->
+                val id = o.optString("id")
+                if (id.isBlank()) return@mapNotNull null
+                DormTask(
+                    dateId = id,
+                    title = o.optString("title").trim(),
+                    date = o.optString("taskDate"),
+                    // 实测给的是 `2026-10-20 21:00` 这种带日期的串；日期本身另有 taskDate，所以只留时分
+                    startAt = o.optString("timedStartTime").substringAfter(' '),
+                    endAt = o.optString("timedEndTime").substringAfter(' '),
+                    signed = o.optString("executionedStatus") == "1",
+                    statusTxt = o.optString("executionedStatusTxt"),
+                    mode = o.optString("signinMode"),
+                    creator = o.optString("createByName"),
+                    unit = o.optString("unit"),
+                )
+            }
+        }
+    }
+
+    private companion object {
+        const val FDY = School.FDYGL
+    }
+
+    /**
+     * 上一次 `load()` 拿到的任务，按 `dateId` 存着。
+     * 详情那一屏要"接口没通时至少把列表里已有的真字段摊开"，靠的就是这一份。
+     * 只活在这个进程里，不落盘。
+     */
+    val lastTasks = HashMap<String, DormTask>()
+
+    /** 记进缓存的那一步放在 load 里做，免得界面各自记得不一致。 */
+    internal fun remember(tasks: List<DormTask>) {
+        tasks.forEach { lastTasks[it.dateId] = it }
+    }
+}
+
+/**
+ * 一条签到任务的详情。
+ *
+ * 走的是 `getTaskInfoByDateId`（10-20 凌晨现打通过：回 113 个键、63 个非空），
+ * 入参就是列表那条的 `id`。打不通时退回把列表里已有的真字段摆出来 + 服务端原话，
+ * 不装成功。
+ */
+class CaptureDormTaskDetail(
+    private val school: School,
+    private val board: CaptureDormBoard,
+) : com.andaxin.data.brief.DetailSource {
+
+    override suspend fun detail(id: String): Result<com.andaxin.data.brief.BriefDetail> {
+        val t = board.lastTasks[id]
+        val fallback = com.andaxin.data.brief.BriefDetail(
+            title = t?.title.orEmpty().ifBlank { "签到任务" },
+            fields = buildList {
+                if (t != null) {
+                    add("日期" to t.date.ifBlank { "—" })
+                    if (t.startAt.isNotBlank()) add("采集窗口" to "${t.startAt} ~ ${t.endAt}")
+                    add("签了没" to t.statusTxt.ifBlank { if (t.signed) "已签到" else "没签" })
+                    if (t.creator.isNotBlank()) add("发起人" to t.creator)
+                    if (t.unit.isNotBlank()) add("发起组织" to t.unit)
+                }
+                add("日期 ID" to id)
+            },
+            paragraphs = listOf("这一屏是列表那条接口给的字段；详情那条没打通时只会多这一句说明。"),
+        )
+        if (id.isBlank()) return Result.failure(Exception("这一条没有 dateId，进不去详情"))
+        return dormDetailByDateId(school, id, fallback)
+    }
+}
