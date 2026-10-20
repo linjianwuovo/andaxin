@@ -373,7 +373,15 @@ private fun ReminderRow() {
                 color = if (needPermission) MaterialTheme.colorScheme.error else ink.muted,
             )
         }
-        top.yukonga.miuix.kmp.basic.Switch(checked = on, onCheckedChange = { write(it, lead) })
+        top.yukonga.miuix.kmp.basic.Switch(
+            checked = on,
+            onCheckedChange = { write(it, lead) },
+            // Miuix 的"关"那一档默认拿 secondary（我们这儿是青绿）当轨道色 —— 白钮停在左边、
+            // 轨道却是饱和的青绿，看着像开着。他 10-20 深夜定过一条：关闭态给灰底。
+            colors = top.yukonga.miuix.kmp.basic.SwitchDefaults.switchColors(
+                uncheckedTrackColor = ink.offFill,
+            ),
+        )
     }
     if (on) {
         Row(
