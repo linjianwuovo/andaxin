@@ -40,7 +40,14 @@ data class YwlzTask(
     val receiveTime: String,
     val msgType: String,
     val url: String,
+    /** 「我的申请」那一发才有的三个标记：附件图、能不能催办、撤没撤。待办那一发里没这几个键，给默认值。 */
+    val attachmentUrl: String = "",
+    val urgeable: Boolean = false,
+    val withdrawn: Boolean = false,
 ) {
+    /** 详情按哪条主键找：待办类有节点 id 就用节点 id，「我的申请」那种只有流程 id。 */
+    val key: String get() = nodeId.ifBlank { executionId }
+
     /** `msgType=2` 就是查寝/消息类；`1` 才是流程类（有 executionId 能查审批链）。 */
     val isBedCheck: Boolean get() = msgType == "2"
 
@@ -142,6 +149,156 @@ class YwlzTasks(private val school: School) {
         )
     }
 
+    /**
+     * 「我的申请」= 我自己发起过的流程。
+     *
+     * 【取证 · ③ 真 App 发出、我们抓到的那条】`POST /mobile/flowRuTask/myExecution.do`，
+     * 请求侧**四个业务参数**（`lxtmp/_shape7.txt` 里那一条唯一的形状）：
+     * `currentPageNo=1&pageSize=10&timeType=1&status=3` —— 没有 title、没有日期窗，
+     * 比已办那一发少两个键。数组挂根节点 `rows`（实测 2 条，`total` 也回 2）。
+     * 条目字段和待办那一发**不完全一样**，这三处必须照它自己的形状读：
+     * ① **没有 `ruTaskNodeId`**（null），主键是 `executionId`，另有一个 `dbNodeId`；
+     * ② 时间叫 `createDate`（"2026-10-13 20:10:55"）而不是 `receiveTime`；
+     * ③ 多了 `fileUrl`（附件图直链）、`isWithdraw`（"0"）、`urgeButton`（"0"）、`urgeTotal`。
+     * `status=3` 这发是唯一有实样的档位（回的两条 `statusTxt` 都是"已完结"）。
+     * **其它状态值服务端接受什么、返回什么，我们一条实样都没有**，所以这里不猜、不做"全部状态"那个 tab：
+     * 这一屏就是"我发起的、已完结的"，在办的那些本来就在待办那一屏。
+     */
+    suspend fun mine(): Result<List<YwlzTask>> =
+        cached("mine") {
+            school.postH5(
+                "$YWLZ/mobile/flowRuTask/myExecution.do",
+                "currentPageNo" to "1",
+                "pageSize" to PAGE,
+                "timeType" to "1",
+                "status" to "3",
+            ).mapCatching { root ->
+                val arr = School.rows(root)
+                (0 until arr.length()).mapNotNull { i ->
+                    val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                    val exe = o.optString("executionId")
+                    if (exe.isBlank()) return@mapNotNull null
+                    YwlzTask(
+                        nodeId = "",                       // 这一族真没有这个键，别拿 dbNodeId 冒充
+                        executionId = exe,
+                        title = o.optString("flowTitle"),
+                        category = o.optString("categoryName"),
+                        creator = o.optString("createUserName").ifBlank { o.optString("createUser") },
+                        status = o.optString("status"),
+                        statusTxt = o.optString("statusTxt"),
+                        receiveTime = o.optString("createDate"),
+                        msgType = o.optString("msgType").ifBlank { "1" },
+                        url = o.optString("url"),
+                        attachmentUrl = o.optString("fileUrl"),
+                        urgeable = o.optString("urgeButton") == "1",
+                        withdrawn = o.optString("isWithdraw") == "1",
+                    )
+                }
+            }
+        }
+
+    /**
+     * 「已办」= 我已经处理完的（含别人批完抄送给我的）。
+     *
+     * 【取证 · ③】`POST /mobile/flowRuTask/getHiTaskByUserCode.do`，请求侧比 myExecution 多三个键：
+     * `currentPageNo=1&pageSize=10&timeType=1&status=3&title=&beginTime=<三个月前>&endTime=<今天>`。
+     * 那个日期窗是实样里现成的（抓到的那一次 beginTime 正好是 endTime 减三个整月），
+     * 所以我按同样的规则算，而不是写死一个日子。
+     *
+     * **条目的键名没有实样**：现存抓包里这一发命中的每一次 `rows` 都是 0 条
+     * （`_shape4.md` 数过：命中 2 次、都是空数组）。所以 `parse` 走的是候选键，
+     * 顺序按"待办那一族叫什么"来猜的：`ruTaskNodeId` → `executionId` → `hiTaskId`。
+     * 界面上这一栏回空时说的是"这一发回的是空列表"，不是"没有已办"，
+     * 因为条目形状本身还没被一条真数据证实过。
+     */
+    suspend fun history(): Result<List<YwlzTask>> =
+        cached("hi") {
+            val today = java.time.LocalDate.now()
+            school.postH5(
+                "$YWLZ/mobile/flowRuTask/getHiTaskByUserCode.do",
+                "currentPageNo" to "1",
+                "pageSize" to PAGE,
+                "timeType" to "1",
+                "status" to "3",
+                "title" to "",
+                "beginTime" to today.minusMonths(3).toString(),
+                "endTime" to today.toString(),
+            ).mapCatching { root ->
+                val arr = School.rows(root)
+                (0 until arr.length()).mapNotNull { i -> parseLoose(arr.optJSONObject(i)) }
+            }
+        }
+
+    /**
+     * 这一环校方给了哪些按钮。
+     *
+     * 【取证 · ③ 请求与响应都有实样】`POST /mobile/process/getButtons.do`，
+     * 参数 `executionId` + `ruTaskNodeId`（两个都是 18~19 位的数字串），
+     * 回根节点 `rows[]`，每条就两个键：`{label:"抄送", value:"cc"}`。
+     * 这是**唯一一条有实样的"按钮门禁"证据**：所以这一发的用处是把校方给的按钮**念出来**，
+     * 让我们知道这一环到底能点什么；`value` 对应的提交口一个都没抓到实样，
+     * 所以那些口一律不接 —— 界面上看到的是"校方说这一步能抄送"，而不是我们能抄送。
+     */
+    suspend fun buttons(executionId: String, nodeId: String): List<Pair<String, String>> {
+        if (executionId.isBlank()) return emptyList()
+        val root = school.postH5(
+            "$YWLZ/mobile/process/getButtons.do",
+            "executionId" to executionId,
+            "ruTaskNodeId" to nodeId,
+        ).getOrNull() ?: return emptyList()
+        val arr = School.rows(root)
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val label = o.optString("label")
+            if (label.isBlank()) return@mapNotNull null
+            label to o.optString("value")
+        }
+    }
+
+    /** 三个列表都过一遍，详情按 id 找条目用。 */
+    suspend fun findAny(id: String): YwlzTask? {
+        if (id.isBlank()) return null
+        val pools = listOf(all().getOrNull(), mine().getOrNull(), history().getOrNull())
+        return pools.asSequence().filterNotNull().flatten().firstOrNull { it.key == id }
+    }
+
+    /** 每个 tab 各有一份 60 秒缓存，key 是 tab 名。 */
+    private val caches = HashMap<String, Pair<List<YwlzTask>, Long>>()
+
+    private suspend fun cached(name: String, fetch: suspend () -> Result<List<YwlzTask>>): Result<List<YwlzTask>> {
+        caches[name]?.let { (list, at) ->
+            if (System.currentTimeMillis() - at < TTL) return Result.success(list)
+        }
+        val r = fetch()
+        r.getOrNull()?.let { caches[name] = it to System.currentTimeMillis() }
+        return r
+    }
+
+    /** [history] 那种"节点 id 可能根本没有"的条目：主键按候选键轮一遍。 */
+    private fun parseLoose(o: JSONObject?): YwlzTask? {
+        if (o == null) return null
+        val node = listOf("ruTaskNodeId", "hiTaskId").asSequence()
+            .map { o.optString(it) }.firstOrNull { it.isNotBlank() }.orEmpty()
+        val exe = o.optString("executionId")
+        if (node.isBlank() && exe.isBlank()) return null
+        return YwlzTask(
+            nodeId = node,
+            executionId = exe,
+            title = o.optString("flowTitle").ifBlank { o.optString("title") },
+            category = o.optString("categoryName"),
+            creator = o.optString("createUserName").ifBlank { o.optString("createUser") },
+            status = o.optString("status"),
+            statusTxt = o.optString("statusTxt"),
+            receiveTime = o.optString("receiveTime").ifBlank { o.optString("complateTime") }
+                .ifBlank { o.optString("createDate") },
+            msgType = o.optString("msgType"),
+            url = o.optString("url"),
+            attachmentUrl = o.optString("fileUrl"),
+            urgeable = o.optString("urgeButton") == "1",
+            withdrawn = o.optString("isWithdraw") == "1",
+        )
+    }
+
     private companion object {
         const val YWLZ = School.YWLZ
         const val PAGE = "50"
@@ -174,7 +331,6 @@ class CaptureAffairs(private val tasks: YwlzTasks) : ListSource {
 
 /** 查寝列表：同一份数据里挑 `msgType=2` 的，标题用 url 里的 viewTitle（真名"晚点名"）。 */
 class CaptureDorm(private val tasks: YwlzTasks) : ListSource {
-
     internal val byId = HashMap<String, YwlzTask>()
 
     override suspend fun rows(): Result<List<BriefRow>> = tasks.all().mapCatching { list ->
@@ -186,6 +342,50 @@ class CaptureDorm(private val tasks: YwlzTasks) : ListSource {
                 sub = a.receiveTime,
                 right = a.statusTxt,
                 flag = if (a.status == "5") Flag.Warn else Flag.None,
+            )
+        }
+    }
+}
+
+/**
+ * 「我的申请」那一栏。行的主键用的是 `executionId` ——
+ * 这一族没有 `ruTaskNodeId`（见 [YwlzTasks.mine] 的取证），拿它当 id 详情就找不到条。
+ * 详情走的是和待办同一个 [CaptureAffairDetail]：审批链那发只要 executionId 就能打。
+ */
+class CaptureMyAffairs(private val tasks: YwlzTasks) : ListSource {
+    override suspend fun rows(): Result<List<BriefRow>> = tasks.mine().mapCatching { list ->
+        list.map { a ->
+            BriefRow(
+                id = a.key,
+                title = a.title.ifBlank { "（校方没给标题）" },
+                sub = listOf(a.category, a.receiveTime).filter { it.isNotBlank() }.joinToString(" · "),
+                right = a.statusTxt.ifBlank { if (a.withdrawn) "已撤回" else "" },
+                flag = when {
+                    a.withdrawn -> Flag.Bad
+                    a.urgeable -> Flag.Warn
+                    else -> Flag.None
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 「已办」那一栏。
+ *
+ * 现存抓包里这一发每次都是空数组，所以**列表本来就是空的**是常态；
+ * 空的时候界面上说的是"这一发回的是空列表（条目形状还没有一条真数据证实过）"，
+ * 不写"你没有任何已办" —— 那句话我们没证据说。
+ */
+class CaptureHandled(private val tasks: YwlzTasks) : ListSource {
+    override suspend fun rows(): Result<List<BriefRow>> = tasks.history().mapCatching { list ->
+        list.map { a ->
+            BriefRow(
+                id = a.key,
+                title = a.title.ifBlank { "（校方没给标题）" },
+                sub = listOf(a.creator, a.receiveTime).filter { it.isNotBlank() }.joinToString(" · "),
+                right = a.statusTxt,
+                flag = Flag.None,
             )
         }
     }
@@ -355,8 +555,9 @@ class CaptureAffairDetail(
     private val affordById = HashMap<String, YwlzTask>()
 
     override suspend fun detail(id: String): Result<BriefDetail> {
-        val a = list.byId[id] ?: tasks.all().getOrNull()?.firstOrNull { it.nodeId == id }
-            ?: return Result.failure(Exception("这一条不在待办列表里，回列表重进一次"))
+        // 三个 tab（待办 / 我的申请 / 已办）都进这一个详情：先按各自主键找，找不到再退回待办那份缓存
+        val a = tasks.findAny(id) ?: list.byId[id]
+            ?: return Result.failure(Exception("这一条不在待办、我的申请、已办这三栏里，回列表重进一次"))
         affordById[id] = a
         // 查寝类的那一条不摆三个 ID 交差：走和查寝那屏同一个详情，同一份真数据
         if (a.isBedCheck || a.executionId.isBlank()) return dormDetailOf(school, a)
@@ -392,8 +593,13 @@ class CaptureAffairDetail(
             keep(q, "流程号", "flownumber")
             if (a.category.isNotBlank()) add("类别" to a.category)
             if (a.creator.isNotBlank()) add("发起人" to a.creator)
-            add("收到时间" to a.receiveTime.ifBlank { "—" })
+            // 待办那一发的时间是"收到"，「我的申请」那一发给的是 createDate —— 同一行不能都叫收到
+            add(if (a.nodeId.isBlank()) "发起时间" to a.receiveTime.ifBlank { "—" }
+            else "收到时间" to a.receiveTime.ifBlank { "—" })
             add("状态" to a.statusTxt.ifBlank { a.status })
+            // 「我的申请」那一发才有的两个标记，待办那一发里没这两个键，所以有才写
+            if (a.withdrawn) add("撤回" to "已撤回")
+            if (a.attachmentUrl.isNotBlank()) add("附件" to "有（校方给的是 fs.aiit 上的一张图）")
             form?.optString("isDealDone")?.takeIf { it.isNotBlank() }?.let { add("能不能办" to dealDone(it)) }
             keep(q, "请假类型", "f1677131069644")
             keep(q, "班级", "bjmc")
@@ -409,6 +615,10 @@ class CaptureAffairDetail(
             keep(xj, "假期到", "cjStartTimeStr")
             keep(xj, "服务端此刻", "cjEndTimeStr")
         }
+
+        // 这一环校方给了哪些按钮（getButtons 的实样形状：{label:"抄送", value:"cc"}）。
+        // 只念不办 —— value 对应的那几条提交口一条实样都没有，接了就等于拿猜的字段往服务端发。
+        val buttons = tasks.buttons(exe, a.nodeId)
 
         val paragraphs = buildList {
             if (nodes.length() == 0) {

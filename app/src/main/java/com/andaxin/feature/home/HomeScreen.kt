@@ -1,7 +1,9 @@
 package com.andaxin.feature.home
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,26 +12,37 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
+import com.andaxin.core.net.RemoteImage
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.DataCaveat
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Route
+import com.andaxin.shell.SectionTitle
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.state.HomeModel
@@ -39,6 +52,16 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
     val model = adxViewModel { HomeModel(it.dashboard, it.timetable) }
     val state by model.state.collectAsStateWithLifecycle()
+    /*
+     * 首页下半屏那些东西（服务清单、轮播图、联系方式、校历）是另外四条接口，
+     * 和上面那一叠数字不是一个来源，所以各存各的状态；
+     * 但它们**作为一个整块一次出现** —— 没拉齐之前这一整块一个字节都不画，
+     * 免得半屏东西先蹦出来、剩下的一路补。
+     */
+    var extras by remember { mutableStateOf<com.andaxin.data.capture.HomeExtras?>(null) }
+    LaunchedEffect(Unit) {
+        graph.home.load().onSuccess { extras = it }
+    }
 
     Column(
         modifier = modifier
@@ -161,6 +184,123 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         state.error?.let {
             Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
         }
+
+        extras?.let { ExtrasSection(it, open) }
         Spacer(Modifier.height(Gap.xxl))
+    }
+}
+
+/**
+ * 首页下半屏：校历一行 + 轮播图 + 校方给的服务清单 + 那几个联系方式。
+ *
+ * 这四块全是 `in.aiit.edu.cn` 直接给的（取证与字段选择见 `data/capture/CaptureHome.kt`），
+ * 不是我们在代码里列的那几格。服务清单上每一格的名字、图标、去处都照它给的，
+ * 点开了走自带 WebView —— 不做"跳系统浏览器"那一种。
+ */
+@Composable
+private fun ExtrasSection(e: com.andaxin.data.capture.HomeExtras, open: (String) -> Unit) {
+    val graph = LocalAppGraph.current
+    val ink = LocalInk.current
+
+    if (e.calendar.isNotBlank()) {
+        Spacer(Modifier.height(Gap.xl))
+        Text(e.calendar, fontSize = 12.sp, color = ink.faint, modifier = Modifier.padding(start = Gap.xxs))
+    }
+
+    if (e.banners.isNotEmpty()) {
+        Spacer(Modifier.height(Gap.lg))
+        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            e.banners.forEach { b ->
+                Column(
+                    Modifier
+                        .width(220.dp)
+                        .clip(Radius.card)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .then(
+                            // 只有真给了去处的才挂点击；开屏那张实测 tzlj 是 null，点了不响比不挂更坏
+                            if (b.targetUrl.startsWith("http")) Modifier.clickable {
+                                open("web/${com.andaxin.feature.web.encodeUrl(b.targetUrl)}")
+                            } else Modifier
+                        )
+                        .padding(bottom = Gap.md),
+                ) {
+                    RemoteImage(
+                        url = b.imageUrl,
+                        contentDescription = b.title.ifBlank { "校方图" },
+                        cacheDir = graph.context.cacheDir,
+                        modifier = Modifier.fillMaxWidth().height(96.dp),
+                    )
+                    if (b.title.isNotBlank()) {
+                        Spacer(Modifier.height(Gap.xs))
+                        Text(b.title, fontSize = 12.sp, color = ink.muted, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+
+    if (e.services.isNotEmpty()) {
+        Spacer(Modifier.height(Gap.xl))
+        SectionTitle("校方服务清单")
+        Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            e.services.forEach { s ->
+                Sheet(
+                    modifier = Modifier.then(
+                        if (s.targetUrl.startsWith("http")) Modifier.clickable {
+                            open("web/${com.andaxin.feature.web.encodeUrl(s.targetUrl)}")
+                        } else Modifier
+                    )
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        if (s.iconUrl.startsWith("http")) {
+                            RemoteImage(
+                                url = s.iconUrl,
+                                contentDescription = s.name,
+                                cacheDir = graph.context.cacheDir,
+                                modifier = Modifier.size(28.dp),
+                            )
+                            Spacer(Modifier.width(Gap.md))
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(s.name, fontSize = 15.sp, color = ink.strong)
+                            // `sjdfwdz` 实测就是完整 https 直链，尾巴那截路径给出来才知道进的是哪个页面
+                            if (s.targetUrl.isNotBlank()) {
+                                Spacer(Modifier.height(Gap.xxs))
+                                Text(
+                                    text = Uri.parse(s.targetUrl).host ?: s.targetUrl,
+                                    fontSize = 11.sp,
+                                    color = ink.ghost,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                        if (!s.online) Text("未上线", fontSize = 11.sp, color = Palette.Amber)
+                    }
+                }
+            }
+        }
+    }
+
+    if (e.contacts.isNotEmpty()) {
+        Spacer(Modifier.height(Gap.xl))
+        SectionTitle("求助电话")
+        Sheet {
+            e.contacts.forEachIndexed { i, c ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(c.label, fontSize = 14.sp, color = ink.body)
+                    // 这发的 `infoName` 里装的是电话号码（真值见 CaptureHome 顶上第①条），
+                    // 键名骗人，所以这里原样念出来，不叫"名称"
+                    Text(c.contact, fontSize = 14.sp, color = ink.strong)
+                }
+                if (i != e.contacts.lastIndex) {
+                    Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
+                }
+            }
+        }
+    }
+
+    if (e.why.isNotEmpty()) {
+        Spacer(Modifier.height(Gap.md))
+        e.why.forEach { Text(it, fontSize = 11.sp, color = ink.faint) }
     }
 }

@@ -59,6 +59,8 @@ private data class Load(
     val busy: Boolean = true,
     val items: List<AiItem> = emptyList(),
     val why: String? = null,
+    /** 直录播那一栏是按周次拉的，缓存要连着周次一起记 —— 不然切了周次还显示上一周那批。 */
+    val week: String = "",
 )
 
 private const val TAB_COURSEWARE = 0
@@ -69,6 +71,7 @@ private const val TAB_GROUP = 4
 private const val TAB_OTHER = 5
 private const val TAB_MEMBER = 6
 private const val TAB_NOTE = 7
+private const val TAB_CHAPTER = 8
 
 /**
  * 拉不到的原因写成一句人话。
@@ -107,10 +110,22 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
     var course by remember { mutableStateOf<AiCourse?>(null) }
     // 考勤那一栏除了记录还要五个计数，单独存一份，别把它们塞进 AiItem 的标题里凑数
     var att by remember { mutableStateOf<AiAttendance?>(null) }
+    /**
+     * 直录播的周次筛选。候选来自 `getWeekList`（实测 22 个整数 + currentWeek=8），
+     * `week` 空串就是"全部周"—— 那才是抓包里官方一直发的值，默认必须停在它上面。
+     */
+    var weeks by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var week by remember { mutableStateOf("") }
+    // 章节那一栏点开某一节之后，"这一节挂了什么"放在这里
+    var picked by remember { mutableStateOf<AiItem?>(null) }
+    var sectionItems by remember { mutableStateOf<List<AiItem>?>(null) }
+    var sectionWhy by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(courseId, tab) {
-        if (loads[tab]?.items?.isNotEmpty() == true) return@LaunchedEffect
-        loads[tab] = Load(busy = true)
+    LaunchedEffect(courseId, tab, week) {
+        val cached = loads[tab]
+        // 直录播换了周次必须重发：拿上一周那批当缓存，界面看着就是"筛选生效了但其实没有"
+        if (cached?.items?.isNotEmpty() == true && (tab != TAB_LIVE || cached.week == week)) return@LaunchedEffect
+        loads[tab] = Load(busy = true, week = week)
         val c = course ?: graph.aiCourses.find(courseId).also { course = it }
         if (c == null) {
             loads[tab] = Load(busy = false, why = "课表里没找到这门课，回列表重进一次。")
@@ -124,6 +139,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             TAB_OTHER -> "这一门没归到「其他资源」里的东西。"
             TAB_MEMBER -> "成员那一发没回数据。"
             TAB_NOTE -> "笔记站通了，这个账号一条笔记都没有。"
+            TAB_CHAPTER -> "这门课没有章节树：chapterMode 回了数据，但一条章都没有。"
             else -> "这门课还没建小组。"
         }
         loads[tab] = loadPastFirstBlip {
@@ -151,8 +167,34 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                 }
 
                 TAB_LIVE -> graph.fif.ensure().mapCatching {
+                    if (weeks.isEmpty()) weeks = graph.fifApi.weekList().second
                     // termId 要 FIF 那侧 32 位学期 id，从学期列表里 selected 那条拿
-                    graph.fifApi.liveRecords(c.courseId, c.teachClassId, graph.aiCourses.currentTerm()?.id ?: "")
+                    graph.fifApi.liveRecords(
+                        c.courseId, c.teachClassId, graph.aiCourses.currentTerm()?.id ?: "", weekNum = week,
+                    )
+                }
+
+                TAB_CHAPTER -> graph.fif.ensure().mapCatching {
+                    // 章节树两层（章 / 节），键名与坑见 `FifApi.chapters` 顶上那段取证
+                    graph.fifApi.chapters(c.teachClassId).map { ch ->
+                        AiItem(
+                            id = ch.id,
+                            title = ch.title,
+                            sub = when {
+                                ch.level == 1 -> ""
+                                ch.relCourseId.isNotBlank() -> "资源课号 ${ch.relCourseId}"
+                                else -> ""
+                            },
+                            right = when {
+                                ch.locked -> "没解锁"
+                                ch.items > 0 -> "${ch.learned}/${ch.items}"
+                                ch.finished -> "学完"
+                                else -> ""
+                            },
+                            // level 与 leaf 带着渲染用：章不加缩进、节才能点开
+                            extra = mapOf("level" to ch.level.toString(), "leaf" to (ch.level > 1).toString()),
+                        )
+                    }
                 }
 
                 TAB_SIGN -> graph.fif.ensure().mapCatching { ids ->
@@ -183,6 +225,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                     Load(
                         busy = false,
                         items = list,
+                        week = if (tab == TAB_LIVE) week else "",
                         why = when {
                             list.isNotEmpty() -> null
                             tab == TAB_SIGN && att?.evidenced == false ->
@@ -196,13 +239,35 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             )
     }
 
+    /**
+     * 点开某一节，才去问这一节挂了什么。
+     *
+     * 那五发（课件 / 微课 / 试卷 / 话题 / 直录播 id）**响应全没有实样** —— 现存抓包里每一条都回 `data:""`，
+     * 所以字段名是按候选键轮的，见 `FifApi.subsectionItems`。
+     * 也正因为这样，这一发只在人主动点开时发，不在进课程那一屏时预拉。
+     */
+    LaunchedEffect(picked?.id) {
+        val p = picked ?: return@LaunchedEffect
+        val c = course ?: return@LaunchedEffect
+        sectionWhy = null
+        graph.fif.ensure().mapCatching { ids ->
+            graph.fifApi.subsectionItems(
+                c.courseId, c.teachClassId, p.id,
+                graph.aiCourses.currentTerm()?.id ?: "", ids.memberUserId,
+            )
+        }.fold(
+            onSuccess = { sectionItems = it },
+            onFailure = { sectionWhy = it.message ?: "这一节那五发没通" },
+        )
+    }
+
     ScaffoldPage(title = course?.name ?: "课堂详情", onBack = onBack) {
-        // 七个 tab 一排放不下，改成横向可滑；顺序照官方那套（课件在前、成员殿后）
+        // 九个 tab 一排放不下，横向可滑；顺序照官方那套（课件在前、成员与笔记殿后、章节最后）
         Row(
             horizontalArrangement = Arrangement.spacedBy(Gap.sm),
             modifier = Modifier.horizontalScroll(rememberScrollState()),
         ) {
-            listOf("课件", "直录播", "考勤", "上课", "小组", "其他资源", "成员", "笔记").forEachIndexed { i, name ->
+            listOf("课件", "直录播", "考勤", "上课", "小组", "其他资源", "成员", "笔记", "章节").forEachIndexed { i, name ->
                 val on = i == tab
                 Text(
                     text = name,
@@ -219,7 +284,23 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                 )
             }
         }
-        Spacer(Modifier.height(Gap.lg))
+        Spacer(Modifier.height(Gap.md))
+
+        /*
+         * 周次那一排只在直录播这一栏出现。「全部」必须留在第一个并且是默认 ——
+         * 抓包里官方自己发的 `weekNum` 一直是空串，那才是它验证过的档位；
+         * 选具体某一周是我们加的用法，服务端认不认，得装机看了才知道。
+         */
+        if (tab == TAB_LIVE && weeks.isNotEmpty()) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+            ) {
+                chip("全部", week == "") { week = "" }
+                weeks.forEach { w -> chip("第 $w 周", week == w.toString()) { week = w.toString() } }
+            }
+            Spacer(Modifier.height(Gap.md))
+        }
 
         val state = loads[tab] ?: Load()
 
@@ -231,22 +312,63 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
         when {
             state.busy -> Text("正在拉…", fontSize = 13.sp, color = ink.faint)
             state.items.isNotEmpty() -> state.items.forEach { item ->
-                // 只有直录播那一栏能点进播放器；其余三栏的条目没有"下一步"，
-                // 给它们挂个不会响的 clickable 比不挂更坏（点了没反应看着像坏了）
+                // 能点进去的只有两栏：直录播进播放器、章节里的"节"展开它挂的内容。
+                // 其余栏的条目没有下一步，给它们挂个不会响的 clickable 比不挂更坏（点了没反应看着像坏了）
+                val live = tab == TAB_LIVE
+                val section = tab == TAB_CHAPTER && item.extra["leaf"] == "true"
                 Sheet(
                     modifier = Modifier
                         .padding(bottom = Gap.sm)
                         .then(
-                            if (tab == TAB_LIVE) Modifier.clickable { open("aiclass/play/${item.id}") }
-                            else Modifier
+                            when {
+                                live -> Modifier.clickable { open("aiclass/play/${item.id}") }
+                                section -> Modifier.clickable {
+                                    picked = if (picked?.id == item.id) null else item
+                                    sectionItems = null
+                                    sectionWhy = null
+                                }
+                                else -> Modifier
+                            }
                         ),
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
-                            Text(item.title, fontSize = 15.sp, color = ink.strong)
+                            // 章顶格、节缩进一格：层级就靠这一下看出来，不靠我们自己编号
+                            Text(
+                                text = item.title,
+                                fontSize = if (item.extra["level"] == "1") 16.sp else 15.sp,
+                                fontWeight = if (item.extra["level"] == "1") FontWeight.Medium else FontWeight.Normal,
+                                color = ink.strong,
+                                modifier = Modifier.padding(
+                                    start = if (item.extra["level"] == "1") 0.dp else Gap.md,
+                                ),
+                            )
                             if (item.sub.isNotBlank()) {
                                 Spacer(Modifier.height(Gap.xs))
-                                Text(item.sub, fontSize = 12.sp, color = ink.muted)
+                                Text(
+                                    text = item.sub,
+                                    fontSize = 12.sp,
+                                    color = ink.muted,
+                                    modifier = Modifier.padding(start = if (item.extra["level"] == "1") 0.dp else Gap.md),
+                                )
+                            }
+                            // 点开了就把这一节的内容直接长在它下面，不另开一屏
+                            if (section && picked?.id == item.id) {
+                                Spacer(Modifier.height(Gap.sm))
+                                when {
+                                    sectionItems == null && sectionWhy == null -> Text("正在问这一节…", fontSize = 12.sp, color = ink.faint)
+                                    sectionWhy != null -> Text(sectionWhy!!, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                                    sectionItems!!.isEmpty() -> Text(
+                                        "这一节没挂内容 —— 和章节树上那个 itemCnt=0 是对的上的。",
+                                        fontSize = 12.sp, color = ink.faint,
+                                    )
+                                    else -> sectionItems!!.forEach { s ->
+                                        Row(Modifier.fillMaxWidth().padding(vertical = Gap.xs)) {
+                                            Text(s.title, fontSize = 13.sp, color = ink.body, modifier = Modifier.weight(1f))
+                                            Text(s.right, fontSize = 10.sp, color = ink.ghost)
+                                        }
+                                    }
+                                }
                             }
                         }
                         if (item.right.isNotBlank()) {
@@ -260,9 +382,30 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
 
         Spacer(Modifier.height(Gap.md))
         PlaceholderNote(
-            "这八栏真去问 FIF（AI 课堂平台），第一次进要先过它的单点登录。报文形状都是我们自己盘出来的实样，10-20 又在 PC 上逐发打通过一遍。底下这排是横着滑的，「成员」「笔记」在最右边，不滑过去看不见。哪栏回空先别当接口坏了：课件、小组、其他资源这几发实测就是回空，服务端真没内容。",
+            "这九栏真去问 FIF（AI 课堂平台），第一次进要先过它的单点登录。报文形状都是我们自己盘出来的实样，" +
+                "10-20 又在 PC 上逐发打通过一遍、当天晚上把抓包响应逐条对过真值。" +
+                "底下这排是横着滑的，「成员」「笔记」「章节」在最右边，不滑过去看不见。" +
+                "哪栏回空先别当接口坏了：课件、小组、其他资源这几发实测就是回空，服务端真没内容。",
         )
     }
+}
+
+/** tab 与周次共用的小胶囊。 */
+@Composable
+private fun chip(text: String, picked: Boolean, onClick: () -> Unit) {
+    Text(
+        text = text,
+        fontSize = 12.sp,
+        fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
+        color = if (picked) MaterialTheme.colorScheme.primary else LocalInk.current.muted,
+        modifier = Modifier
+            .background(
+                if (picked) MaterialTheme.colorScheme.surfaceVariant else LocalInk.current.hairline,
+                Radius.pill,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = Gap.md, vertical = Gap.xs),
+    )
 }
 
 /**
@@ -339,6 +482,20 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(Gap.sm))
         }
+        // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
+        Sheet(modifier = Modifier.clickable { open("opencourse") }) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f)) {
+                    Text("公开课", fontSize = 15.sp, color = ink.strong)
+                    Spacer(Modifier.height(Gap.xs))
+                    Text("平台上开着的课，没选也能看目录", fontSize = 12.sp, color = ink.muted)
+                }
+                Text("去看", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.height(Gap.sm))
+        Hairline()
+        Spacer(Modifier.height(Gap.lg))
         courses.forEach { c ->
             Sheet(
                 modifier = Modifier
@@ -371,7 +528,7 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.md))
         PlaceholderNote(
             "课程列表走 FIF 自己的 myClassroom（抓包清点里 A 级实样那条），先要过它的单点登录。" +
-                "进课里有五栏：课件、直录播、考勤、上课、小组。" +
+                "进课里有九栏：课件、直录播、考勤、上课、小组、其他资源、成员、笔记、章节（最后四栏要往右滑）。" +
                 "**签到只能看，不能按** —— 提交签到那几发（扫码、点选、坐标上报）磁盘上一条报文都没有，" +
                 "不拿猜的字段填上去。",
         )

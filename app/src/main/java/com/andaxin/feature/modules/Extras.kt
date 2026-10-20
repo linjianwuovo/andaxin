@@ -54,12 +54,14 @@ private val MORE = listOf(
     "报修" to "repair",
     "待办事务" to "affair",
     "AI 课堂" to "aiclass",
+    "公开课" to "opencourse",
     "查寝签到" to "dorm",
     "考试成绩" to "exam",
     "素质学分" to "credit",
     "劳动教育" to "labor",
     "节假日离返校" to "holiday",
     "校园卡" to "card",
+    "班级群" to "group",
 )
 
 @Composable

@@ -22,6 +22,10 @@ import com.andaxin.data.capture.CaptureCreditDetail
 import com.andaxin.data.capture.CaptureCreditList
 import com.andaxin.data.capture.CaptureDorm
 import com.andaxin.data.capture.CaptureDormDetail
+import com.andaxin.data.capture.CaptureHandled
+import com.andaxin.data.capture.CaptureHome
+import com.andaxin.data.capture.CaptureIm
+import com.andaxin.data.capture.CaptureMyAffairs
 import com.andaxin.data.capture.CaptureExamDetail
 import com.andaxin.data.capture.CaptureExamList
 import com.andaxin.data.capture.CaptureHoliday
@@ -106,6 +110,16 @@ class AppGraph(val context: Context) {
     val school: School by lazy { School(session) }
 
     /**
+     * 首页下半屏那四条壳接口 + 版本对照 + 实习生标记。
+     * 字段是 10-20 晚把磁盘现存抓包按端点重扫、对着**响应真值**挑出来的
+     * （`lxtmp/_shape2.md`），取证与那三个只有看真值才定得下来的判断写在 `CaptureHome` 顶上。
+     */
+    val home by lazy { CaptureHome(school, session) }
+
+    /** 班级群与班内名单（`zhxy-new-scps/im/` 两条）。名单是别人的信息：只在本机看，不导出。 */
+    val im by lazy { CaptureIm(school) }
+
+    /**
      * 四路 feed 各自包一层开关：登录了走校方，没登录走占位（见 `data/capture/Sources.kt`）。
      * 已经接上真实报文的是消息、公告、全周课表、首页那几格、成绩、素质学分、待办事务、查寝。
      * 还欠的是本周跑量、报修、校园卡、AI 课堂、劳动教育、节假日离返校。
@@ -166,6 +180,17 @@ class AppGraph(val context: Context) {
     private val dormCapture by lazy { CaptureDorm(ywlz) }
 
     val affairList: ListSource by lazy { BriefSwitch(affairCapture, Affair.list, session) }
+    /**
+     * 「我的申请」「已办」两栏。10-20 晚从抓包里把两条口的参数形状对出来了
+     * （`lxtmp/_shape7.txt`），数组同样挂根节点 `rows`。
+     * 没登录时走 [com.andaxin.data.local.NeedLoginList] —— 这两栏编假单据比空白更坏。
+     */
+    val myAffairList: ListSource by lazy {
+        BriefSwitch(CaptureMyAffairs(ywlz), com.andaxin.data.local.NeedLoginList(), session)
+    }
+    val handledList: ListSource by lazy {
+        BriefSwitch(CaptureHandled(ywlz), com.andaxin.data.local.NeedLoginList(), session)
+    }
     val affairDetail: DetailSource by lazy {
         DetailSwitch(CaptureAffairDetail(school, ywlz, affairCapture), Affair.detail, session)
     }

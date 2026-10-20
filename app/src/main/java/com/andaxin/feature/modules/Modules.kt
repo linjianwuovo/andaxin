@@ -144,19 +144,7 @@ fun RepairFormScreen(onBack: () -> Unit) {
     BriefFormPage(title = "新建报修", source = graph.repairForm, onBack = onBack)
 }
 
-/* ── 待办事务 / 请假（ywlz，列表与审批链已接真报文；"发起请假"仍是零证据） ── */
-
-@Composable
-fun AffairListScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
-    BriefListPage(
-        title = "待办事务", source = graph.affairList, onBack = onBack, onRow = { open("affair/detail/$it") },
-        newLabel = "＋ 发起请假", onNew = { open("affair/form") },
-        note = "待办来自 ywlz 的 getRunTaskByUserCode（待办那个 tab）。校方那个 total 只数流程类、" +
-            "不数消息类，所以这里不按它翻页，一次拉完。",
-        empty = "现在没有待办。",
-    )
-}
+/* ── 待办事务 / 请假（ywlz，三个 tab 各自一条口；见 AffairTabsScreen.kt） ── */
 
 @Composable
 fun AffairDetailScreen(id: String, onBack: () -> Unit) {

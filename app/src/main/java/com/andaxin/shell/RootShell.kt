@@ -44,10 +44,12 @@ import com.andaxin.feature.sport.SportRecordsScreen
 import com.andaxin.feature.sport.SportRunScreen
 import com.andaxin.feature.modules.AffairDetailScreen
 import com.andaxin.feature.modules.AffairFormScreen
-import com.andaxin.feature.modules.AffairListScreen
+import com.andaxin.feature.modules.AffairTabsScreen
 import com.andaxin.feature.aiclass.AiClassListScreen
-import com.andaxin.feature.aiclass.CourseDetailScreen
+import com.andaxin.feature.aiclass.OpenCourseDetailScreen
+import com.andaxin.feature.aiclass.OpenCourseListScreen
 import com.andaxin.feature.modules.CampusCardScreen
+import com.andaxin.feature.modules.GroupScreen
 import com.andaxin.feature.modules.CardFlowsScreen
 import com.andaxin.feature.modules.CreditDetailScreen
 import com.andaxin.feature.modules.CreditListScreen
@@ -67,6 +69,7 @@ import com.andaxin.feature.modules.RepairFormScreen
 import com.andaxin.feature.modules.RepairListScreen
 import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
+import com.andaxin.feature.web.WebScreen
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.chrisbanes.haze.HazeState
@@ -130,6 +133,16 @@ object Route {
     const val AICLASS_DETAIL = "aiclass/detail/{id}"
     const val AICLASS_SCAN = "aiclass/scan"
     const val AICLASS_PLAY = "aiclass/play/{id}"
+    const val OPEN_COURSE = "opencourse"
+    const val OPEN_COURSE_DETAIL = "opencourse/detail/{id}"
+    const val GROUP = "group"
+
+    /**
+     * 自带 WebView。参数是 **URL-safe Base64**（无填充）后的地址：
+     * 校方那些直链里 `?`、`&`、`#` 全都会出现（`…#/portal/index` 就是井号路由），
+     * 原串塞进导航路径会把整条路由匹配切坏。编解码都在 `feature/web/WebScreen.kt` 里。
+     */
+    const val WEB = "web/{u}"
 }
 
 /** 详情路由都带一个 {id}，注册时统一走这个，省掉二十行重复。 */
@@ -200,7 +213,7 @@ fun RootShell() {
             RepairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
         composable(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.AFFAIR) { AffairListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        composable(Route.AFFAIR) { AffairTabsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         composable(Route.AFFAIR_DETAIL, arguments = listOf(idPattern())) { e ->
             AffairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
@@ -212,6 +225,19 @@ fun RootShell() {
         }
         composable(Route.AICLASS_PLAY, arguments = listOf(idPattern())) { e ->
             RecordPlayScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
+        }
+        composable(Route.OPEN_COURSE) {
+            OpenCourseListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() })
+        }
+        composable(Route.OPEN_COURSE_DETAIL, arguments = listOf(idPattern())) { e ->
+            OpenCourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
+        }
+        composable(Route.GROUP) { GroupScreen(onBack = { nav.popBackStack() }) }
+        composable(
+            Route.WEB,
+            arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
+        ) { e ->
+            WebScreen(e.arguments?.getString("u").orEmpty(), "", onBack = { nav.popBackStack() })
         }
     }
 }

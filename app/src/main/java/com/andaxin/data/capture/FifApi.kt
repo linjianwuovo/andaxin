@@ -197,14 +197,25 @@ class FifApi(private val fif: FifSession) {
      * 机位在 `videoClassMap[]` 里（`videoName` 就是"教师机位"这种）。
      * 样例 `liveRecordName=思想道德与法治_录播课_2026-09-22 16:45-17:30`。
      */
-    suspend fun liveRecords(courseId: String, teachClassId: String, termId: String): List<AiItem> {
+    suspend fun liveRecords(
+        courseId: String,
+        teachClassId: String,
+        termId: String,
+        /**
+         * 周次筛选。抓包里官方那几发这一栏**一直是空串**（= 不按周次筛），
+         * 所以传空是照实样发；传数字是我们自己加的用法，值域来自 `getWeekList` 的 `weekList`（实测 1..22）。
+         * 服务端认不认这个筛选，**装机时才知道** —— 要是选了某一周还回全量，
+         * 那这排 chip 就该撤掉，别让它看起来在筛。
+         */
+        weekNum: String = "",
+    ): List<AiItem> {
         val root = post(
             "$STTP/studycenter/mobile/course/getTeachHourLiveAndRecordList",
             listOf(
                 "roomType" to "0",
                 "liveStatus" to "0",
                 "termId" to termId,
-                "weekNum" to "",
+                "weekNum" to weekNum,
                 "dayNum" to "",
                 "timeRange" to "",
                 "courseId" to courseId,
@@ -455,6 +466,260 @@ class FifApi(private val fif: FifSession) {
         }
     }
 
+    /**
+     * 学期周次表。〔10-20 从抓包真值对出来：现存文件里命中 61 次〕
+     * `GET studycenter/mobile/course/liveAndRecord/getWeekList?identity=2` →
+     * `data{currentWeek:"8", weekList:[1,2,…]}` —— `weekList` 实测 22 个整数，就是这学期一共多少周；
+     * `currentWeek` 是"现在第几周"。
+     *
+     * `identity` 这个参数官方给的是 **2**（学生侧）。1 是什么身份没实样，不试。
+     * 这一发的用处只有给直录播那一栏当周次筛选的候选，别的都不动 ——
+     * 校方"现在是第几周"另有那条 `selectZcList.do`，两处都报到 8，但那是巧合不是同源。
+     */
+    suspend fun weekList(): Pair<Int, List<Int>> {
+        val root = get("$STTP/studycenter/mobile/course/liveAndRecord/getWeekList?identity=2")
+            ?: return 0 to emptyList()
+        val d = data(root)
+        val cur = d.optString("currentWeek").toIntOrNull() ?: 0
+        val arr = d.optJSONArray("weekList") ?: JSONArray()
+        return cur to (0 until arr.length()).map { arr.optInt(it, 0) }
+    }
+
+    /**
+     * 章节模式（这门课按章/节铺开的那棵树）。
+     *
+     * 【取证 · ③ 真 App 发出、我们抓到过响应真值】`GET studycenter/mobile/course/chapter/chapterMode?teachClassId=<19>`
+     * 回 `data.dataList[]`，每条是一个"教材"：`{id:"-1", materialId:"-1", materialName:自建章节, courseId:<32>, sourceType:"1", chapterList[]}`；
+     * `chapterList` 里是章，**下一层挂在 `children`**，键完全同名（18 个键两层一样）：
+     * `chapterId(32) chapterName level(1|2) sort parentId plateId(7) relCourseId(6)
+     * lockModeStatus unlock itemCnt learnedItemCnt isLearning isFinish visibilityType hasNewItem materialId publicTime`。
+     * 真值里那一门课是「第一章」下面挂「第一节」，两层 `itemCnt` 都是 **0** ——
+     * 这正好解释了为什么 `getSubsection*` 那五发全回空：这一节本来就没挂内容，不是接口坏了。
+     *
+     * 另一发 `chapter/newResourceChapter?teachClassId=` 命中 6 次、`data` 每次都是空串，
+     * 一条字段样本都没有，所以**没写**，别哪天照着名字猜一个解析出来。
+     */
+    suspend fun chapters(teachClassId: String): List<AiChapter> {
+        val root = get("$STTP/studycenter/mobile/course/chapter/chapterMode?teachClassId=${enc(teachClassId)}")
+            ?: return emptyList()
+        return objs(data(root).opt("dataList")).flatMap { material ->
+            objs(material.opt("chapterList")).flatMap { walkChapter(it, 1) }
+        }
+    }
+
+    /** 章在前、它的节紧跟在后面；递归只到 children，实测两层。 */
+    private fun walkChapter(o: JSONObject, level: Int): List<AiChapter> = buildList {
+        add(
+            AiChapter(
+                id = o.optString("chapterId"),
+                title = o.optString("chapterName").ifBlank { if (level == 1) "一章" else "一节" },
+                level = level,
+                items = o.optInt("itemCnt"),
+                learned = o.optInt("learnedItemCnt"),
+                finished = o.optString("isFinish") == "1",
+                locked = o.optString("unlock") == "0",
+                hasNew = o.optString("hasNewItem") == "1",
+                relCourseId = o.optString("relCourseId"),
+            )
+        )
+        objs(o.opt("children")).forEach { addAll(walkChapter(it, level + 1)) }
+    }
+
+    /**
+     * 某一节下面挂了哪些东西 —— 五发一起问。
+     *
+     * 【取证 · 只有一半】请求侧五发**都有实样**（参数一套不差，见下面每个调用），
+     * 响应侧**全部是 `data:""`**（`lxtmp/_sweep_形状.md` 那 19 条里就有这五条）。
+     * 所以：路径、参数名、参数怎么拼是硬的，**条目里的键名一个都没有依据**。
+     * 这里按候选键轮一遍，界面上拿到的每一条都带着"字段名未证实"这句话，
+     * 并且真一条都没拿到时说的是"这一节没挂内容"（跟 chapterMode 实测 `itemCnt=0` 一致），
+     * 而不是"接口坏了"。
+     */
+    suspend fun subsectionItems(
+        courseId: String,
+        teachClassId: String,
+        subsectionId: String,
+        termId: String,
+        memberUserId: String,
+    ): List<AiItem> {
+        val common = listOf("subsectionId" to subsectionId, "courseId" to courseId, "teachClass" to teachClassId)
+        val roots = listOf(
+            post("$STTP/studycenter/mobile/course/getSubsectionCourseWare", common + ("userId" to memberUserId)),
+            // 这一发是 GET，而且多一个 appId=akt（抓包里就这么带的）
+            get(
+                "$STTP/studycenter/mobile/course/getSubsectionMicroCourseList" +
+                    "?teachClass=${enc(teachClassId)}&courseId=${enc(courseId)}" +
+                    "&subsectionId=${enc(subsectionId)}&appId=akt"
+            ),
+            post("$STTP/studycenter/mobile/course/getSubsectionPaper", common),
+            post("$STTP/studycenter/mobile/course/getSubsectionTopicList", common),
+            post("$STTP/studycenter/mobile/course/getSubsectionLiveAndRecordIds", common + ("termId" to termId)),
+        )
+        return roots.filterNotNull().flatMap { root ->
+            // `data` 实测是空串；真给东西时不知道挂哪儿，所以数组、dataList、list 三种都试
+            (arrOrNull(root.opt("data")) ?: arr(data(root).opt("dataList")).takeIf { it.length() > 0 }
+                ?: arr(data(root).opt("list")))
+                .let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it) } }
+        }.mapIndexed { i, o ->
+            AiItem(
+                id = firstOf(o, "id", "resourceId", "coursewareId", "paperId", "topicId", "microCourseId"),
+                title = firstOf(
+                    o, "resourceName", "coursewareName", "paperName", "topicName",
+                    "microCourseName", "name", "title", "liveRecordName",
+                ).ifBlank { "第 ${i + 1} 项" },
+                sub = firstOf(o, "createTime", "pubTime", "teacherName", "fileType"),
+                right = "字段名未证实",
+            )
+        }
+    }
+
+    /**
+     * 公开课：热门 / 最新 / 全部，三条口同一个条目形状（真值 15 键完全一致）。
+     *
+     * 【取证 · ③ 响应真值】`GET studycenter/mobile/openCourse/{hotCourseList,newCourseList,homePageInfoAllCourse}`，
+     * 参数 `page`、`pageSize`（列表那两条要）、`schoolId=<19 位>`、`courseName=`（空串就是不过滤）。
+     * 回 `data.dataList[]`，条目 15 键，实测用到的：
+     * `courseId`（**注意：这是 4~5 位的短号**）、`courseUid`（32 位）、`courseName`、
+     * `teacherName`、`cover`（iplat-resource 或 minio 的直链）、`signCount:int`（报名人数）、
+     * `teachClassId`（19 位）、`type`（真值 7 / 9）、`typeName`/`teacherNames`/`isCollect`/`url` 实测都空。
+     *
+     * 那个 `courseUid` 才是 `adapt-app` 那三条口要的 `courseId` —— 交叉验证过：
+     * 热门第一条 `courseUid=807802d8…`，而 `adapt-app/courseApi/courseDetail?courseId=807802d8…` 回的课名一模一样。
+     * 拿短号 `courseId` 去问 adapt-app 是问不到的，这一条只有对真值才能发现。
+     */
+    suspend fun openCourses(
+        kind: String,
+        schoolId: String,
+        page: Int = 1,
+        pageSize: Int = 20,
+        courseName: String = "",
+    ): List<OpenCourse> {
+        val path = when (kind) {
+            "new" -> "newCourseList"
+            "all" -> "homePageInfoAllCourse"
+            else -> "hotCourseList"
+        }
+        val q = if (path == "homePageInfoAllCourse") {
+            "schoolId=${enc(schoolId)}&courseName=${enc(courseName)}"
+        } else {
+            "page=$page&pageSize=$pageSize&schoolId=${enc(schoolId)}&courseName=${enc(courseName)}"
+        }
+        val root = get("$STTP/studycenter/mobile/openCourse/$path?$q") ?: return emptyList()
+        return objs(data(root).opt("dataList")).map { openCourseOf(it) }
+    }
+
+    /**
+     * 公开课首页那几个栏目（实测 2 栏：栏名 + 栏里带的课）。
+     * `GET openCourse/customModuleList?schoolId=&courseName=` → `data.dataList[]`，
+     * 每条 `{moduleId, moduleName, sort, templateId, columnId, code:"mc_col_2", type, updateCycle,
+     * updateMethod, urlPrefix:null, isCommon, courseList[]}`，`courseList` 的条目形状跟上面完全一样。
+     */
+    suspend fun openModules(schoolId: String): List<Pair<String, List<OpenCourse>>> {
+        val root = get(
+            "$STTP/studycenter/mobile/openCourse/customModuleList" +
+                "?schoolId=${enc(schoolId)}&courseName="
+        ) ?: return emptyList()
+        return objs(data(root).opt("dataList")).map { m ->
+            m.optString("moduleName") to objs(m.opt("courseList")).map { openCourseOf(it) }
+        }.filter { it.first.isNotBlank() || it.second.isNotEmpty() }
+    }
+
+    private fun openCourseOf(o: JSONObject) = OpenCourse(
+        id = o.optString("courseUid").ifBlank { o.optString("courseId") },
+        shortId = o.optString("courseId"),
+        uid = o.optString("courseUid"),
+        name = o.optString("courseName"),
+        teacher = o.optString("teacherName"),
+        cover = o.optString("cover"),
+        signCount = o.optInt("signCount"),
+        teachClassId = o.optString("teachClassId"),
+        type = o.optString("type"),
+        schoolName = o.optString("schoolName"),
+    )
+
+    /**
+     * 公开课详情（`adapt-app` 那一族）。
+     *
+     * 【取证 · ③ 响应真值】`GET adapt-app/courseApi/courseDetail?courseId=<32 位 courseUid>`，
+     * 信封跟 studycenter 那族**不一样**：`status` 是**数字 1**、`message:"OK"`、还多一个根键 `jtzy:null`，
+     * `code` 是 null（`passed()` 只看 status，所以照过）。
+     * `data` 23 键，真用到的：`courseName courseCode(MTH101) subjectName(通识课) teacherId
+     * aimindName aimindId graphStatus:int courseMastery:int status:int imageUrl/courseCover2`；
+     * `courseDesc studentNumber validityDate token tripartiteUrl isReply personalStatus
+     * encryptionSchoolId ifShowRobot` 实测**全是 null** —— 所以这一屏不给"课程简介"，它没有。
+     */
+    suspend fun adaptDetail(courseUid: String): AdaptCourse? {
+        val root = get("$STTP/adapt-app/courseApi/courseDetail?courseId=${enc(courseUid)}") ?: return null
+        val d = data(root)
+        if (d.length() == 0) return null
+        return AdaptCourse(
+            id = d.optString("courseId"),
+            name = d.optString("courseName"),
+            code = d.optString("courseCode"),
+            subject = d.optString("subjectName"),
+            teacherId = d.optString("teacherId"),
+            cover = d.optString("courseCover2").ifBlank { d.optString("imageUrl") },
+            mastery = d.optInt("courseMastery"),
+            graph = d.optString("graphStatus"),
+        )
+    }
+
+    /**
+     * 公开课的章节与学习进度。
+     *
+     * 【取证 · ③ 响应真值】`GET adapt-app/courseApi/newCourseChapterList?courseId=<32 位>` →
+     * `data{targetNumber:int, studiedNumber:int, courseChapterDtoList[], quizDtoList:null}`，
+     * 章的条目 10 键：`chapterId(32) chapterName type:null chapterType(6 位数字) activityCount:int
+     * children[] targetNumber studiedNumber currentRate:null chapterDistinguish(1=章 2=节)`。
+     * 实测那一门课 `targetNumber=215`、`studiedNumber=0`，7 章、每章下面 5 节左右，
+     * 节上带的 `targetNumber`/`studiedNumber` 是这一节自己的数 —— 所以进度两层都能算。
+     * `currentRate` 实测是 null，别拿它当百分比显示。
+     */
+    suspend fun adaptChapters(courseUid: String): Pair<AdaptProgress, List<AiChapter>> {
+        val root = get("$STTP/adapt-app/courseApi/newCourseChapterList?courseId=${enc(courseUid)}")
+            ?: return AdaptProgress(0, 0) to emptyList()
+        val d = data(root)
+        val progress = AdaptProgress(d.optInt("studiedNumber"), d.optInt("targetNumber"))
+        val out = ArrayList<AiChapter>()
+        fun walk(o: JSONObject, level: Int) {
+            out += AiChapter(
+                id = o.optString("chapterId"),
+                // 章名实测长这样：「第1章 函数」「1.1 集合」，服务端已经带好前缀，我们不再加"第几节"
+                title = o.optString("chapterName").ifBlank { if (level == 1) "一章" else "一节" },
+                level = level,
+                items = o.optInt("targetNumber"),
+                learned = o.optInt("studiedNumber"),
+                finished = level > 1 && o.optInt("targetNumber") > 0 &&
+                    o.optInt("studiedNumber") >= o.optInt("targetNumber"),
+                activityCount = o.optInt("activityCount"),
+            )
+            objs(o.opt("children")).forEach { walk(it, level + 1) }
+        }
+        objs(d.opt("courseChapterDtoList")).forEach { walk(it, 1) }
+        return progress to out
+    }
+
+    /**
+     * 公开课的测验列表。
+     * 【取证 · ③】`GET adapt-app/courseApi/getQuizList?courseId=<32 位>` →
+     * `data{studiedNumber, targetNumber, courseChapterDtoList:null, quizDtoList:[]}` ——
+     * **实测那一发 `quizDtoList` 是空数组**，所以条目的键名一个都没验到。
+     * 这一发照样接：拿到空就明说"校方这条给了，但这一门课没有测验"，
+     * 拿到非空就走候选键，并明写"字段名未证实"。
+     */
+    suspend fun adaptQuizzes(courseUid: String): List<AiItem> {
+        val root = get("$STTP/adapt-app/courseApi/getQuizList?courseId=${enc(courseUid)}") ?: return emptyList()
+        val arr = data(root).optJSONArray("quizDtoList") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i) }.mapIndexed { k, o ->
+            AiItem(
+                id = firstOf(o, "id", "quizId", "paperId"),
+                title = firstOf(o, "name", "title", "quizName", "paperName").ifBlank { "测验 ${k + 1}" },
+                sub = firstOf(o, "startTime", "endTime", "createTime"),
+                right = "字段名未证实",
+            )
+        }
+    }
+
     /* ── 发请求与解析的小工具 ── */
 
     private suspend fun get(url: String): JSONObject? =
@@ -548,6 +813,58 @@ data class AiItem(
     val right: String = "",
     val extra: Map<String, String> = emptyMap(),
 )
+
+/**
+ * 章节树上的一层（章或节）。
+ *
+ * 同一形状服务两处，来源不同：AI 课堂那门课的 `chapterMode`（18 键那棵树），
+ * 和公开课的 `newCourseChapterList`（10 键那棵树）。两边的键名不一样但意思对得上，
+ * 所以这里只留**两边都给得出**的栏位：`items`/`learned` 在第一章里分别来自
+ * `itemCnt`/`learnedItemCnt`，在第二章里来自 `targetNumber`/`studiedNumber`。
+ * `locked`/`hasNew` 只有 chapterMode 那侧有，公开课那侧给的是 `activityCount`。
+ */
+data class AiChapter(
+    val id: String,
+    val title: String,
+    val level: Int,
+    val items: Int = 0,
+    val learned: Int = 0,
+    val finished: Boolean = false,
+    val locked: Boolean = false,
+    val hasNew: Boolean = false,
+    val activityCount: Int = 0,
+    /** chapterMode 里那个 6 位的 `relCourseId`（校外资源课的号），公开课那侧没有。 */
+    val relCourseId: String = "",
+)
+
+/** 公开课列表里的一门课。`uid`(32) 是给 adapt-app 那三条口用的，`shortId` 是校方自己那条短号。 */
+data class OpenCourse(
+    val id: String,
+    val shortId: String,
+    val uid: String,
+    val name: String,
+    val teacher: String,
+    val cover: String,
+    val signCount: Int,
+    val teachClassId: String,
+    val type: String,
+    val schoolName: String,
+)
+
+/** 公开课详情。`courseDesc` 实测恒 null，所以这里没有"简介"这一栏。 */
+data class AdaptCourse(
+    val id: String,
+    val name: String,
+    val code: String,
+    val subject: String,
+    val teacherId: String,
+    val cover: String,
+    val mastery: Int,
+    val graph: String,
+)
+
+/** 整门课学了多少个点位（真值：`studiedNumber=0 / targetNumber=215`）。 */
+data class AdaptProgress(val studied: Int, val target: Int)
 
 /**
  * 一门课的签到情况。四个分类的键名就是服务端那四个拼音（`chuqin/chidao/kuangke/qingjia`），

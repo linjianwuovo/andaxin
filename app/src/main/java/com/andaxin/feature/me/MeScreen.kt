@@ -56,16 +56,18 @@ private class Entry(val title: String, val note: String, val route: String? = nu
 private val ENTRIES = listOf(
     Entry("运动", "开始 · 路线规划", route = "sport"),
     Entry("运动记录", "记录 / 明细 / 维护", route = "sport/records"),
-    Entry("更多功能", "九块入口", route = "more"),
-    Entry("待办事务", "请假与销假", route = "affair"),
+    Entry("更多功能", "十一块入口", route = "more"),
+    Entry("待办事务", "待办 · 我的申请 · 已办", route = "affair"),
     Entry("报修", "单据与新建", route = "repair"),
     Entry("AI 课堂", "课程与签到", route = "aiclass"),
+    Entry("公开课", "热门 · 最新 · 章节进度", route = "opencourse"),
     Entry("查寝签到", "记录与详情", route = "dorm"),
-    Entry("校园卡", "余额未接", route = "card"),
+    Entry("校园卡", "余额与流水", route = "card"),
+    Entry("班级群", "班内名单", route = "group"),
     Entry("考试成绩", "列表与明细", route = "exam"),
     Entry("素质学分", "五育分类", route = "credit"),
     Entry("劳动教育", "工时认定", route = "labor"),
-    Entry("节假日离返校", "登记未接", route = "holiday"),
+    Entry("节假日离返校", "记录可看 · 登记没接", route = "holiday"),
     Entry("主题", "材质与玻璃", route = "theme"),
     Entry("关于", BuildConfig.VERSION_NAME, route = "about"),
 )
@@ -81,8 +83,14 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     var armedToQuit by remember { mutableStateOf(false) }
     // 学院/专业/班级/辅导员从校方拉，只读两条接口；拉不到就退回"校园账号 xxx"那行
     var profile by remember { mutableStateOf<com.andaxin.data.capture.Profile?>(null) }
+    // 校方那条 checkIsInternStu 只回一个布尔（真值：`data{isInternStu:false}`），
+    // 所以这一行就照它说"是/不是"，不推断它背后的含义（什么算实习生，服务端没给过口径）。
+    var intern by remember { mutableStateOf<Boolean?>(null) }
     androidx.compose.runtime.LaunchedEffect(session.loggedIn) {
-        if (session.loggedIn) graph.profile.load().onSuccess { profile = it }
+        if (session.loggedIn) {
+            graph.profile.load().onSuccess { profile = it }
+            graph.home.intern().onSuccess { intern = it }
+        }
     }
 
     Column(
@@ -121,8 +129,10 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 Text(
                     text = when {
                         session.loggedIn && profile != null ->
-                            "${profile!!.college} · ${profile!!.major} · ${profile!!.className}"
-                        session.loggedIn -> "校园账号 ${session.account}"
+                            "${profile!!.college} · ${profile!!.major} · ${profile!!.className}" +
+                                (intern?.let { " · ${if (it) "实习生" else "非实习生"}" } ?: "")
+                        session.loggedIn -> "校园账号 ${session.account}" +
+                                (intern?.let { " · ${if (it) "实习生" else "非实习生"}" } ?: "")
                         else -> "登录后这一格会换成你的名字和学号"
                     },
                     fontSize = 12.sp,
