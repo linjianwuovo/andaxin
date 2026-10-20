@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,6 +40,7 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.Hairline
+import com.andaxin.shell.Labeled
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
@@ -240,7 +242,67 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         Spacer(Modifier.height(Gap.xl))
         SectionTitle("上课提醒")
         ReminderCard()
+        Spacer(Modifier.height(Gap.xl))
+        SectionTitle("登录口令")
+        PasswordCard()
         Spacer(Modifier.height(Gap.xxl))
+    }
+}
+
+/**
+ * 「记住密码」这一格的状态与出口。
+ *
+ * 三件事得让他看见，不然这一格只是个开关：
+ * ① 存的是 Keystore 加密后的密文，不是口令本身，而且这把密钥**不可导出**；
+ * ② 记着它，到期或被顶号时 App 才能自己重登 —— 校方那条 `refresh.do` 服务端回 404，
+ *    自动续期只有"拿口令重登"这一条路；
+ * ③ 反过来它会把别的客户端挤下线（校方一个账号只留一个活会话），所以这里给一颗明确的「忘掉」。
+ */
+@Composable
+private fun PasswordCard() {
+    val graph = LocalAppGraph.current
+    val ink = LocalInk.current
+    val scope = rememberCoroutineScope()
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    // 光看"有没有那份密文"不够：密钥被系统清过（改指纹、恢复出厂）时密文还在但解不开，
+    // 那种情况必须说"要重新输一次"，不然他以为记着、到期时却发现记的是废的。
+    var usable by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(session.remembered) {
+        // 解一次才算数：`vault.usable` 里要读 DataStore（挂起），所以整段放在协程里
+        usable = if (!session.remembered) {
+            null
+        } else {
+            val blob = graph.session.passwordBlob()
+            blob != null && graph.vault.usable(blob)
+        }
+    }
+    Sheet {
+        Labeled(
+            label = "本机状态",
+            value = when {
+                !session.remembered -> "没记住"
+                usable == true -> "已记住，可以自动重登"
+                usable == false -> "存的那份解不开了，重新登一次就好"
+                else -> "在查…"
+            },
+        )
+        Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
+        Text(
+            "口令用系统 Keystore 里一把不可导出的密钥加密后只存本机，不进日志、不备份、不上传。" +
+                "到期或被别的客户端顶号时，App 会用它自动重登一次 —— 那会把对方挤下线。",
+            fontSize = 11.sp, color = ink.faint, lineHeight = 15.sp,
+        )
+        if (session.remembered) {
+            Spacer(Modifier.height(Gap.md))
+            Text(
+                text = "忘掉口令",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .clickable { scope.launch { graph.session.forgetPassword() } }
+                    .padding(vertical = Gap.xs),
+            )
+        }
     }
 }
 
