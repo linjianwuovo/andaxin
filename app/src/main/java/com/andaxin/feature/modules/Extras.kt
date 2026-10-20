@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -281,7 +282,26 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                 )
             }
             Spacer(Modifier.width(Gap.md))
-            top.yukonga.miuix.kmp.basic.Switch(checked = rememberPw, onCheckedChange = { rememberPw = it })
+            /*
+             * 这颗勾**不用 Miuix 的 Switch**。装机回读发现"勾着没存上"，
+             * 而两个分支都会写盘（不勾也要显式清掉），所以只要 `rememberPw` 是 true
+             * 就一定有键 —— 键完全不存在，说明进来的那次 `rememberPw` 是 false。
+             * 默认值是 true，中间只可能有一次我没预期的回调把它翻掉。
+             * 与其去猜第三方组件在组合期会不会自己发一次 onCheckedChange，
+             * 不如把这一格换成**只有我们自己那下 clickable 才改状态**的样子。
+             */
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.hairline, Radius.field)
+                    .clickable { rememberPw = !rememberPw },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (rememberPw) "✓" else "",
+                    fontSize = 16.sp, color = Palette.Cream, fontWeight = FontWeight.Medium,
+                )
+            }
         }
         Spacer(Modifier.height(Gap.lg))
         MiuixButton(
@@ -293,10 +313,28 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                     busy = false
                     r.fold(
                         onSuccess = {
+                            /*
+                             * **顺序不能反**：口令那两个键要先写，`session.save()` 放最后。
+                             * `save()` 一落 token，外层 Gate 立刻把这一屏拆出组合，
+                             * 而 `scope` 是 `rememberCoroutineScope()` —— 组合一走它的协程就取消，
+                             * 排在后面的那两次 `setText` 一个都不会执行。
+                             * 装机回读的表现就是：登录成功、首页全是真数据，
+                             * 可「我的」那一格说"没记住"，而且连"存不下的原因"那个键都不存在
+                             * （两个分支都没跑到，才是什么键都不留）。
+                             */
+                            if (rememberPw) {
+                                val sealed = graph.vault.seal(secret)
+                                graph.session.rememberPassword(sealed.getOrNull())
+                                graph.session.rememberPasswordWhy(
+                                    sealed.exceptionOrNull()?.let {
+                                        "${it.javaClass.simpleName}: ${it.message?.take(90)}"
+                                    },
+                                )
+                            } else {
+                                graph.session.rememberPassword(null)
+                                graph.session.rememberPasswordWhy(null)
+                            }
                             graph.session.save(it)
-                            // 勾了就存密文，没勾就把旧的清掉 —— 别留一份"他以为没记住"的钥匙在机器里
-                            if (rememberPw) graph.session.rememberPassword(graph.vault.seal(secret))
-                            else graph.session.forgetPassword()
                             onDone()
                         },
                         onFailure = { note = it.message ?: "登录失败" },

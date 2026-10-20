@@ -23,6 +23,8 @@ data class Session(
     val dorm: String = "",
     /** 本机存了加密后的登录口令。能不能解开是另一回事：解不开时 `TokenKeepAlive` 会把它清掉并请人重输。 */
     val remembered: Boolean = false,
+    /** 上一次"记住密码"为什么没成（Keystore 报错原话）。成了就是 null。 */
+    val rememberedWhy: String = "", 
 )
 
 /**
@@ -50,6 +52,7 @@ class SessionStore(private val store: Store) {
             userName = store.peekString(p, KEY_USER_NAME).orEmpty(),
             dorm = store.peekString(p, KEY_DORM).orEmpty(),
             remembered = !store.peekString(p, KEY_PW_BLOB).isNullOrBlank(),
+            rememberedWhy = store.peekString(p, KEY_PW_WHY).orEmpty(),
         )
     }
 
@@ -115,7 +118,13 @@ class SessionStore(private val store: Store) {
     suspend fun accountNow(): String? =
         store.peekString(store.snapshot(), Store.KEY_USER_CODE)?.takeIf { it.isNotBlank() }
 
-    suspend fun forgetPassword() = store.setText(KEY_PW_BLOB, null)
+    suspend fun forgetPassword() {
+        store.setText(KEY_PW_BLOB, null)
+        store.setText(KEY_PW_WHY, null)
+    }
+
+    /** 存不下的原因也要落盘：这一格下次进来还得能说出为什么。 */
+    suspend fun rememberPasswordWhy(why: String?) = store.setText(KEY_PW_WHY, why)
 
     /**
      * 清登录态。
@@ -144,5 +153,6 @@ class SessionStore(private val store: Store) {
         const val KEY_USER_TYPE = "auth.userType"
         const val KEY_EXPIRES_AT = "auth.expiresAt"
         const val KEY_PW_BLOB = "auth.pwBlob"
+        const val KEY_PW_WHY = "auth.pwWhy"
     }
 }

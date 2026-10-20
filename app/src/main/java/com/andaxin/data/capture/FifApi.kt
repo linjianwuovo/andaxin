@@ -418,7 +418,13 @@ class FifApi(private val fif: FifSession) {
                 AiItem(
                     id = r.optString("id"),
                     title = label.ifBlank { "一节课" },
-                    sub = "${utc(r.optString("startTime"))} – ${utc(r.optString("endTime"))}",
+                    // 正在上的那一节服务端还没写 endTime，`optString` 会给出字面 "null"，
+                    // 装机读屏就印成「10-20 15:39 – null」。空和 "null" 都算没下课。
+                    sub = utc(r.optString("startTime")) + " – " + (
+                        r.optString("endTime")
+                            .takeIf { it.isNotBlank() && it != "null" }
+                            ?.let { utc(it) } ?: "还没下课"
+                    ),
                     right = when (r.optInt("finishStatus", -1)) {
                         1 -> "已完成"
                         else -> ""
