@@ -3,6 +3,7 @@ package com.andaxin.state
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andaxin.core.schedule.Periods
 import com.andaxin.data.Dashboard
 import com.andaxin.data.DashboardFeed
 import com.andaxin.data.MessageFeed
@@ -51,10 +52,13 @@ class HomeModel(
         viewModelScope.launch {
             val dash = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
             val slots = try { timetable.week(0) } catch (e: Exception) { Result.failure(e) }
+            val list = slots.getOrDefault(emptyList())
             _state.value = HomeUiState(
                 firstLoad = false,
                 data = dash.getOrNull() ?: _state.value.data,
-                today = slots.getOrDefault(emptyList()).filter { it.day == 1 },
+                // 今天星期几由 Periods 说，跟周网格、首页"几节课"同一张表 —— 这儿原来写死 ==1，
+                // 周一看着对，周二起就把周一的课当今天显示（10-20 上午装机读屏撞中的就是这个）。
+                today = list.filter { it.day == Periods.today() },
                 error = (dash.exceptionOrNull() ?: slots.exceptionOrNull())?.message,
             )
         }

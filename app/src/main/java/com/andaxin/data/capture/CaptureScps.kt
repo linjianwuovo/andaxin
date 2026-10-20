@@ -157,6 +157,13 @@ class CaptureNotices(private val school: School) : NoticeFeed {
  * ② `zc` 不给 → `flag:false`；`xn`/`xq` 写法不对 → 直接 HTTP 500（不是 400，别以为是服务器挂了）。
  * ③ 每天那条 `kcVoList` 里都混着一条 `sort=0`、`kcmc` 为空的占位行，不滤掉界面上就多一格空课。
  *
+ * ④ **同一天里同一门课会重复出现好几条，只有 `sort` 不一样** —— 这条是 10-20 上午现打撞出来的：
+ * 拿自己账号那把活 token 打第 8 周，`rows` 里非空行 **24 条**，去掉重复只剩 **11 门**
+ * （周一 2→1、周五 6→2；`lxtmp/timetable_raw.json` 是那一发的原样）。
+ * 重复行的 `kcmc/ksjc/jsjc/jsmc/jxbh` 逐字相同，所以不是"同一门课上两遍"，是服务端自己发的重。
+ * 不在这儿合掉的话：首页"今天几节课"直接翻倍（那天显示 6 节，其实 3 节），
+ * 今日课程那一列表同一门课连着排两格 —— 周网格反倒看不出来，因为它每格只取第一条。
+ *
  * 还有：**校方这份数据里没有教师**。`jsmc` 是教室名称不是老师（我一开始以为是老师），
  * 课名后面那个 `mc` 是课程类别（通识课/学科基础课）。所以真数据下教师那一行是空的，
  * 界面得自己让开，别拿课程类别冒充老师名字填进去。
@@ -182,18 +189,23 @@ class CaptureTimetable(private val school: School) : TimetableFeed {
                         val day = days.getJSONObject(i)
                         val weekday = day.optInt("xq", i + 1)
                         val courses = day.optJSONArray("kcVoList") ?: JSONArray()
+                        val seen = HashSet<Int>()
                         for (k in 0 until courses.length()) {
                             val c = courses.getJSONObject(k)
                             val name = c.optString("kcmc")
                             if (name.isBlank()) continue          // 每天那条 sort=0 的空占位行
                             val start = c.optString("ksjc").toIntOrNull() ?: continue
                             val end = c.optString("jsjc").toIntOrNull() ?: start
+                            val room = c.optString("jsmc")
+                            val klass = c.optString("jxbh").ifBlank { c.optString("kcdm") }
+                            // 见上面第 ④ 条：同一天里除 sort 外全同的行只留第一条
+                            if (!seen.add(hashOf(name, start, end, room, klass))) continue
                             add(
                                 TimetableSlot(
-                                    courseId = c.optString("jxbh").ifBlank { c.optString("kcdm") },
+                                    courseId = klass,
                                     course = name,
                                     teacher = "",                 // 校方这份数据里没有教师
-                                    room = c.optString("jsmc"),
+                                    room = room,
                                     day = weekday,
                                     startPeriod = start,
                                     periodCount = (end - start + 1).coerceAtLeast(1),
@@ -201,7 +213,11 @@ class CaptureTimetable(private val school: School) : TimetableFeed {
                             )
                         }
                     }
-                }
+                }.sortedWith(compareBy({ it.day }, { it.startPeriod }, { -it.periodCount }))
             }
     }
+
+    /** 一条课的"身份"压成一个 int，只用来当天去重，不落盘、不外传。 */
+    private fun hashOf(name: String, start: Int, end: Int, room: String, klass: String): Int =
+        (((((name.hashCode() * 31 + start) * 31 + end) * 31 + room.hashCode()) * 31) + klass.hashCode())
 }

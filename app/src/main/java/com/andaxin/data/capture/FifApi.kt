@@ -19,8 +19,11 @@ import org.json.JSONObject
  *    `data.groupList`（组员）、`data.pages`（课件逐页）。只钻一种就会静默拿到空，
  *    界面上看着像"这门课没内容"。
  *
- * 10-20 凌晨这一版**一次都没现打过**：SSO 第一步要校内 access_token，本机那几把夜里被校方清了。
- * 所以这里每一发都还欠一次自己的现打，补一次改一处标注。
+ * 10-20 上午这一版**已经在 PC 上拿活 token 逐发现打过一遍**（`lxtmp/adx_probe_fif2.py`、`fif3.py`）。
+ * 打通并回到真数据的：学期、`myClassroom`(15 门)、直录播(高数 76 条 / 心理 8 条)、
+ * 签到统计、签到记录、`getOneCourse`、`getFirstPageOfCourse`。
+ * 打通但服务端回空的：课件(`data:null`)、小组(`data:[]`) —— 回空是真的没内容，不是接口写错。
+ * 下面每条注释里"实测"指的就是这一轮。
  */
 class FifApi(private val fif: FifSession) {
 
@@ -272,6 +275,92 @@ class FifApi(private val fif: FifSession) {
     }
 
     /**
+     * 签到统计 + 签到记录。〔C20 + C21〕两发 GET，参数一模一样：
+     * `id=<8 位短学号>` + `courseId=<19 位班号>`。
+     *
+     * **这里的 `courseId` 装的是 19 位那个班号，不是 32 位 courseId** —— 清点表 C19/C20/C21 三发
+     * 都记成 `courseId:str(19)`。签到这一族跟别处反着来，照别处的习惯填 32 位就是一直回空。
+     *
+     * 【取证】两条都有实样：C20 抓到 5 次、回 `data{}` 五个整数
+     * `total=7 chidao=0 chuqin=7 kuangke=0 qingjia=0`；C21 抓到 5 次、
+     * 数组挂 `data.dataList[] len=7`，条目 4 键 `signName="2026.10.08" signTime state:int=0 signId:int`。
+     *
+     * 10-20 现打到的真值：高等数学 `total=10 chuqin=9 qingjia=1 chidao=0 kuangke=0`，
+     * 记录 10 条、`state` 只出现 0 和 2；思想道德与法治 3 条全 0；心理健康 1 条 0。
+     * 拿这两发对账能推出 0=出勤、2=请假，但那是**一门课的一次巧合**，服务端没给过枚举表，
+     * 所以 `state` 这一栏**不做显示**，只把五个数摆出来 —— 万一哪天 1 是迟到，
+     * 我按猜的枚举标出来的就是错的话。
+     *
+     * 另一件值得记的：`signName` 和 `signTime` 可以差很远（实样 `signName="2026.08.27"` 而
+     * `signTime="2026.10.13 15:45:52"`）。所以那个时间不能叫"签到时间"，它是这条记录被写下的时间，
+     * 补签/改状态都会挪它。界面上副标题只放原样字符串，不写"签于"。
+     */
+    suspend fun attendance(shortStudentId: String, teachClassId: String): AiAttendance {
+        val q = "?id=${enc(shortStudentId)}&courseId=${enc(teachClassId)}"
+        val counts = get("$STTP/coursecenter-interaction/sign/getSignStateNumber$q")?.optJSONObject("data")
+        val num: (String) -> Int = { k -> counts?.optInt(k, 0) ?: 0 }
+        val list = get("$STTP/coursecenter-interaction/sign/getStuSignList$q")
+        val records = objs(data(list ?: JSONObject()).opt("dataList")).mapIndexed { i, o ->
+            AiItem(
+                id = o.optString("signId").ifBlank { i.toString() },
+                title = o.optString("signName").ifBlank { "第 ${i + 1} 次签到" },
+                // 服务端给的时间串里夹着 \n 和 \t（"2026.10.08\n\t\t08:16:14"），原样显示会撑破一行
+                sub = o.optString("signTime").replace(Regex("\\s+"), " ").trim(),
+            )
+        }
+        return AiAttendance(
+            total = num("total"),
+            present = num("chuqin"),
+            late = num("chidao"),
+            absent = num("kuangke"),
+            leave = num("qingjia"),
+            records = records,
+            evidenced = counts != null,
+        )
+    }
+
+    /**
+     * 上课记录（这门课开过哪几节、每节几点到几点）。〔C3〕
+     *
+     * 【取证 · ② 10-20 现打到的】POST 五键，**服务端那个键名就是拼错的 `studnetId`**（不是 studentId），
+     * 里面装的还是 32 位成员 id；`courseId` 这一发要的是 19 位班号（跟 C11 那个 32 位的不是一回事）。
+     * 回的是 `data[]` **按天分组**，实测高等数学 5 天、心理健康 1 天、没开过课的 0 天：
+     * `{dayTime:"10月19日 星期一", groupId:null, microGroupId:null, courseRecords:[…]}`，
+     * 条目里真用到的键：`id(32) coursewareId:null coursewareName startTime endTime finishStatus:int=1`，
+     * 其余 `weikeIds/paperIds/quickAnswerIds/voteIds/discussIds/teacherName/yearMonth/fromType`
+     * **实测全是 null** —— 所以这一栏只报"哪天、几点到几点、完没完"，不装作知道那节课有哪些互动。
+     *
+     * 时间是 `2026-10-19T00:23:40.000+00:00` 这种 **UTC 带偏移**的串，直接截字符串会差八小时，
+     * 必须按 Instant 解析再转本机时区。
+     */
+    suspend fun courseRecords(teachClassId: String, termId: String, memberUserId: String): List<AiItem> {
+        val root = post(
+            "$STTP/coursecenter-interaction/courseRecord/getFirstPageOfCourse",
+            listOf(
+                "teachClassId" to teachClassId,
+                "courseId" to teachClassId,
+                "pageNum" to "1",
+                "termId" to termId,
+                "studnetId" to memberUserId,
+            ),
+        ) ?: return emptyList()
+        return objs(root.opt("data")).flatMap { day ->
+            val label = day.optString("dayTime")
+            objs(day.opt("courseRecords")).map { r ->
+                AiItem(
+                    id = r.optString("id"),
+                    title = label.ifBlank { "一节课" },
+                    sub = "${utc(r.optString("startTime"))} – ${utc(r.optString("endTime"))}",
+                    right = when (r.optInt("finishStatus", -1)) {
+                        1 -> "已完成"
+                        else -> ""
+                    },
+                )
+            }
+        }
+    }
+
+    /**
      * 未读数角标。〔B4〕POST 空表单，200×36 次，信封是
      * `{data:int, status:int=1, message:"ok", success:true}` ——
      * **这一发 `status` 是数字 1 才算过**，跟别处那个 `"success"` 字符串不一样。
@@ -341,6 +430,19 @@ class FifApi(private val fif: FifSession) {
             bytes > 1L shl 20 -> "%.0f MB".format(bytes / 1048576.0)
             else -> "%.0f KB".format(bytes / 1024.0)
         }
+
+        /**
+         * `2026-10-19T00:23:40.000+00:00` → 本机时区的 `10-19 08:23`。
+         * 解不开就原样给回去 —— 宁可看见一串陌生的 ISO，也别看见一个空的时间段。
+         */
+        fun utc(s: String): String = runCatching {
+            java.time.ZonedDateTime.parse(s)
+                .withZoneSameInstant(java.time.ZoneId.systemDefault())
+                .format(HHMM)
+        }.getOrDefault(s)
+
+        val HHMM: java.time.format.DateTimeFormatter =
+            java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
     }
 }
 
@@ -371,4 +473,21 @@ data class AiItem(
     val sub: String = "",
     val right: String = "",
     val extra: Map<String, String> = emptyMap(),
+)
+
+/**
+ * 一门课的签到情况。四个分类的键名就是服务端那四个拼音（`chuqin/chidao/kuangke/qingjia`），
+ * 不是我翻译出来的。
+ *
+ * `evidenced=false` 表示统计那一发根本没回对象（没登录、班号不对、或它挂了），
+ * 这时候五个数全是 0 —— 界面必须说"没拿到"，不能说"一次都没签"。这两件事差很远。
+ */
+data class AiAttendance(
+    val total: Int = 0,
+    val present: Int = 0,
+    val late: Int = 0,
+    val absent: Int = 0,
+    val leave: Int = 0,
+    val records: List<AiItem> = emptyList(),
+    val evidenced: Boolean = false,
 )
