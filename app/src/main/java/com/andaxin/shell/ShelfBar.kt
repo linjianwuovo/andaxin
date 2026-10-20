@@ -138,7 +138,12 @@ fun ShelfBar(
      * 比它服务的每一屏都抢眼。和 `TimetableScreen.courseInk` 是同一个坑，那处已修，这处漏了。
      */
     val isDark = ink.dark
-    val surface = Palette.Paper.copy(alpha = if (isDark) 0.16f else 0.34f)
+    /*
+     * 白天这一层是"纸色盖在纸上"，等于不铺东西，栏子靠模糊和描边浮起来；
+     * 夜里同一层奶油色就不是装饰了 —— 0.16 实测把栏底抬到 #33363A（页面是 #0E1116），
+     * 还是整屏最亮的一块。压到 0.12 是 #25282D：分得出来，不抢。
+     */
+    val surface = Palette.Paper.copy(alpha = if (isDark) 0.12f else 0.34f)
     // 毛玻璃那一档的整块底色：白天是奶油，夜里必须连底色一起换 ——
     // 只调 alpha 的白纱在黑底上还是一层白纱。
     val frostTint = if (isDark) Palette.NightCream.copy(alpha = 0.66f) else Palette.Paper.copy(alpha = 0.58f)

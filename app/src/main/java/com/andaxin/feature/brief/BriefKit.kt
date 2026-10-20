@@ -184,7 +184,9 @@ fun BriefListPage(
     ScaffoldPage(title = title, onBack = onBack) {
         if (state.loading && state.rows.isEmpty()) {
             Text("正在拉…", fontSize = Type.meta, color = ink.faint)
-        } else if (state.rows.isEmpty() && !state.loading) {
+        } else if (state.rows.isEmpty() && !state.loading && state.error == null) {
+            // 加了 `error == null` 这一条：拉失败时这里以前会**同时**写"暂时没有条目。"
+            // 和底下一句红色原因 —— 空列表是没问成的结果，不是"校方说没有"（同一屏自相矛盾）。
             Text(empty, fontSize = Type.body, color = ink.faint)
         }
         // 「新建」那一行放在**列表上面**。它原来画在所有行的下面 —— 待办那一屏有 21 行，

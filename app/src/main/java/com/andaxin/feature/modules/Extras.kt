@@ -136,22 +136,21 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(Gap.lg))
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            Box(
-                Modifier.weight(1f).height(46.dp).background(ink.offFill, Radius.field)
-                    .pressClick { open("card/flows") }.padding(Gap.md),
-                contentAlignment = Alignment.Center,
-            ) { Text("流水", fontSize = Type.body, color = ink.body) }
-            // 挂失是校方那条写接口，没批之前不能点：给它一个"按不动"的样子，
-            // 比挂一颗点了没反应的按钮诚实 —— 也免得他真去按。
-            Box(
-                Modifier.weight(1f).height(46.dp).background(ink.hairline, Radius.field).padding(Gap.md),
-                contentAlignment = Alignment.Center,
-            ) { Text("挂失", fontSize = Type.body, color = ink.ghost) }
-        }
+        /*
+         * 原来这一行是「流水 | 挂失」两颗并排，右边那颗画成按不动的样子（灰底、ghost 字色、没有回调）。
+         * 10-21 凌晨深色扫屏时把它摘了：**一颗永远按不动的按钮仍然是一颗按钮** ——
+         * 它有按钮的形状、占按钮的位置，人会去按它，按完发现没反应。
+         * 而它想说的全部信息，下面那行小字已经说得更清楚了。
+         * 「点了没用的主按钮比少一颗按钮坏得多」这条规矩，对哑按钮同样成立。
+         */
+        Box(
+            Modifier.fillMaxWidth().height(46.dp).background(ink.offFill, Radius.field)
+                .pressClick { open("card/flows") }.padding(Gap.md),
+            contentAlignment = Alignment.Center,
+        ) { Text("流水", fontSize = Type.body, color = ink.body) }
         Spacer(Modifier.height(Gap.sm))
         Text(
-            text = "挂失要找学生活动中心，App 里按不了。",
+            text = "挂失要去学生活动中心，App 里办不了。",
             fontSize = Type.micro,
             color = ink.faint,
         )
