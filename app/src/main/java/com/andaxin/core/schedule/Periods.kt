@@ -56,4 +56,37 @@ object Periods {
         START_MINUTES.forEachIndexed { i, start -> if (minute >= start) p = i + 1 }
         return p
     }
+
+    /** 第 [period] 节（1 起）的上课时刻，"HH:mm"。越界回 null，调用方自己决定怎么兜。 */
+    fun startAt(period: Int): String? = START_AT.getOrNull(period - 1)
+
+    /** 本周（`offset=0`）或第 offset 周后的那一周，周一 00:00:00.000。 */
+    fun weekMonday(now: Calendar = Calendar.getInstance(), offset: Int = 0): Calendar {
+        val monday = (now.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        // today() 是"周一起 1..7"，减掉它就是这一周的第 0 天。周日是 7，所以要退 6 天，
+        // 不能按 Calendar 自己的 DAY_OF_WEEK 算 —— 那个的周起始跟着 locale 变。
+        monday.add(Calendar.DAY_OF_MONTH, -(today(now) - 1) + offset * 7)
+        return monday
+    }
+
+    /**
+     * 第 [day] 天（1=周一）第 [period] 节**开始的那一刻**。
+     *
+     * 算不出来（节次越界）回 null。注意这个时间可能已经过去 —— 是否在未来由调用方判，
+     * 因为"要不要跳过已经上完的课"这件事，课表那一屏和提醒那一屏的答案不一样。
+     */
+    fun slotStart(day: Int, period: Int, now: Calendar = Calendar.getInstance(), weekOffset: Int = 0): Calendar? {
+        val at = startAt(period) ?: return null
+        if (day !in 1..7) return null
+        return weekMonday(now, weekOffset).apply {
+            add(Calendar.DAY_OF_MONTH, day - 1)
+            set(Calendar.HOUR_OF_DAY, at.substringBefore(":").toInt())
+            set(Calendar.MINUTE, at.substringAfter(":").toInt())
+        }
+    }
 }

@@ -19,6 +19,12 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- 上课提醒。排闹钟本身**不要权限**（用的是 setAlarmClock，见 core/schedule/ClassReminder.kt），
+         这条只是让重启后能自己把闹钟排回去。
+         注意：国产 ROM 上开机广播收不收得到，取决于用户给没给"自启动"，那个开关我们读不到，
+         所以设置那一行写的是"重启后要打开一次 App 才稳"，不装作开机就万事大吉。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:name=".AndaXinApp"
         android:allowBackup="false"
@@ -42,6 +48,23 @@
             android:name=".core.run.RunService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- 上课提醒那颗闹钟。exported=false：只接自己包内投的广播 -->
+        <receiver
+            android:name="com.andaxin.core.schedule.ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.andaxin.action.CLASS_REMIND" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.andaxin.core.schedule.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
