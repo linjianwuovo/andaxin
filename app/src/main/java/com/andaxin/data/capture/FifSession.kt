@@ -286,6 +286,31 @@ class FifSession(
         }
     }
 
+    /**
+     * `adapt-app` 那一族用的 GET：**裸 JWT 放在 Authorization 里（不带 `Basic ` 前缀）**、
+     * 带 `Referer: https://sttp.fifedu.com/adaptive/`、**不带 `Visit-Type`**。
+     *
+     * 【取证】③ 抓包里官方那三发（`courseDetail`/`newCourseChapterList`/`getUserDetail`）的请求头逐条读出来就是这个样子；
+     * ② 我们照主站习惯发 `Basic <jwt>` 的时候，它回 `status:401` +
+     * 「The string '…' doesn't have a valid JSON format」—— 它把 "Basic " 后那段当 base64 解，
+     * 所以这一族要的是一串能被 base64 解开的东西，而裸 JWT 恰好能过（`lxtmp/_adapt_probe.txt`）。
+     */
+    suspend fun getAdapt(url: String, jwt: String, referer: String): JSONObject {
+        val req = Request.Builder().url(url).get()
+            .header("User-Agent", WEB_UA)
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Authorization", jwt)
+            .header("Referer", referer)
+            .header("X-Requested-With", "cn.edu.aiit.axx")
+            .build()
+        return withIo {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) throw IOException("adapt-app 回了 ${resp.code}")
+                JSONObject(resp.body?.string().orEmpty())
+            }
+        }
+    }
+
     private suspend fun get(url: String, header: String): String? = withIo {
         val req = Request.Builder().url(url).get().header("User-Agent", WEB_UA).build()
         client.newCall(req).execute().use { resp -> resp.header(header) }
