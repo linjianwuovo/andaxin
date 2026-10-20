@@ -283,7 +283,9 @@ fun MetricCell(
                 // 九位数跑量把"公里"顶成了两行「公/里」）
                 modifier = Modifier.weight(1f, fill = false),
             )
-            if (unit.isNotBlank()) {
+            // 单位是给数字用的：值本身不是数（"—"、"没拉到"）就别跟着挂一个"公里" ——
+            // 26sp 那一横杠后面顶个"公里"，看着像把数字划掉了（10-21 深色扫首页看到的）。
+            if (unit.isNotBlank() && value.any { it.isDigit() }) {
                 Spacer(Modifier.width(Gap.xxs))
                 Text(
                     text = unit,
@@ -309,6 +311,12 @@ fun MetricCell(
 @Composable
 fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val ink = LocalInk.current
+    /*
+     * 选中那颗的底要比没选中的那颗**更显眼**，两套主题都得成立。
+     * 夜里原来那层 primary@13% 压在近黑底上比未选中的灰底还暗，两颗是反的
+     * （10-21 凌晨深色扫课程表「本周/下周」撞见的），所以夜里把选中底提到 0.30。
+     */
+    val pickedAlpha = if (ink.dark) 0.30f else 0.13f
     Text(
         text = text,
         fontSize = Type.meta,
@@ -317,7 +325,7 @@ fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: 
         modifier = modifier
             .pressClick(onClick = onClick)
             .background(
-                if (picked) MaterialTheme.colorScheme.primary.copy(alpha = 0.13f) else ink.offFill,
+                if (picked) MaterialTheme.colorScheme.primary.copy(alpha = pickedAlpha) else ink.offFill,
                 Radius.pill,
             )
             .padding(horizontal = Gap.md, vertical = Gap.sm),

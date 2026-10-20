@@ -57,11 +57,11 @@ import com.andaxin.data.brief.ListSource
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Refreshable
-import com.andaxin.shell.SampleTag
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -306,25 +306,45 @@ fun BriefFormPage(
     val state by model.state.collectAsStateWithLifecycle()
     val values = remember { mutableStateMapOf<String, String>() }
     val ink = LocalInk.current
-    val dorm = LocalAppGraph.current.let { g ->
-        val s by g.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
-        s.dorm
-    }
+    val graph = LocalAppGraph.current
+    val scope = rememberCoroutineScope()
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    val dorm = session.dorm
 
     ScaffoldPage(title = state.spec?.title ?: title, onBack = onBack) {
         val sample = state.spec?.sample == true
         if (sample) {
-            // 没登录时这张表是编的形状：字段是假的、提交也发不出去。
-            // 原来照样摆一颗蓝色「提交」，按下去只会回一句失败 —— 一颗点了没用的主按钮
-            // 比少一颗按钮坏得多。所以这一屏只留一句话。
+            /*
+             * 没登录时这张表是编的形状：字段是假的、提交也发不出去。
+             * 原来照样摆一颗蓝色「提交」，按下去只会回一句失败 —— 一颗点了没用的主按钮
+             * 比少一颗按钮坏得多，所以那颗先摘了。
+             * 但摘完之后整屏只剩一行灰字，人得自己想到按返回 —— 那是另一头。
+             * 这一屏该给的是**一条往前走的路**：这颗键不导航，只把"先不登录逛逛"这个标志清掉，
+             * 外层的 Gate 看见"没登录又不在逛"就把登录那一屏端上来（和「我的」里那颗「去登录」同一条路）。
+             */
             Text(
                 text = "登录后才能填这张表。",
-                fontSize = Type.body,
-                color = ink.muted,
+                fontSize = Type.title,
+                color = ink.strong,
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(top = Gap.md),
             )
+            Spacer(Modifier.height(Gap.xs))
+            Text(
+                text = "这张单子是往学校那边发的，得用你自己的身份。",
+                fontSize = Type.meta,
+                color = ink.faint,
+                lineHeight = Type.metaLine,
+            )
+            Spacer(Modifier.height(Gap.lg))
+            MiuixButton(
+                onClick = { scope.launch { graph.session.leaveBrowsing() } },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColorsPrimary(),
+            ) {
+                Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
+            }
             Spacer(Modifier.height(Gap.md))
-            SampleTag()
         }
         if (!sample) state.spec?.fields?.forEach { field ->
             FieldRow(
