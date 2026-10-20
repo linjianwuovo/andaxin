@@ -48,6 +48,7 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.MetricCell
 import com.andaxin.shell.RowLine
+import com.andaxin.shell.SampleTag
 import com.andaxin.shell.Refreshable
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
@@ -110,6 +111,24 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.SemiBold,
                 color = ink.strong,
             )
+            /*
+             * 没登录时这一屏那几个数是本机编的示例（`LocalDashboard`）。
+             * 「只要还在用 Local*，界面上那条说明就不许摘」是这条线的规矩，而首页是原来
+             * 唯一漏掉的一屏：「我的」写着"未登录，看的是占位数据"，首页却把"今天有课 1 节"
+             * 当真的报给人 —— 那一句还是屏幕上的第一行字。
+             */
+            if (!session.loggedIn) {
+                Spacer(Modifier.height(Gap.sm))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SampleTag()
+                    Spacer(Modifier.width(Gap.sm))
+                    Text(
+                        text = "还没登录，下面这几个数是示例。",
+                        fontSize = Type.meta,
+                        color = ink.faint,
+                    )
+                }
+            }
             // 校历那一行跟着问候语走：它就是"今天算第几周"这句话，不该单独占一个区块
             if (!extras?.calendar.isNullOrBlank()) {
                 Spacer(Modifier.height(Gap.xxs))
