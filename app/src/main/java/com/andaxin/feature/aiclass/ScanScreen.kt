@@ -162,7 +162,9 @@ private fun CameraPreview(onCode: (String) -> Unit) {
                     .build(),
             )
         }.getOrElse {
-            trouble = "这台机器上二维码识别起不来：${it.message ?: it.javaClass.simpleName}"
+            // 别写成"这台机器不支持"：10-20 那次真凶是我们自己的 R8 把 ML Kit 内部类优化坏了，
+            // 跟设备没关系。文案只说没起来，把原话带出来就行，剩下的交给 mapping.txt 反查。
+            trouble = "二维码识别没起来：${it.message ?: it.javaClass.simpleName}"
             return@LaunchedEffect
         }
         scanner = client

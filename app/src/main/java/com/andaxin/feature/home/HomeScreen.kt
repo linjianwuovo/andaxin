@@ -115,7 +115,10 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                                 Text(slot.room, fontSize = 12.sp, color = LocalInk.current.muted)
                             }
                             Text(
-                                text = "第 ${slot.startPeriod} 节",
+                                // 连堂的要写全"第 1-2 节"，只写起始节次会让人以为 9:40 就下课
+                                text = if (slot.periodCount > 1)
+                                    "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
+                                else "第 ${slot.startPeriod} 节",
                                 fontSize = 12.sp,
                                 color = LocalInk.current.faint,
                             )
