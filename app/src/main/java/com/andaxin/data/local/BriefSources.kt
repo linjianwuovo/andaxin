@@ -23,6 +23,17 @@ class PlaceholderList(private val rows: List<BriefRow>) : ListSource {
     override suspend fun rows() = Result.success(rows)
 }
 
+/**
+ * 没有占位可给的那几栏用的。
+ *
+ * 「我的申请」「已办」这种，编两条假单据会让人以为自己有单子没办完 ——
+ * 那比空白严重。所以没登录时明确回失败，界面上显示的是"还没登录"这句话。
+ */
+class NeedLoginList : ListSource {
+    override suspend fun rows(): Result<List<BriefRow>> =
+        Result.failure(Exception("还没登录：这一栏只列校方给的数据，我们一条都不编。"))
+}
+
 class PlaceholderDetail(
     private val title: String,
     private val fields: List<Pair<String, String>>,
