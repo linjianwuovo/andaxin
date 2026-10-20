@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -133,19 +134,26 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     }
 }
 
-/** 一个数：数字大、标签小，居中。 */
+/**
+ * 一个数：数字大、标签小，居中。
+ *
+ * 极端数据那一趟量出来的两条：九位数在 26sp 下会折成两行、把三格的基线踩乱，
+ * 所以位数一多就自己降一档字号，并且只许占一行（再长就省略号，绝不换行）。
+ */
 @Composable
 private fun StatCell(label: String, value: Int, color: Color, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = "$value",
-            fontSize = Type.num,
+            fontSize = if ("$value".length > 5) Type.title else Type.num,
             fontWeight = FontWeight.SemiBold,
             color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(Gap.xxs))
-        Text(label, fontSize = Type.micro, color = ink.faint)
+        Text(label, fontSize = Type.micro, color = ink.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
