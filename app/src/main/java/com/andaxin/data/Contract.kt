@@ -57,7 +57,15 @@ data class Dashboard(
     val nextLesson: String?,
     val unreadMessages: Int,
     val dormCheckState: String,
-    val runThisWeekKm: Double,
+    /**
+     * 校方那台 sports 只给"一共多少"和"其中晨跑多少"，**没有"本周"这个口径**
+     * （见 `CaptureSports.summary`）。所以这两格按它给的口径命名，别叫"本周"。
+     * 取不到（不在校内、会话掉了）给 null，界面显示"—"，不拿占位数顶着。
+     */
+    val runSemesterKm: Double?,
+    val runMorningKm: Double?,
+    /** 拉不到跑量时服务端/网络给的那句原话。空着 = 真没跑过或还没登。 */
+    val runWhy: String? = null,
 )
 
 /** 课表。【取证】只有接口名 in.aiit.edu.cn 下的两个 .do，字段是待抓包状态。 */

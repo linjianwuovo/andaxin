@@ -28,6 +28,7 @@ import com.andaxin.data.capture.CaptureHoliday
 import com.andaxin.data.capture.CaptureHolidayDetail
 import com.andaxin.data.capture.CaptureLabor
 import com.andaxin.data.capture.CaptureLaborDetail
+import com.andaxin.data.capture.CaptureSports
 import com.andaxin.data.capture.YwlzTasks
 import com.andaxin.data.brief.DetailSource
 import com.andaxin.data.brief.ListSource
@@ -106,7 +107,7 @@ class AppGraph(val context: Context) {
 
     val dashboard: DashboardFeed by lazy {
         // 未读数走 messages 这一路（跟消息屏同一个来源），不再用 notReadCount 那个 count —— 见 DashboardSource
-        DashboardSource(school, session, LocalDashboard(messages, timetable), timetable, ywlz, messages)
+        DashboardSource(school, session, LocalDashboard(messages, timetable), timetable, ywlz, messages, sports)
     }
 
     /** 成绩与学分：列表和详情共用一份进程内缓存（详情就是把列表那一行展开，校方没有单独接口） */
@@ -176,7 +177,14 @@ class AppGraph(val context: Context) {
     val profile by lazy { CaptureProfile(school) }
 
     /** 运动：记录是占位，路线规划是真的（存本机文件） */
-    val sports: SportsFeed by lazy { LocalSports(File(context.filesDir, "sport_routes.json")) }
+    /**
+     * 运动这一路：读侧走校方那台 sports:8082（总量/记录/维护申请三条已现打验过），
+     * 路线模板本来就在本机、上传那两条口没抓到实样所以仍由 Local 那侧明确回失败。
+     * 见 `CaptureSports` 顶上那段取证。
+     */
+    private val localSports by lazy { LocalSports(File(context.filesDir, "sport_routes.json")) }
+
+    val sports: SportsFeed by lazy { CaptureSports(school, localSports) }
 
     /** 录播看到第几分（服务端那两条进度上报实测被拒，所以本机存，见 core/media/PlayProgress）。 */
     val playProgress by lazy { com.andaxin.core.media.PlayProgress(context.filesDir) }
@@ -195,14 +203,15 @@ class AppGraph(val context: Context) {
     /**
      * 界面上那条"哪些还是占位"的说明。
      *
-     * 分登录与否两种说法：没登录时整屏都是假的；登录了就只剩**本周跑量**这一格 ——
-     * 查寝那格 10-19 也接上真数据了（来源是 ywlz 待办列表里 msgType=2 的条目），
-     * 再把它跟跑量一起说成占位就是谎话。
-     * 宁可屏幕上一直挂着提醒，也不要让用户以为看到的是校方给的真数据。
+     * 登录了就没有占位数据了 —— 六格里最后一格（跑量）10-20 接上了真接口
+     * （`sports:8082/mobile/check/getTotalInfo`，见 `CaptureSports`），
+     * 所以这句从"哪几格是假的"改成"哪几格可能拉不到"：
+     * 那台 sports 是 **http 明文且只有校内可达**，出校门就会是"—"，那不是坏了。
+     * 宁可屏幕上一直挂着提醒，也不要让用户以为看到的是必然有的数。
      */
     fun placeholderNote(loggedIn: Boolean): String =
         if (!loggedIn) "没登录：这一屏全是占位数据，不是校方给的。"
-        else "本周跑量这一格还是占位：那条接口（sports:8082 那一域）还没取到实样。"
+        else "跑量那两格来自学校那台 sports（校内网才连得上），出校门会显示「—」，那不是没跑过。"
 }
 
 /** 课表那一屏单独一句：整周是真的，缺的是教师。 */

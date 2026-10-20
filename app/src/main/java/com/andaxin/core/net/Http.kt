@@ -17,12 +17,14 @@ object Http {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            .connectionSpecs(
-                listOf(
-                    okhttp3.ConnectionSpec.COMPATIBLE_TLS,
-                    okhttp3.ConnectionSpec.MODERN_TLS,
-                )
-            )
             .build()
+            // 上面**不要**再写 connectionSpecs(...)：
+            // 10-20 中午这里写的是 listOf(COMPATIBLE_TLS, MODERN_TLS)，
+            // 把默认列表里那条 `ConnectionSpec.CLEARTEXT` 挤掉了，于是 OkHttp 自己就把明文请求拒了，
+            // 报的还是那句 "CLEARTEXT communication to … not permitted by network security policy" ——
+            // 看着像 Android 的策略在拦，其实是我们把能力关掉了，
+            // 害我照着 manifest 的 networkSecurityConfig / usesCleartextTraffic 猜错两轮。
+            // 分层应该是这样：**OkHttp 具备明文能力，允不允许由平台那份 NSC 决定**
+            // （res/xml/network_security_config.xml 里只放行 sports.aiit.edu.cn 一个域名）。
     }
 }

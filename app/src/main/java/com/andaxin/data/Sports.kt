@@ -49,6 +49,11 @@ data class SportSummary(
     val weekCount: Int,
     val bestKm: Double,
     val semesterKm: Double,
+    /**
+     * 其中晨跑多少。校方那发 `totalInfo` 里是 `morningExtraMile`，
+     * **已经含在 `totalMile` 里**，别加两遍。
+     */
+    val morningKm: Double = 0.0,
 )
 
 @Immutable
