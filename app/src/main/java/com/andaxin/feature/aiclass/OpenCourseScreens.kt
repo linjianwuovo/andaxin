@@ -277,10 +277,13 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
                         Modifier.fillMaxWidth().padding(vertical = Gap.md),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        // 章名服务端已经带了「第1章 / 1.1」这种前缀，我们只按 level 缩进，不再自己编号
+                        // 章名服务端已经带了「第1章 / 1.1」这种前缀，我们只按 level 缩进，不再自己编号。
+                        // 字号两档都走表里的 `Type.body`：原来章名写 15.sp 是**没在字号表里的一个数**，
+                        // 而这一行已经靠字重（Medium）、颜色（strong）、缩进三样在分层了，
+                        // 再加一档 1sp 只会让人以为字号表里有 15 这一档。
                         Text(
                             text = c.title,
-                            fontSize = if (c.level == 1) 15.sp else 14.sp,
+                            fontSize = Type.body,
                             fontWeight = if (c.level == 1) FontWeight.Medium else FontWeight.Normal,
                             color = if (c.level == 1) ink.strong else ink.body,
                             modifier = Modifier.padding(start = if (c.level == 1) 0.dp else Gap.lg),
