@@ -19,10 +19,15 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <!-- 上课提醒。排闹钟本身**不要权限**（用的是 setAlarmClock，见 core/schedule/ClassReminder.kt），
-         这条只是让重启后能自己把闹钟排回去。
-         注意：国产 ROM 上开机广播收不收得到，取决于用户给没给"自启动"，那个开关我们读不到，
-         所以设置那一行写的是"重启后要打开一次 App 才稳"，不装作开机就万事大吉。 -->
+    <!-- 上课提醒要排一颗精确闹钟。10-20 装机实测：不声明这条的话点开关直接
+         SecurityException 闪退 —— 我原先以为 setAlarmClock 不要权限，那是对的 API 文档
+         没管住这台 ROM。现在照实声明，并且排之前先问 canScheduleExactAlarms()，
+         用户把权限关了也不炸，只是退化成一条可能晚几分钟的闹钟（界面上会说）。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- 这条只是让重启后能自己把闹钟排回去。国产 ROM 上开机广播收不收得到，
+         取决于用户给没给"自启动"，那个开关我们读不到，所以设置那一行写的是
+         "重启后要打开一次 App 才稳"，不装作开机就万事大吉。 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application

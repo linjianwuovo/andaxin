@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.andaxin.AndaXinApp
 import com.andaxin.MainActivity
@@ -31,10 +32,11 @@ import kotlinx.coroutines.launch
  *    真按那张表提醒，误差在"学校改作息没通知"这种时候才会咬人。
  * ② **一次只挂一颗闹钟**：只排"下一节"，响了之后由接收者再排下一颗。
  *    把一整天八颗都排下去的话，状态栏那个闹钟图标会一直挂着，而且课表一改就得整批重排。
- * ③ 用的是 `setAlarmClock`，不是 `setExactAndAllowWhileIdle`。后者在 31 以上要
- *    `SCHEDULE_EXACT_ALARM` 那个用户可关的权限，而且省电策略一收紧就漂几分钟 ——
- *    提醒漂了就没意义了。`setAlarmClock` 不要任何权限、豁免 Doze，代价是状态栏会亮一个
- *    闹钟图标，那是这套 API 的固有行为，界面上如实写一句。
+ * ③ 先排**精确闹钟**（`setAlarmClock`），系统不给权限就退化成 `setAndAllowWhileIdle`，
+ *    并在界面上明说"可能晚几分钟"。
+ *    这条是 10-20 装机教出来的：我原来以为 `setAlarmClock` 不要任何权限，
+ *    结果这台机器直接抛 `SecurityException` 把 App 炸了（见 `arm` 上面那段）。
+ *    现在权限照实声明、排之前先问、问不到就降级 —— 三条都写上，就是不让一个开关点出闪退。
  */
 object ClassReminder {
 
@@ -112,9 +114,39 @@ object ClassReminder {
         val at = TIME.format(Date(start.timeInMillis))
         val pi = pendingIntent(context, triggerAt.toInt(), slot.course, slot.room, at, slot.startPeriod)
         ensureChannel(context)
-        alarm.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, pi), pi)
-        return "已排：%s · %s（提前 %d 分钟）"
-            .format(slot.course.ifBlank { "一节课" }, at, lead)
+        return "已排：%s · %s（提前 %d 分钟）%s".format(
+            slot.course.ifBlank { "一节课" }, at, lead, arm(context, alarm, triggerAt, pi),
+        )
+    }
+
+    /**
+     * 真把那颗闹钟排下去，回一句"排成什么样了"接在状态后面。
+     *
+     * 【取证 · ① 它自己抛出来给我们看的】10-20 09:53 装机一打开这个开关就闪退：
+     *   java.lang.SecurityException: Caller com.andaxin needs to hold
+     *   android.permission.SCHEDULE_EXACT_ALARM or android.permission.USE_EXACT_ALARM
+     *   to set exact alarms.
+     *     at android.app.AlarmManager.setAlarmClock(AlarmManager.java:986)
+     * 我上一版注释里写的是"`setAlarmClock` 不要任何权限"，那是从通用知识推的，这台机器不认。
+     * 所以三条一起补：权限照实声明、排之前先问系统答不答应、答应不答应都不许把 App 炸掉
+     * —— 一个开关点一下就退出，比不提醒难用十倍。
+     */
+    private fun arm(context: Context, alarm: AlarmManager, at: Long, pi: PendingIntent): String {
+        val exact = runCatching {
+            // canScheduleExactAlarms 是 31 才有的。SDK 闸门写在被调这一句本体上，
+            // 不指望调用方记得判 —— 这是这台机器上撞过的老规矩。
+            Build.VERSION.SDK_INT < 31 || alarm.canScheduleExactAlarms()
+        }.getOrDefault(false)
+        if (exact) {
+            runCatching { alarm.setAlarmClock(AlarmManager.AlarmClockInfo(at, pi), pi) }
+                .onSuccess { return "，走的是系统闹钟那条路，状态栏会亮一个小闹钟图标。" }
+        }
+        // 不让排精确闹钟就走这条：Doze 里也会醒，但点不精确，可能晚几分钟
+        return runCatching {
+            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            if (exact) "，但这次系统没让排精确闹钟，改走了一条可能晚几分钟的路。"
+            else "，但系统没给「闹钟和提醒」那条权限（去设置里给一下），现在走的这条可能晚几分钟。"
+        }.getOrElse { "，没排上：${it.message?.take(46) ?: it.javaClass.simpleName}" }
     }
 
     private fun pendingIntent(
