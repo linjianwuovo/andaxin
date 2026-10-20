@@ -40,8 +40,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
@@ -49,6 +51,7 @@ import com.andaxin.core.design.DampedDragAnimation
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
+import com.andaxin.core.design.Radius
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
 import com.kyant.backdrop.drawBackdrop
@@ -120,6 +123,8 @@ fun ShelfBar(
     hazeState: HazeState,
     labels: List<String>,
     icons: List<Int>,
+    /** 每格右上角那颗未读角标；给 0 就不画。顺序跟 [labels] 对齐。 */
+    badges: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     if (pageCount <= 0) return
@@ -299,6 +304,7 @@ fun ShelfBar(
                     iconRes = icons.getOrElse(index) { 0 },
                     active = index == current,
                     accent = accent,
+                    badge = badges.getOrElse(index) { 0 },
                     scale = { if (index == cursor) lerp(1f, 1.2f, press()) else 1f },
                     onClick = { onSelect(index) },
                 )
@@ -389,6 +395,7 @@ private fun RowScope.ShelfCell(
     accent: Color,
     scale: () -> Float,
     onClick: () -> Unit,
+    badge: Int = 0,
 ) {
     val ink = LocalInk.current
     Column(
@@ -410,17 +417,35 @@ private fun RowScope.ShelfCell(
                 onClick = onClick,
             ),
     ) {
-        Image(
-            painter = painterResource(iconRes),
-            contentDescription = label,
-            // 未选中那几格用最重的一级墨色（旧仓那版是他真机验收过的："tab 标签的灰色改成黑色"）。
-            modifier = Modifier
-                .size(22.dp)
-                .graphicsLayer {
-                    val tint = if (active) accent else ink.strong
-                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint)
-                },
-        )
+        Box(contentAlignment = Alignment.TopEnd) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = label,
+                // 未选中那几格用最重的一级墨色（旧仓那版是他真机验收过的："tab 标签的灰色改成黑色"）。
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer {
+                        val tint = if (active) accent else ink.strong
+                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint)
+                    },
+            )
+            if (badge > 0) {
+                // 数字角标：一位数就是圆点，两位数撑成胶囊，三位数收进"99+"，
+                // 免得哪天真攒出一百多条未读，把这格撑到隔壁那格身上
+                Text(
+                    text = if (badge > 99) "99+" else "$badge",
+                    fontSize = Type.tinier,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .offset(x = 9.dp, y = (-3).dp)
+                        .background(MaterialTheme.colorScheme.error, Radius.pill)
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,

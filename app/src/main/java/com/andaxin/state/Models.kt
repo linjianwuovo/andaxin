@@ -60,9 +60,13 @@ class HomeModel(
         val dash = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
         val slots = try { timetable.week(0) } catch (e: Exception) { Result.failure(e) }
         val list = slots.getOrDefault(emptyList())
+        val dash0 = dash.getOrNull()
+        // 冷启动那一路已经把消息列表拉了一遍（为了首页那一格"未读几条"），
+        // 顺手把底栏的角标填上 —— 不然要等他点进「消息」那一格才看得到有未读
+        dash0?.let { com.andaxin.core.store.Unread.messages.value = it.unreadMessages }
         _state.value = HomeUiState(
             firstLoad = false,
-            data = dash.getOrNull() ?: _state.value.data,
+            data = dash0 ?: _state.value.data,
             // 今天星期几由 Periods 说，跟周网格、首页"几节课"同一张表 —— 这儿原来写死 ==1，
             // 周一看着对，周二起就把周一的课当今天显示（10-20 上午装机读屏撞中的就是这个）。
             today = list.filter { it.day == Periods.today() },
@@ -127,9 +131,12 @@ class MessageModel(private val feed: MessageFeed) : ViewModel() {
     /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
     suspend fun refresh() {
         val r = try { feed.page(0) } catch (e: Exception) { Result.failure(e) }
+        val items = r.getOrDefault(_state.value.items)
+        // 底栏那颗角标跟着这一份走：拉一次就更新一次，标完已读回来也会掉
+        com.andaxin.core.store.Unread.messages.value = items.count { it.unread }
         _state.value = MessageUiState(
             firstLoad = false,
-            items = r.getOrDefault(_state.value.items),
+            items = items,
             error = r.exceptionOrNull()?.message,
         )
     }
