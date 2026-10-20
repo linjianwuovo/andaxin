@@ -252,9 +252,8 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         // 这一颗是给人按的，不在后台偷偷登 —— 校方一个账号只留一个活会话，
         // 悄悄抢一下就把他手上那个客户端挤下线了。
         val saved = graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
-        // 键的条件是"口令和学号都还在"，不是只看密文在不在：只有密文学号没了，
-        // 那一份就是解不开的孤儿，给一颗注定失败的键只会换回一句看不懂的理由。
-        if (saved.value.remembered && saved.value.account.isNotBlank() && !busy) {
+        // `remembered` 已经含"学号也还在"这一层（见 `Session.remembered`），所以这里只看它一个。
+        if (saved.value.remembered && !busy) {
             MiuixButton(
                 onClick = {
                     busy = true

@@ -116,8 +116,14 @@ class TokenKeepAlive(
         val attempt = auth.login(userCode, password)
         val fresh = attempt.getOrNull()
         if (fresh != null) {
-            // 先清后写：被顶掉那把旧 token 别在文件里过夜
-            session.signOut(keepPassword = true)
+            /*
+             * 只写一次：`save()` 一把 transaction 落全部七个键，token、学号、姓名、有效期
+             * 没有一样是它不覆盖的 —— 所以旧代码在它前面那一发 `signOut(keepPassword = true)`
+             * **一个字节都没多清掉，只多留了一个半状态的口子**：这两发之间协程被取消
+             * （过闸门这一发跑在 `LaunchedEffect` 里，App 一进后台就取消），
+             * 文件里就剩下"没 token、没学号、口令密文还在"这么一份解不开的孤儿。
+             * 10-21 04:4x 从这台米11 上读回来的正是这一份：`auth.pwBlob` 有值、`auth.userCode` 这个键根本不存在。
+             */
             session.save(fresh)
             _kicked.value = null
             return Relogin(true, "")
