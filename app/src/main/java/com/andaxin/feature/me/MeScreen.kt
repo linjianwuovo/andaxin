@@ -280,6 +280,7 @@ private fun PasswordCard() {
         Labeled(
             label = "本机状态",
             value = when {
+                !session.remembered && session.rememberedWhy.isNotBlank() -> "存不下"
                 !session.remembered -> "没记住"
                 usable == true -> "已记住，可以自动重登"
                 usable == false -> "存的那份解不开了，重新登一次就好"

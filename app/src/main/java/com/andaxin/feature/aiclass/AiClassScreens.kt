@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +79,25 @@ private const val TAB_NOTE = 7
 private fun whyOf(t: Throwable): String =
     t.message?.takeIf { it.isNotBlank() } ?: "没连上 AI 课堂平台（${t.javaClass.simpleName}）"
 
+/**
+ * FIF 那几发**首发回空是常态** —— 他的原话：「如果 null 了退出来刷新一下就好了，这很正常」。
+ * 既然重进一次就好，那就不该让人退出去重进：回空或者失败就自己再拉一次，只多这一次。
+ *
+ * 三条边界：① 只重试一次，别做成轮询（真没内容时会白烧流量）；② 这里全是读口，
+ * 写口一律不走这条路；③ 第二次还是空，就照第一次的结论说 —— 空和挂的措辞由调用方定，
+ * 这一层只负责"别拿一次抽风当结论"。
+ */
+private suspend fun loadPastFirstBlip(
+    once: suspend () -> Result<List<AiItem>>,
+): Result<List<AiItem>> {
+    val first = once()
+    if (first.getOrNull()?.isNotEmpty() == true) return first
+    delay(700)
+    val second = once()
+    return if (second.getOrNull()?.isNotEmpty() == true) second
+    else if (first.isSuccess) first else second
+}
+
 @Composable
 fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
@@ -106,7 +126,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             TAB_NOTE -> "笔记站通了，这个账号一条笔记都没有。"
             else -> "这门课还没建小组。"
         }
-        loads[tab] = (
+        loads[tab] = loadPastFirstBlip {
             when (tab) {
                 TAB_COURSEWARE -> graph.fif.ensure().mapCatching { ids ->
                     graph.fifApi.courseware(c.courseId, c.teachClassId, ids.memberUserId)
@@ -158,7 +178,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                     }
                 }
             }
-            ).fold(
+            }.fold(
                 onSuccess = { list ->
                     Load(
                         busy = false,
@@ -240,10 +260,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
 
         Spacer(Modifier.height(Gap.md))
         PlaceholderNote(
-            "这五栏真去问 FIF（AI 课堂平台），第一次进要先过它的单点登录。" +
-                "五发的报文形状都是我们自己盘出来的实样，10-20 上午又在 PC 上逐发打通过一遍" +
-                "（清点表 B6/C3/C11/C20/C21）。" +
-                "哪栏回空先别当接口坏了：课件和小组这两发实测就是回空，服务端真没内容。",
+            "这八栏真去问 FIF（AI 课堂平台），第一次进要先过它的单点登录。报文形状都是我们自己盘出来的实样，10-20 又在 PC 上逐发打通过一遍。底下这排是横着滑的，「成员」「笔记」在最右边，不滑过去看不见。哪栏回空先别当接口坏了：课件、小组、其他资源这几发实测就是回空，服务端真没内容。",
         )
     }
 }

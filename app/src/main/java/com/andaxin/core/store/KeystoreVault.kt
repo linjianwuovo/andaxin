@@ -35,14 +35,19 @@ class KeystoreVault(context: Context) {
 
     private val appContext = context.applicationContext
 
-    /** 加密一条口令。失败回 null，调用方按"没记住"处理。 */
-    fun seal(plain: String): String? = runCatching {
+    /**
+     * 加密一条口令。**失败不把原因吞掉** —— 10-20 装机就栽在这儿：
+     * 原来这里是 `runCatching { … }.getOrNull()`，登录时勾着「记住密码」，
+     * 存完「我的」那一格显示"没记住"，可是为什么没记住谁都不知道，只能瞎猜。
+     * 现在把异常原样交给调用方，界面上显示「存不下：xxx」。
+     */
+    fun seal(plain: String): Result<String> = runCatching {
         val cipher = Cipher.getInstance(TRANSFORM)
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val iv = cipher.iv
         val ct = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
         Base64.encodeToString(iv + ct, Base64.NO_WRAP)
-    }.getOrNull()
+    }
 
     /** 解出口令。密文坏了 / 密钥没了都回 null（并且调用方该把那份密文清掉）。 */
     fun open(blob: String): String? = runCatching {
