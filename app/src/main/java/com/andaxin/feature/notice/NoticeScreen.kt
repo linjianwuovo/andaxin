@@ -29,6 +29,8 @@ import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.state.NoticeModel
+import com.andaxin.core.design.Type
+import com.andaxin.shell.RowLine
 
 @Composable
 fun NoticeScreen(modifier: Modifier = Modifier) {
@@ -52,12 +54,12 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.clickable { model.close() }.padding(vertical = Gap.sm),
             )
             Spacer(Modifier.height(Gap.sm))
-            Text(open.title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+            Text(open.title, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
             Spacer(Modifier.height(Gap.sm))
-            Text(open.publishedAt, fontSize = 12.sp, color = LocalInk.current.faint)
+            Text(open.publishedAt, fontSize = Type.meta, color = LocalInk.current.faint)
             Spacer(Modifier.height(Gap.lg))
             open.paragraphs.forEach {
-                Text(it, fontSize = 15.sp, color = LocalInk.current.body, modifier = Modifier.padding(bottom = Gap.md))
+                Text(it, fontSize = Type.body, lineHeight = Type.bodyLine, color = LocalInk.current.body, modifier = Modifier.padding(bottom = Gap.md))
             }
             /*
              * 正文里的图。校方那批通知（周会议安排、放假安排）正文其实就是一张图，
@@ -87,20 +89,25 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Gap.screen),
     ) {
-        Spacer(Modifier.height(Gap.xl))
-        Text("公告", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
-        Spacer(Modifier.height(Gap.lg))
+        Spacer(Modifier.height(Gap.md))
+        Text("公告", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+        Spacer(Modifier.height(Gap.md))
 
-        Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            state.items.forEach { item ->
-                Sheet(modifier = Modifier.clickable { model.open(item.id) }) {
-                    Text(item.title, fontSize = 15.sp, color = LocalInk.current.strong)
-                    Spacer(Modifier.height(Gap.sm))
-                    Hairline()
-                    Spacer(Modifier.height(Gap.sm))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(item.source, fontSize = 11.sp, color = LocalInk.current.faint)
-                        Text(item.publishedAt, fontSize = 11.sp, color = LocalInk.current.faint)
+        // 原来一条公告一张卡、卡里还自己画一道分隔线：三十条就是三十张卡。
+        // 现在一张卡里一行一条，来源跟在标题下面，时间放右栏。
+        if (state.items.isNotEmpty()) {
+            Sheet {
+                state.items.forEachIndexed { i, item ->
+                    RowLine(
+                        title = item.title,
+                        sub = item.source,
+                        right = item.publishedAt.removePrefix("20").replace('-', '.'),
+                        onClick = { model.open(item.id) },
+                    )
+                    if (i != state.items.lastIndex) {
+                        Spacer(Modifier.height(Gap.xs))
+                        Hairline()
+                        Spacer(Modifier.height(Gap.xs))
                     }
                 }
             }

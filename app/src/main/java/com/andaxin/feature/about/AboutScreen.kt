@@ -33,6 +33,9 @@ import com.andaxin.shell.Labeled
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
 import kotlinx.coroutines.launch
+import com.andaxin.shell.Chip
+import com.andaxin.shell.NoteBlock
+import com.andaxin.core.design.Type
 
 @Composable
 fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
@@ -62,28 +65,26 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.xl))
-        Text(
-            text = "这是给本校学生自己写的一个壳：课表、消息、公告、运动这些原本散在四五个官方 App 里的东西，" +
-                "放在一处，看得清楚一点。数据全部直连校方接口，本机只存登录状态和你自己的设置。",
-            fontSize = 14.sp,
-            color = ink.body,
-            lineHeight = 22.sp,
+        NoteBlock(
+            listOf(
+                "课表、消息、公告、运动这些原本散在四五个官方 App 里的东西，放在一处。",
+                "数据全部直连校方接口，本机只存登录状态和你自己的设置。",
+            ),
+            shown = 2,
         )
         Spacer(Modifier.height(Gap.lg))
         Text(
-            text = "边界：不代你提交任何申请、不代你付款、不后台替你刷任何进度；" +
-                "写操作一律停在最后一步，由你按下去。",
-            fontSize = 13.sp,
+            text = "边界：不代你提交申请、不代你付款、不后台刷任何进度 —— 写操作一律停在最后一步，由你按下去。",
+            fontSize = Type.meta,
+            lineHeight = Type.metaLine,
             color = ink.muted,
-            lineHeight = 20.sp,
         )
         Spacer(Modifier.height(Gap.lg))
         Text(
-            text = "课表、消息、公告、待办、查寝、报修、校园卡、跑步、AI 课堂这些屏已经直连校方接口；" +
-                "凡是还没接到真实报文的入口，那一屏上都会自己写明白，不拿假数据顶上去。",
-            fontSize = 12.sp,
+            text = "还没接到真实报文的入口，那一屏上都会自己写明白，不拿假数据顶上去。",
+            fontSize = Type.micro,
+            lineHeight = Type.microLine,
             color = ink.faint,
-            lineHeight = 18.sp,
         )
 
         VersionCard()
@@ -163,13 +164,7 @@ private fun VersionCard() {
                 val on = ref == pick
                 Text(
                     text = if (pick == DEFAULT_REF) "按 $DEFAULT_REF 对照" else "按 0 对照",
-                    fontSize = 12.sp,
-                    fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                    color = if (on) MaterialTheme.colorScheme.primary else ink.muted,
-                    modifier = Modifier
-                        .background(if (on) MaterialTheme.colorScheme.surfaceVariant else ink.hairline, Radius.pill)
-                        .clickable { ref = pick; query(pick) }
-                        .padding(horizontal = Gap.md, vertical = Gap.sm),
+                    modifier = Modifier.clickable { ref = pick; query(pick) },
                 )
             }
             Spacer(Modifier.weight(1f))

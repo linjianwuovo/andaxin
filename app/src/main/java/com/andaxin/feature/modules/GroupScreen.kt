@@ -31,6 +31,10 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
+import com.andaxin.core.design.Type
+import com.andaxin.shell.NoteBlock
+import com.andaxin.shell.RowLine
+import com.andaxin.shell.noteLines
 
 /**
  * 班级群与班内名单。
@@ -70,10 +74,11 @@ fun GroupScreen(onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         // 「班级群」这类是服务端给的分类名，下面挂的才是具体的班
-                        Text(g.name.ifBlank { "一类群" }, fontSize = 14.sp, color = ink.strong)
+                        Text(g.name.ifBlank { "一类群" }, fontSize = Type.body, color = ink.strong)
                         Text(
                             text = g.groups.joinToString("、") { it.name }.ifBlank { "没有具体的群" },
-                            fontSize = 12.sp,
+                            fontSize = Type.meta,
+                            lineHeight = Type.metaLine,
                             color = ink.muted,
                         )
                     }
@@ -109,38 +114,33 @@ fun GroupScreen(onBack: () -> Unit) {
             }
             Sheet {
                 filtered.forEachIndexed { i, m ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = Gap.md),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(m.name.ifBlank { "（校方没给名字）" }, fontSize = 15.sp, color = ink.strong)
-                            if (m.college.isNotBlank()) {
-                                Spacer(Modifier.height(Gap.xxs))
-                                // 这一栏的键在服务端叫 `xb`（拼音像"性别"），内容实测是学院名。
-                                // 标签照内容写，不照键名写 —— 见 CaptureIm 顶上那段。
-                                Text(m.college, fontSize = 11.sp, color = ink.ghost)
-                            }
-                        }
-                        Text(m.userCode, fontSize = 12.sp, color = ink.faint)
-                    }
+                    RowLine(
+                        title = m.name.ifBlank { "（校方没给名字）" },
+                        // 这一栏的键在服务端叫 `xb`（拼音像"性别"），内容实测是学院名。
+                        // 标签照内容写，不照键名写 —— 见 CaptureIm 顶上那段。
+                        sub = m.college,
+                        right = m.userCode,
+                    )
                     if (i != filtered.lastIndex) Hairline()
                 }
                 if (filtered.isEmpty() && query.isNotBlank()) {
-                    Text("本机筛不出这个人。", fontSize = 13.sp, color = ink.faint, modifier = Modifier.padding(vertical = Gap.md))
+                    Text("本机筛不出这个人。", fontSize = Type.body, color = ink.faint, modifier = Modifier.padding(vertical = Gap.md))
                 }
             }
         } else if (busy) {
-            Text("正在拉…", fontSize = 13.sp, color = ink.faint)
+            Text("正在拉…", fontSize = Type.meta, color = ink.faint)
         } else {
-            Text(why ?: "校方这两条接口回了数据，但里面一个班都没有。", fontSize = 13.sp, color = ink.faint)
+            Text(why ?: "校方这两条接口回了数据，但里面一个班都没有。", fontSize = Type.meta, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
+        NoteBlock(
+            noteLines(
             "群分类来自 myGroupChat、名单来自 mailListGroupHomePage，都是校方原样给的。" +
                 "名单里没有头像（那个键实测全空），也没有联系方式。" +
                 "这是别人的信息：只在本机看，这一版不做导出、不存副本。",
+            ),
+            shown = 1,
         )
     }
 }
