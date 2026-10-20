@@ -6,6 +6,7 @@ import com.andaxin.data.brief.DetailSource
 import com.andaxin.data.brief.Flag
 import com.andaxin.data.brief.ListSource
 import java.net.URLDecoder
+import kotlinx.coroutines.async
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -255,22 +256,40 @@ class YwlzTasks(private val school: School) {
         }
     }
 
-    /** 三个列表都过一遍，详情按 id 找条目用。 */
+    /**
+     * 三个列表都过一遍，详情按 id 找条目用。
+     *
+     * 先查"刚从哪一栏拉回来的"那一栏：从列表点进详情，那一栏的 60 秒缓存一定是热的，
+     * 一发网络都不用。原来不管三七二十一三栏一起重拉，装机量过：
+     * 进一次详情光找这一条就 5 秒（待办那一发学校那边给到 4.5 秒）。
+     */
     suspend fun findAny(id: String): YwlzTask? {
         if (id.isBlank()) return null
-        val pools = listOf(all().getOrNull(), mine().getOrNull(), history().getOrNull())
+        lastLoaded?.let { name ->
+            caches[name]?.first?.firstOrNull { it.key == id }?.let { return it }
+        }
+        val pools = kotlinx.coroutines.coroutineScope {
+            listOf(async { all() }, async { mine() }, async { history() })
+                .map { it.await().getOrNull() }
+        }
         return pools.asSequence().filterNotNull().flatten().firstOrNull { it.key == id }
     }
 
     /** 每个 tab 各有一份 60 秒缓存，key 是 tab 名。 */
     private val caches = HashMap<String, Pair<List<YwlzTask>, Long>>()
 
+    /** 最近一次真从服务端拉回来的那一栏（缓存命中不算——命中说明那份本来就热）。 */
+    private var lastLoaded: String? = null
+
     private suspend fun cached(name: String, fetch: suspend () -> Result<List<YwlzTask>>): Result<List<YwlzTask>> {
         caches[name]?.let { (list, at) ->
             if (System.currentTimeMillis() - at < TTL) return Result.success(list)
         }
         val r = fetch()
-        r.getOrNull()?.let { caches[name] = it to System.currentTimeMillis() }
+        r.getOrNull()?.let {
+            caches[name] = it to System.currentTimeMillis()
+            lastLoaded = name
+        }
         return r
     }
 
@@ -520,6 +539,13 @@ private fun MutableList<Pair<String, String>>.keep(o: JSONObject?, label: String
     add(label to v)
 }
 
+/**
+ * 同一个意思给单个键用：`optString` 对 JSON 的 `null` 会回出**字面 "null" 四个字符**，
+ * 装机读审批链就看到「抄送 · 周建 · 未阅 · null」这种行。空、null、"null" 一律当没有。
+ */
+private fun JSONObject.real(key: String): String =
+    if (!has(key) || isNull(key)) "" else optString(key).trim().takeIf { it != "null" }.orEmpty()
+
 internal fun bedDetail(a: YwlzTask): BriefDetail {
     val p = a.query
     return BriefDetail(
@@ -573,20 +599,28 @@ class CaptureAffairDetail(
         if (a.isBedCheck || a.executionId.isBlank()) return dormDetailOf(school, a)
 
         val exe = a.executionId
-        val chainR = school.postH5(
-            "${School.YWLZ}/mobile/flowRuTask/getApprovedInfoByExeId.do",
-            "executionId" to exe,
-            "_t" to System.currentTimeMillis().toString(),
-        )
+        // 审批链和表单这两发互不依赖 —— 串着发过一次 30 秒才出画面，并着发同一份数据 6 秒
+        val (chainR, form) = kotlinx.coroutines.coroutineScope {
+            val chain = async {
+                school.postH5(
+                    "${School.YWLZ}/mobile/flowRuTask/getApprovedInfoByExeId.do",
+                    "executionId" to exe,
+                    "_t" to System.currentTimeMillis().toString(),
+                )
+            }
+            val formA = async {
+                school.postH5Timed(
+                    "${School.YWLZ}/mobile/process/getForm.do",
+                    8_000,                     // 这一发校方现在给到 46 秒；等 8 秒拿不到就先出画面
+                    "executionId" to exe,
+                    "type" to "1",
+                    "ruTaskNodeId" to a.nodeId,
+                ).getOrNull()?.optJSONObject("data")
+            }
+            chain.await() to formA.await()
+        }
         if (chainR.isFailure) return Result.failure(chainR.exceptionOrNull()!!)
         val nodes = School.rows(chainR.getOrThrow())
-
-        val form = school.postH5(
-            "${School.YWLZ}/mobile/process/getForm.do",
-            "executionId" to exe,
-            "type" to "1",
-            "ruTaskNodeId" to a.nodeId,
-        ).getOrNull()?.optJSONObject("data")
 
         val needXj = pendingXj(nodes)
         val xj = if (needXj) {
@@ -626,25 +660,19 @@ class CaptureAffairDetail(
             keep(xj, "服务端此刻", "cjEndTimeStr")
         }
 
-        // 这一环校方给了哪些按钮（getButtons 的实样形状：{label:"抄送", value:"cc"}）。
-        // 只念不办 —— value 对应的那几条提交口一条实样都没有，接了就等于拿猜的字段往服务端发。
-        val buttons = tasks.buttons(exe, a.nodeId)
-
+        // 审批链：一环一条，界面画成带圆点的竖线（原来是一整段"1. …\n2. …"，一屏下来是一堵字）
+        val steps = (0 until nodes.length()).mapNotNull { i ->
+            val n = nodes.optJSONObject(i) ?: return@mapNotNull null
+            com.andaxin.data.brief.Step(
+                head = n.real("approvedTypeMsg").ifBlank { "环节" },
+                who = n.real("userName").ifBlank { "—" },
+                what = n.real("statusMsg"),
+                at = n.real("complateTime"),
+            )
+        }
         val paragraphs = buildList {
             if (nodes.length() == 0) {
                 add("还没有审批环节。")
-            } else {
-                add("审批链（校方给的顺序）：")
-                for (i in 0 until nodes.length()) {
-                    val n = nodes.optJSONObject(i) ?: continue
-                    val who = n.optString("userName").ifBlank { "—" }
-                    val what = n.optString("statusMsg").ifBlank { n.optString("approvedTypeMsg") }
-                    val done = n.optString("complateTime")
-                    add(
-                        "${i + 1}. ${n.optString("approvedTypeMsg").ifBlank { "环节" }} · $who · $what" +
-                            if (done.isNotBlank()) " · $done" else ""
-                    )
-                }
             }
             if (needXj) {
                 add("这一单等你自己销假。下面那颗键要连按两次才发得出去。")
@@ -656,6 +684,7 @@ class CaptureAffairDetail(
                 title = q?.optString("flowtitle")?.takeIf { it.isNotBlank() } ?: a.title.ifBlank { "单据详情" },
                 fields = fields,
                 paragraphs = paragraphs,
+                steps = steps,
                 writable = needXj,
                 writeLabel = "销假",
             )

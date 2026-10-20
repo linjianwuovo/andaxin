@@ -29,9 +29,19 @@ data class BriefDetail(
     val title: String,
     val fields: List<Pair<String, String>> = emptyList(),
     val paragraphs: List<String> = emptyList(),
+    /** 审批链那种一环接一环的东西：界面上画成带圆点的竖线，不再是一段"1. … 2. …"的文字。 */
+    val steps: List<Step> = emptyList(),
     /** 界面上给不给"提交"这类写操作按钮。写操作一律停在最后一步由人按。 */
     val writable: Boolean = false,
     val writeLabel: String = "",
+)
+
+/** 审批链的一环。四个字段全是校方给的原文，界面不加工。 */
+data class Step(
+    val who: String,
+    val what: String,
+    val at: String = "",
+    val head: String = "",
 )
 
 @Immutable
