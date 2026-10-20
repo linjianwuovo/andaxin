@@ -209,45 +209,6 @@ private fun Extras(e: HomeExtras, open: (String) -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
 
-    if (e.banners.isNotEmpty()) {
-        SectionBlock("校园图讯")
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-        ) {
-            e.banners.forEach { b ->
-                Column(
-                    Modifier
-                        .width(200.dp)
-                        .clip(Radius.card)
-                        .background(MaterialTheme.colorScheme.surface)
-                        .then(
-                            // 只有真给了去处的才挂点击；开屏那张实测 tzlj 是 null，点了不响比不挂更坏
-                            if (b.targetUrl.startsWith("http")) Modifier.clickable {
-                                open("web/${com.andaxin.feature.web.encodeUrl(b.targetUrl)}")
-                            } else Modifier
-                        )
-                        .padding(bottom = Gap.sm),
-                ) {
-                    RemoteImage(
-                        url = b.imageUrl,
-                        contentDescription = b.title.ifBlank { "校方图" },
-                        cacheDir = graph.context.cacheDir,
-                        modifier = Modifier.fillMaxWidth().height(92.dp),
-                    )
-                    if (b.title.isNotBlank()) {
-                        Spacer(Modifier.height(Gap.xs))
-                        Text(
-                            b.title, fontSize = Type.meta, color = ink.muted,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = Gap.sm),
-                        )
-                    }
-                }
-            }
-        }
-    }
-
     if (e.services.isNotEmpty()) {
         SectionBlock("校方服务清单")
         // 四列图标网格：一行一个拉七行、右边还挂个域名，是这一屏最肿的一段
