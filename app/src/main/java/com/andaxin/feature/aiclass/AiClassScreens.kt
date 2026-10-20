@@ -74,7 +74,7 @@ private fun whyOf(t: Throwable): String =
     t.message?.takeIf { it.isNotBlank() } ?: "没连上 AI 课堂平台（${t.javaClass.simpleName}）"
 
 @Composable
-fun CourseDetailScreen(courseId: String, onBack: () -> Unit) {
+fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     var tab by remember { mutableIntStateOf(TAB_COURSEWARE) }
@@ -181,7 +181,16 @@ fun CourseDetailScreen(courseId: String, onBack: () -> Unit) {
         when {
             state.busy -> Text("正在拉…", fontSize = 13.sp, color = ink.faint)
             state.items.isNotEmpty() -> state.items.forEach { item ->
-                Sheet(modifier = Modifier.padding(bottom = Gap.sm)) {
+                // 只有直录播那一栏能点进播放器；其余三栏的条目没有"下一步"，
+                // 给它们挂个不会响的 clickable 比不挂更坏（点了没反应看着像坏了）
+                Sheet(
+                    modifier = Modifier
+                        .padding(bottom = Gap.sm)
+                        .then(
+                            if (tab == TAB_LIVE) Modifier.clickable { open("aiclass/play/${item.id}") }
+                            else Modifier
+                        ),
+                ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
                             Text(item.title, fontSize = 15.sp, color = ink.strong)
