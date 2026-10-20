@@ -16,8 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.sp
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.design.Type
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -96,7 +96,7 @@ fun RemoteImage(
         Box(modifier, contentAlignment = Alignment.Center) {
             Text(
                 text = "",
-                fontSize = 11.sp,
+                fontSize = Type.micro,
                 color = LocalInk.current.ghost,
             )
         }

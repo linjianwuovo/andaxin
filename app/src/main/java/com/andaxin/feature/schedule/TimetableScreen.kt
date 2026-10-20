@@ -182,7 +182,7 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
                         // 现在正在上的那一节标主色
                         val on = periodNow == i + 1
                         Text("${i + 1}", fontSize = Type.micro, color = if (on) accent else ink.faint)
-                        Text(start, fontSize = 8.5.sp, color = ink.ghost)
+                        Text(start, fontSize = Type.tinier, color = ink.ghost)
                     }
                 }
             }
@@ -257,18 +257,18 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean) {
     ) {
         Text(
             text = slot.course,
-            fontSize = 10.sp,
+            fontSize = Type.tiny,
             fontWeight = FontWeight.Medium,
             color = ink.strong,
             maxLines = if (span >= 2) 3 else 2,
-            lineHeight = 12.sp,
+            lineHeight = Type.tinyLine,
             overflow = TextOverflow.Ellipsis,
         )
         if (span >= 2) {
             Spacer(Modifier.height(1.dp))
             Text(
                 text = shortRoom(slot.room),
-                fontSize = 8.5.sp,
+                fontSize = Type.tinier,
                 color = ink.muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

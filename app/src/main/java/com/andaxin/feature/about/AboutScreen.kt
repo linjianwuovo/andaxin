@@ -46,9 +46,9 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             .padding(horizontal = Gap.screen),
     ) {
         Spacer(Modifier.height(Gap.xl))
-        Text("‹ 返回", fontSize = 14.sp, color = ink.muted, modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm))
+        Text("‹ 返回", fontSize = Type.body, color = ink.muted, modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm))
         Spacer(Modifier.height(Gap.sm))
-        Text("关于", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
+        Text("关于", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
 
         Spacer(Modifier.height(Gap.xl))
         Sheet {
@@ -150,7 +150,7 @@ private fun VersionCard() {
             Spacer(Modifier.weight(1f))
             Text(
                 text = if (busy) "…" else "查一次",
-                fontSize = 13.sp,
+                fontSize = Type.body,
                 color = if (busy) ink.ghost else MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .pressClick(shrink = false, enabled = !busy) { query(ref) }
@@ -160,14 +160,14 @@ private fun VersionCard() {
 
         why?.let {
             Spacer(Modifier.height(Gap.sm))
-            Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.micro, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
         Text(
             "这是官方 App 自己的更新通道，我们只用它看官方升到哪儿了，不装它的包。",
-            fontSize = 11.sp,
+            fontSize = Type.micro,
             color = ink.faint,
-            lineHeight = 16.sp,
+            lineHeight = Type.metaLine,
         )
     }
 }

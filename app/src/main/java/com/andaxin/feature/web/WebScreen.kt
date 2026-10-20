@@ -26,11 +26,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.Sheet
@@ -85,7 +85,7 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                 navigationIcon = {
                     Text(
                         "‹ 返回",
-                        fontSize = 14.sp,
+                        fontSize = Type.body,
                         color = ink.muted,
                         modifier = Modifier
                             .pressClick { if (canGoBack) webView?.goBack() else onBack() }
@@ -103,7 +103,7 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                 .background(MaterialTheme.colorScheme.background),
         ) {
             if (url.isBlank()) {
-                Text("地址是空的，进不来。", fontSize = 14.sp, color = ink.faint, modifier = Modifier.padding(Gap.lg))
+                Text("地址是空的，进不来。", fontSize = Type.body, color = ink.faint, modifier = Modifier.padding(Gap.lg))
                 return@Column
             }
             // 这一句一直挂着，不在页面动起来之后收起来：它解释的是"为什么点进来是个登录页"，
@@ -111,9 +111,9 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
             Sheet(modifier = Modifier.padding(horizontal = Gap.screen, vertical = Gap.sm)) {
                 Text(
                     "这是学校自己的页面，可能要你再登录一次。",
-                    fontSize = 11.sp,
+                    fontSize = Type.micro,
                     color = ink.faint,
-                    lineHeight = 16.sp,
+                    lineHeight = Type.metaLine,
                 )
             }
             Box(Modifier.fillMaxSize()) {
@@ -158,7 +158,7 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                 if (loading) {
                     Text(
                         "打开中…",
-                        fontSize = 11.sp,
+                        fontSize = Type.micro,
                         color = ink.muted,
                         modifier = Modifier
                             .align(Alignment.TopStart)

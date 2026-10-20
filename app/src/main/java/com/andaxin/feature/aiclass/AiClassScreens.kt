@@ -297,7 +297,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
         }
 
         when {
-            state.busy -> Text("正在拉…", fontSize = 13.sp, color = ink.faint)
+            state.busy -> Text("正在拉…", fontSize = Type.body, color = ink.faint)
             state.items.isNotEmpty() -> state.items.forEach { item ->
                 // 能点进去的只有两栏：直录播进播放器、章节里的"节"展开它挂的内容。
                 // 其余栏的条目没有下一步，给它们挂个不会响的 clickable 比不挂更坏（点了没反应看着像坏了）
@@ -335,7 +335,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                                 Spacer(Modifier.height(Gap.xs))
                                 Text(
                                     text = item.sub,
-                                    fontSize = 12.sp,
+                                    fontSize = Type.meta,
                                     color = ink.muted,
                                     modifier = Modifier.padding(start = if (item.extra["level"] == "1") 0.dp else Gap.md),
                                 )
@@ -344,16 +344,16 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                             if (section && picked?.id == item.id) {
                                 Spacer(Modifier.height(Gap.sm))
                                 when {
-                                    sectionItems == null && sectionWhy == null -> Text("…", fontSize = 12.sp, color = ink.faint)
-                                    sectionWhy != null -> Text(sectionWhy!!, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                                    sectionItems == null && sectionWhy == null -> Text("…", fontSize = Type.meta, color = ink.faint)
+                                    sectionWhy != null -> Text(sectionWhy!!, fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
                                     sectionItems!!.isEmpty() -> Text(
                                         "这一节没有内容。",
-                                        fontSize = 12.sp, color = ink.faint,
+                                        fontSize = Type.meta, color = ink.faint,
                                     )
                                     else -> sectionItems!!.forEach { s ->
                                         Row(Modifier.fillMaxWidth().padding(vertical = Gap.xs)) {
-                                            Text(s.title, fontSize = 13.sp, color = ink.body, modifier = Modifier.weight(1f))
-                                            Text(s.right, fontSize = 10.sp, color = ink.ghost)
+                                            Text(s.title, fontSize = Type.body, color = ink.body, modifier = Modifier.weight(1f))
+                                            Text(s.right, fontSize = Type.tiny, color = ink.ghost)
                                         }
                                     }
                                 }
@@ -365,7 +365,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                     }
                 }
             }
-            else -> Text(state.why ?: "这一栏是空的。", fontSize = 14.sp, color = ink.faint)
+            else -> Text(state.why ?: "这一栏是空的。", fontSize = Type.body, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.md))
@@ -402,13 +402,13 @@ private fun SignCounts(a: AiAttendance) {
             ) {
                 Text(
                     text = "$n",
-                    fontSize = 17.sp,
+                    fontSize = Type.title,
                     fontWeight = FontWeight.Medium,
                     // 旷课/迟到只要不是 0 就该扎眼一点，出勤那两格不跟着变色
                     color = if (n > 0 && (name == "旷课" || name == "迟到")) MaterialTheme.colorScheme.error else ink.strong,
                 )
                 Spacer(Modifier.height(Gap.xxs))
-                Text(name, fontSize = 11.sp, color = ink.muted)
+                Text(name, fontSize = Type.micro, color = ink.muted)
             }
         }
     }
@@ -432,11 +432,11 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Sheet(modifier = Modifier.pressClick { open("aiclass/scan") }) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
-                    Text("扫码签到", fontSize = 15.sp, color = ink.strong)
+                    Text("扫码签到", fontSize = Type.title, color = ink.strong)
                     Spacer(Modifier.height(Gap.xs))
-                    Text("对着课堂上的二维码", fontSize = 12.sp, color = ink.muted)
+                    Text("对着课堂上的二维码", fontSize = Type.meta, color = ink.muted)
                 }
-                Text("去扫码", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                Text("去扫码", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
             }
         }
         Spacer(Modifier.height(Gap.sm))
@@ -444,18 +444,18 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.lg))
 
         why?.let {
-            Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(Gap.sm))
         }
         // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
         Sheet(modifier = Modifier.pressClick { open("opencourse") }) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
-                    Text("公开课", fontSize = 15.sp, color = ink.strong)
+                    Text("公开课", fontSize = Type.title, color = ink.strong)
                     Spacer(Modifier.height(Gap.xs))
-                    Text("平台上开着的课，没选也能看目录", fontSize = 12.sp, color = ink.muted)
+                    Text("平台上开着的课，没选也能看目录", fontSize = Type.meta, color = ink.muted)
                 }
-                Text("去看", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                Text("去看", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
             }
         }
         Spacer(Modifier.height(Gap.sm))
@@ -478,17 +478,17 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                         Spacer(Modifier.width(Gap.md))
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(c.name, fontSize = 15.sp, color = ink.strong)
+                        Text(c.name, fontSize = Type.title, color = ink.strong)
                         if (c.teacher.isNotBlank()) {
                             Spacer(Modifier.height(Gap.xs))
-                            Text(c.teacher, fontSize = 12.sp, color = ink.muted)
+                            Text(c.teacher, fontSize = Type.meta, color = ink.muted)
                         }
                     }
-                    Text("进课", fontSize = 12.sp, color = ink.faint)
+                    Text("进课", fontSize = Type.meta, color = ink.faint)
                 }
             }
         }
-        if (courses.isEmpty() && why == null) Text("本周课表里没有课。", fontSize = 14.sp, color = ink.faint)
+        if (courses.isEmpty() && why == null) Text("本周课表里没有课。", fontSize = Type.body, color = ink.faint)
 
         Spacer(Modifier.height(Gap.md))
     }

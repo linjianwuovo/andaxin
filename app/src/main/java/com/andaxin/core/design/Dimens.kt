@@ -50,6 +50,17 @@ object Type {
     val meta = 12.sp
     val micro = 11.sp
 
+    /**
+     * 三档"窄容器专用"，不是给普通文字用的：
+     * [tiny] 只有课程表格子（一列约 86dp）和几枚角标；[tinier] 是格子下面那行节次时间；
+     * [hero] 只有校园卡那张卡面上的余额。别的地方要字号，从上面六档里挑。
+     */
+    val tiny = 10.sp
+    /** 只有 [tiny] 那一档要用：格子里两行字，行高再按 body 的 21 就撑不开了。 */
+    val tinyLine = 12.sp
+    val tinier = 8.5.sp
+    val hero = 30.sp
+
     /** 行高跟着字号走，别默认挤在一起。 */
     val bodyLine = 21.sp
     val metaLine = 16.sp

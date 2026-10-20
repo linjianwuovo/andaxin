@@ -90,14 +90,14 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(Gap.lg))
 
-        if (busy) Text("正在拉…", fontSize = 13.sp, color = ink.faint)
-        why?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
+        if (busy) Text("正在拉…", fontSize = Type.body, color = ink.faint)
+        why?.let { Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error) }
 
         modules.forEach { (name, list) ->
             if (name.isBlank() || list.isEmpty()) return@forEach
             Text(
                 text = "栏目 · $name",
-                fontSize = 12.sp,
+                fontSize = Type.meta,
                 fontWeight = FontWeight.Medium,
                 color = ink.muted,
                 modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
@@ -122,7 +122,7 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.sm))
         }
         if (!busy && courses.isEmpty() && why == null) {
-            Text("这一栏校方回的是空列表。", fontSize = 14.sp, color = ink.faint)
+            Text("这一栏校方回的是空列表。", fontSize = Type.body, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.md))
@@ -207,7 +207,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
 
     ScaffoldPage(title = detail?.name ?: "公开课", onBack = onBack) {
         why?.let {
-            Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(Gap.md))
         }
         val d = detail
@@ -235,10 +235,10 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
         if (p != null && p.target > 0) {
             Sheet {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("学到哪儿了", fontSize = 14.sp, color = ink.body)
+                    Text("学到哪儿了", fontSize = Type.body, color = ink.body)
                     Text(
                         text = "${p.studied} / ${p.target} 个点位",
-                        fontSize = 14.sp,
+                        fontSize = Type.body,
                         fontWeight = FontWeight.Medium,
                         color = if (p.studied >= p.target) Palette.Teal else ink.strong,
                     )
@@ -265,7 +265,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
         if (chapters.isNotEmpty()) {
             Text(
                 text = "章节",
-                fontSize = 12.sp,
+                fontSize = Type.meta,
                 fontWeight = FontWeight.Medium,
                 color = ink.muted,
                 modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
@@ -290,7 +290,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
                                 c.finished -> "学完"
                                 else -> "${c.learned}/${c.items}"
                             },
-                            fontSize = 12.sp,
+                            fontSize = Type.meta,
                             color = if (c.finished) Palette.Teal else ink.faint,
                         )
                     }
@@ -304,17 +304,17 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
         if (q != null) {
             Text(
                 text = if (q.isEmpty()) "没有测验" else "测验",
-                fontSize = 12.sp,
+                fontSize = Type.meta,
                 fontWeight = FontWeight.Medium,
                 color = ink.muted,
                 modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
             )
             q.forEach { item ->
                 Sheet {
-                    Text(item.title, fontSize = 15.sp, color = ink.strong)
+                    Text(item.title, fontSize = Type.title, color = ink.strong)
                     if (item.sub.isNotBlank()) {
                         Spacer(Modifier.height(Gap.xxs))
-                        Text(item.sub, fontSize = 12.sp, color = ink.muted)
+                        Text(item.sub, fontSize = Type.meta, color = ink.muted)
                     }
                 }
                 Spacer(Modifier.height(Gap.sm))

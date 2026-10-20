@@ -431,7 +431,7 @@ fun SampleTag(modifier: Modifier = Modifier) {
     val ink = LocalInk.current
     Text(
         text = "示例",
-        fontSize = 10.sp,
+        fontSize = Type.tiny,
         color = ink.faint,
         modifier = modifier
             .background(ink.hairline, Radius.tag)
