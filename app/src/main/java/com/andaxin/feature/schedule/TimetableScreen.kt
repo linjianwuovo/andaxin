@@ -41,6 +41,7 @@ import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Type
 import com.andaxin.core.schedule.Periods
+import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.TimetableSlot
 import com.andaxin.shell.Chip
 import com.andaxin.shell.DataCaveat
@@ -275,17 +276,6 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean) {
         // 不再写"第 1-2 节"：块占几行本身已经说了这件事，而格子很窄，
         // 多这一行就是把课名挤成"高等数…"的那只手（10-20 装机他嫌难看的就是这个）。
     }
-}
-
-/**
- * 教室名压短。校方给的是「博雅楼（A1）S103」这种一整串，一格六七十 dp 宽放不下。
- * 规则：去掉"楼/栋"和括号，只留 楼栋短名 + 房号 ——「博雅A1 S103」。
- * 认不出这个格式的原样返回，不硬切（切错了比长得更难看）。
- */
-private fun shortRoom(room: String): String {
-    val m = Regex("^(.{2,4}?)[楼栋]?（(.+?)）\\s*(\\S+)$").find(room.trim()) ?: return room.trim()
-    val (name, zone, code) = m.destructured
-    return "$name$zone $code"
 }
 
 /**

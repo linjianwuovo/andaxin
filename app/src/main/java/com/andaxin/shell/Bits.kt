@@ -173,6 +173,8 @@ fun MetricCell(
     value: String,
     unit: String = "",
     accent: Color? = null,
+    /** 数字那一档的字号。时间串这种"不是数"的值要降一档，不然 26sp 会折行。 */
+    size: androidx.compose.ui.unit.TextUnit = Type.num,
     modifier: Modifier = Modifier,
 ) {
     val ink = LocalInk.current
@@ -180,9 +182,11 @@ fun MetricCell(
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = value,
-                fontSize = Type.num,
+                fontSize = size,
                 fontWeight = FontWeight.SemiBold,
                 color = accent ?: ink.strong,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (unit.isNotBlank()) {
                 Spacer(Modifier.width(Gap.xxs))

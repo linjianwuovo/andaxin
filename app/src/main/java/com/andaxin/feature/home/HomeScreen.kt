@@ -42,6 +42,7 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
 import com.andaxin.core.net.RemoteImage
+import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.capture.HomeExtras
 import com.andaxin.data.capture.SchoolService
 import com.andaxin.shell.Chip
@@ -113,10 +114,12 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 MetricCell("今天有课", d?.let { "${it.todayLessons}" } ?: "—", "节", modifier = Modifier.weight(1f))
                 MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
                 MetricCell(
-                    "查寝",
+                    label = "查寝",
                     // 那一格只放时间本体（"10-20 21:00"），年份和"晚点名"三个字都不占位
-                    d?.dormCheckState?.trimStart('—')?.ifBlank { "—" } ?: "—",
-                    "",
+                    value = d?.dormCheckState?.trimStart('—')?.ifBlank { "—" } ?: "—",
+                    unit = "",
+                    // 那一格放的是"10-20 21:00"这种时间串，26sp 会折行；时间不是"数字"，降一档
+                    size = if ((d?.dormCheckState ?: "").length > 6) Type.title else Type.num,
                     modifier = Modifier.weight(1.4f),
                 )
             }
@@ -142,7 +145,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             if (!d?.nextLesson.isNullOrBlank()) {
                 Spacer(Modifier.height(Gap.sm))
                 Hairline()
-                RowLine("下一节", sub = d!!.nextLesson!!)
+                RowLine("下一节", sub = d!!.nextLesson!!.let { Regex("(（[^）]*）)").replace(it, "") })
             }
         }
 
@@ -159,7 +162,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 state.today.forEachIndexed { i, slot ->
                     RowLine(
                         title = slot.course,
-                        sub = slot.room,
+                        sub = shortRoom(slot.room),
                         right = if (slot.periodCount > 1)
                         // 连堂的要写全"第 1-2 节"，只写起始节次会让人以为 9:40 就下课
                             "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
