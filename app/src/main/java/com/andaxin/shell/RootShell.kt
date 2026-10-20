@@ -20,11 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
+import com.andaxin.core.design.Motion
 import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.spec
 import com.andaxin.feature.about.AboutScreen
@@ -77,10 +80,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.feature.modules.DormBoardScreen
 import com.andaxin.feature.brief.BriefDetailPage
@@ -152,6 +151,30 @@ private const val ID_ARG = "id"
 
 private fun idPattern() = androidx.navigation.navArgument(ID_ARG) { defaultValue = "" }
 
+/**
+ * 每一条路由都从这儿注册，因为转场只有一种：**整页推进、整页推出**。
+ *
+ * 不做"半程位移 + 淡入"那种两张卡叠着飘的效果 —— 上一版试过，页面上下的内容糊在一起，
+ * 看着像没渲染完。往前 [Motion.pageEnter]（280ms，ease-out：冲到位再收），
+ * 往回 [Motion.pageExit]（220ms）—— 返回这一下用户早知道自己要看什么，快一格才贴手。
+ * 被盖住的那一半走 ease-in-out，它不该比进场的那一半抢眼。
+ */
+private fun NavGraphBuilder.page(
+    name: String,
+    arguments: List<androidx.navigation.NamedNavArgument> = emptyList(),
+    content: @Composable androidx.compose.animation.AnimatedContentScope.(NavBackStackEntry) -> Unit,
+) {
+    composable(
+        route = name,
+        arguments = arguments,
+        enterTransition = { slideInHorizontally(tween(Motion.pageEnter, easing = Motion.EaseOut)) { it } },
+        exitTransition = { slideOutHorizontally(tween(Motion.pageEnter, easing = Motion.EaseInOut)) { -it } },
+        popEnterTransition = { slideInHorizontally(tween(Motion.pageExit, easing = Motion.EaseOut)) { -it } },
+        popExitTransition = { slideOutHorizontally(tween(Motion.pageExit, easing = Motion.EaseInOut)) { it } },
+        content = content,
+    )
+}
+
 @Composable
 fun RootShell() {
     val graph = LocalAppGraph.current
@@ -167,81 +190,81 @@ fun RootShell() {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        composable(Route.SHELF) { Gate(appearance, open = { nav.navigate(it) }) }
-        composable(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.ABOUT) { AboutScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.SPORT) { SportStartScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.SPORT_RECORDS) {
+        page(Route.SHELF) { Gate(appearance, open = { nav.navigate(it) }) }
+        page(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
+        page(Route.ABOUT) { AboutScreen(onBack = { nav.popBackStack() }) }
+        page(Route.SPORT) { SportStartScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
+        page(Route.SPORT_RECORDS) {
             SportRecordsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() })
         }
-        composable(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.SPORT_PLANNER) { RoutePlannerScreen(onBack = { nav.popBackStack() }) }
-        composable(
+        page(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
+        page(Route.SPORT_PLANNER) { RoutePlannerScreen(onBack = { nav.popBackStack() }) }
+        page(
             Route.SPORT_DETAIL,
             arguments = listOf(idPattern()),
         ) { entry ->
             SportDetailScreen(recordId = entry.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
         }
 
-        composable(Route.MORE) { MoreScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.CARD) { CampusCardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
+        page(Route.MORE) { MoreScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.CARD) { CampusCardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
+        page(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
 
-        composable(Route.DORM) { DormBoardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.DORM_TASK, arguments = listOf(idPattern())) { e ->
+        page(Route.DORM) { DormBoardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.DORM_TASK, arguments = listOf(idPattern())) { e ->
             BriefDetailPage(
                 title = "签到详情", source = graph.dormTaskDetail, id = e.arguments?.getString(ID_ARG).orEmpty(),
                 onBack = { nav.popBackStack() },
             )
         }
-        composable(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
             DormDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        composable(Route.EXAM) { ExamListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.EXAM_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.EXAM) { ExamListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.EXAM_DETAIL, arguments = listOf(idPattern())) { e ->
             ExamDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        composable(Route.CREDIT) { CreditListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.CREDIT_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.CREDIT) { CreditListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.CREDIT_DETAIL, arguments = listOf(idPattern())) { e ->
             CreditDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        composable(Route.LABOR) { LaborListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.LABOR_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.LABOR) { LaborListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.LABOR_DETAIL, arguments = listOf(idPattern())) { e ->
             LaborDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        composable(Route.HOLIDAY) { HolidayListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.HOLIDAY_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.HOLIDAY) { HolidayListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.HOLIDAY_DETAIL, arguments = listOf(idPattern())) { e ->
             HolidayDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        composable(Route.HOLIDAY_FORM) { HolidayFormScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.REPAIR) { RepairListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.REPAIR_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.HOLIDAY_FORM) { HolidayFormScreen(onBack = { nav.popBackStack() }) }
+        page(Route.REPAIR) { RepairListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.REPAIR_DETAIL, arguments = listOf(idPattern())) { e ->
             RepairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        composable(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.AFFAIR) { AffairTabsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.AFFAIR_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
+        page(Route.AFFAIR) { AffairTabsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.AFFAIR_DETAIL, arguments = listOf(idPattern())) { e ->
             AffairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        composable(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        composable(Route.AICLASS_SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
-        composable(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
+        page(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.AICLASS_SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
+        page(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
             CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), open = { nav.navigate(it) }) { nav.popBackStack() }
         }
-        composable(Route.AICLASS_PLAY, arguments = listOf(idPattern())) { e ->
+        page(Route.AICLASS_PLAY, arguments = listOf(idPattern())) { e ->
             RecordPlayScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
         }
-        composable(Route.OPEN_COURSE) {
+        page(Route.OPEN_COURSE) {
             OpenCourseListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() })
         }
-        composable(Route.OPEN_COURSE_DETAIL, arguments = listOf(idPattern())) { e ->
+        page(Route.OPEN_COURSE_DETAIL, arguments = listOf(idPattern())) { e ->
             OpenCourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
         }
-        composable(Route.GROUP) { GroupScreen(onBack = { nav.popBackStack() }) }
-        composable(
+        page(Route.GROUP) { GroupScreen(onBack = { nav.popBackStack() }) }
+        page(
             Route.WEB,
             arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
         ) { e ->

@@ -1,7 +1,6 @@
 package com.andaxin.feature.brief
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -185,7 +185,7 @@ fun BriefListPage(
         // 于是「＋ 发起请假」被推到屏幕外，装机时读屏根本找不到它（10-20 读屏验出来）。
         // 有 onNew 才画这一行，没有就一行都不多。
         if (newLabel != null && onNew != null) {
-            Sheet(modifier = Modifier.clickable(onClick = onNew)) {
+            Sheet(modifier = Modifier.pressClick(onClick = onNew)) {
                 Text(newLabel, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(Gap.sm))
@@ -369,7 +369,7 @@ private fun FieldRow(
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .clickable {
+                                .pressClick(shrink = false) {
                                     ps.selectedDateMillis?.let(::formatUtcDay)?.let { put(field.key, it) }
                                     picking = false
                                 }
@@ -382,7 +382,7 @@ private fun FieldRow(
                             fontSize = 14.sp,
                             color = ink.muted,
                             modifier = Modifier
-                                .clickable { picking = false }
+                                .pressClick(shrink = false) { picking = false }
                                 .padding(horizontal = Gap.md, vertical = Gap.sm),
                         )
                     },
@@ -391,7 +391,7 @@ private fun FieldRow(
                 }
             }
             val chosen = get(field.key)
-            Column(Modifier.clickable { picking = true }) {
+            Column(Modifier.pressClick(shrink = false) { picking = true }) {
                 Text(field.label, fontSize = 12.sp, color = ink.muted)
                 Spacer(Modifier.height(Gap.xs))
                 Text(
@@ -445,7 +445,7 @@ fun ScaffoldPage(
                         "‹ 返回",
                         fontSize = 14.sp,
                         color = LocalInk.current.muted,
-                        modifier = Modifier.clickable(onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
+                        modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
                     )
                 },
             )

@@ -2,7 +2,6 @@ package com.andaxin.feature.aiclass
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -308,8 +308,8 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                         .padding(bottom = Gap.sm)
                         .then(
                             when {
-                                live -> Modifier.clickable { open("aiclass/play/${item.id}") }
-                                section -> Modifier.clickable {
+                                live -> Modifier.pressClick { open("aiclass/play/${item.id}") }
+                                section -> Modifier.pressClick {
                                     picked = if (picked?.id == item.id) null else item
                                     sectionItems = null
                                     sectionWhy = null
@@ -429,7 +429,7 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
     }
 
     ScaffoldPage(title = "AI 课堂", onBack = onBack) {
-        Sheet(modifier = Modifier.clickable { open("aiclass/scan") }) {
+        Sheet(modifier = Modifier.pressClick { open("aiclass/scan") }) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
                     Text("扫码签到", fontSize = 15.sp, color = ink.strong)
@@ -448,7 +448,7 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.sm))
         }
         // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
-        Sheet(modifier = Modifier.clickable { open("opencourse") }) {
+        Sheet(modifier = Modifier.pressClick { open("opencourse") }) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
                     Text("公开课", fontSize = 15.sp, color = ink.strong)
@@ -465,7 +465,7 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Sheet(
                 modifier = Modifier
                     .padding(bottom = Gap.sm)
-                    .clickable { open("aiclass/detail/${c.id}") },
+                    .pressClick { open("aiclass/detail/${c.id}") },
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (c.cover.isNotBlank()) {

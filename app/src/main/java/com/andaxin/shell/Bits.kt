@@ -1,7 +1,11 @@
 package com.andaxin.shell
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,6 +21,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.design.Motion
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
@@ -56,6 +63,57 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 行主标题有 14/15/16/17 四种、大数字有 17/20/24/30 四种，单看每处都说得通，
  * 摆在一起就是"没对齐、不一目了然"。改一处就能全仓跟着变，是这几个零件存在的全部意义。
  */
+
+/**
+ * 能点的东西按下去得有个交代。
+ *
+ * 两种交代，分开用：
+ * ① [shrink] = true —— 独立的胶囊、图标格、按钮：整块缩到 0.97。
+ *    只有 3%，因为缩多了会看出"抖"，1% 以下又等于没反馈；
+ * ② [shrink] = false —— 卡在一张卡里的行：不能缩，一缩就把同卡别的行也带歪，
+ *    所以改成压暗到 0.55，这是 HyperOS 设置列表那一下。
+ *
+ * 涟漪（ripple）在这儿一律关掉：这一层已经给足了反馈，再叠一圈水波纹就是两种风格打架。
+ * 松手比按下稍慢（[Motion.press] / [Motion.pressRelease]），手指抬起来的那一下能看见"回弹"，
+ * 而且动画是可打断的 —— 没按满也会立刻往回走。
+ */
+@Composable
+fun Modifier.pressClick(enabled: Boolean = true, shrink: Boolean = true, onClick: () -> Unit): Modifier {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val amount = animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = tween(if (pressed) Motion.press else Motion.pressRelease, easing = Motion.EaseOut),
+        label = "press",
+    )
+    return this
+        .graphicsLayer {
+            val t = amount.value
+            if (shrink) {
+                scaleX = 1f - t * 0.03f
+                scaleY = 1f - t * 0.03f
+            } else {
+                alpha = 1f - t * 0.45f
+            }
+        }
+        .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick)
+}
+
+/**
+ * 数据块第一次拿到时淡一下（[Motion.enter]，ease-out）。
+ *
+ * 只淡入、不位移、更不做"一块接一块排队出现"那种 stagger —— 多条来源要一次出齐，
+ * 一路加载一路蹦是最招人烦的。[key] 变了（比如换票重拉）会再播一次，
+ * 因为那一屏内容确实是新的一份。
+ */
+@Composable
+fun Modifier.enterFade(key: Any? = Unit): Modifier {
+    var shown by remember(key) { mutableStateOf(false) }
+    LaunchedEffect(key) { shown = true }
+    val a = animateFloatAsState(if (shown) 1f else 0f, tween(Motion.enter, easing = Motion.EaseOut), label = "enter")
+    // 读 state 而不是读裸值：这样动画每帧只重画这一层，不会把整块内容 recompose 一遍
+    return graphicsLayer { alpha = a.value }
+}
 
 /**
  * 一张卡。底子和圆角交给 Miuix 的 `Card`（HyperOS 的设置卡就是那个样子：
@@ -110,7 +168,7 @@ fun RowLine(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.pressClick(onClick = onClick, shrink = false) else Modifier)
             .padding(vertical = Rhythm.rowV),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -218,11 +276,11 @@ fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: 
         fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
         color = if (picked) MaterialTheme.colorScheme.primary else ink.muted,
         modifier = modifier
+            .pressClick(onClick = onClick)
             .background(
                 if (picked) MaterialTheme.colorScheme.primary.copy(alpha = 0.13f) else ink.offFill,
                 Radius.pill,
             )
-            .clickable(onClick = onClick)
             .padding(horizontal = Gap.md, vertical = Gap.sm),
     )
 }
@@ -322,7 +380,7 @@ fun ErrorLine(text: String, modifier: Modifier = Modifier, retry: (() -> Unit)? 
                 text = "重试",
                 fontSize = Type.meta,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable(onClick = retry).padding(horizontal = Gap.xs, vertical = Gap.xs),
+                modifier = Modifier.pressClick(onClick = retry).padding(horizontal = Gap.xs, vertical = Gap.xs),
             )
         }
     }

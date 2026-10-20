@@ -1,7 +1,6 @@
 package com.andaxin.feature.sport
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -106,7 +106,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 text = "＋ 画一条 / 看地图",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { open("sport/planner") }.padding(vertical = Gap.sm),
+                modifier = Modifier.pressClick(shrink = false) { open("sport/planner") }.padding(vertical = Gap.sm),
             )
         }
 
@@ -216,7 +216,7 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
     Page("运动记录", onBack) {
         items.forEach { r ->
-            Sheet(modifier = Modifier.clickable { open("sport/detail/${r.id}") }) {
+            Sheet(modifier = Modifier.pressClick { open("sport/detail/${r.id}") }) {
                 Labeled(label = r.date, value = "%.2f km".format(r.km))
                 Spacer(Modifier.height(Gap.sm))
                 Hairline()
@@ -409,7 +409,7 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnS
             "‹ 返回",
             fontSize = 14.sp,
             color = LocalInk.current.muted,
-            modifier = Modifier.clickable(onClick = onBack).padding(vertical = Gap.sm),
+            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
         )
         Spacer(Modifier.height(Gap.sm))
         Text(title, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
@@ -447,7 +447,7 @@ private fun BigButton(text: String, onClick: () -> Unit) {
             .fillMaxWidth()
             .height(52.dp)
             .background(MaterialTheme.colorScheme.primary, Radius.card)
-            .clickable(onClick = onClick),
+            .pressClick(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
@@ -461,7 +461,7 @@ private fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String,
             .weight(1f)
             .height(48.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant, Radius.field)
-            .clickable(onClick = onClick),
+            .pressClick(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, fontSize = 14.sp, color = LocalInk.current.body, maxLines = 1)

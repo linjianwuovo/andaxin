@@ -1,7 +1,6 @@
 package com.andaxin.feature.theme
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -64,7 +64,7 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             "‹ 返回",
             fontSize = 14.sp,
             color = ink.muted,
-            modifier = Modifier.clickable(onClick = onBack).padding(vertical = Gap.sm),
+            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
         )
         Spacer(Modifier.height(Gap.sm))
         Text("主题", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
@@ -105,7 +105,7 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     val on = hex == draft.accent
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { draft = draft.copy(accent = hex); commit() },
+                        modifier = Modifier.pressClick { draft = draft.copy(accent = hex); commit() },
                     ) {
                         Box(
                             Modifier
@@ -184,7 +184,7 @@ private fun <T : Any> ChoiceRow(options: List<Pair<String, T>>, picked: T, onPic
                         if (on) MaterialTheme.colorScheme.surfaceVariant else ink.hairline,
                         Radius.pill,
                     )
-                    .clickable { onPick(value) }
+                    .pressClick { onPick(value) }
                     .padding(horizontal = Gap.lg, vertical = Gap.sm),
             )
         }

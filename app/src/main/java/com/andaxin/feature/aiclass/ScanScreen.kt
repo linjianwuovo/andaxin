@@ -11,7 +11,6 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.andaxin.shell.pressClick
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
@@ -83,7 +83,7 @@ fun ScanScreen(onBack: () -> Unit) {
             "‹ 返回",
             fontSize = 14.sp,
             color = ink.muted,
-            modifier = Modifier.clickable(onClick = onBack).padding(vertical = Gap.sm),
+            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
         )
         Text("扫码签到", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
         Spacer(Modifier.height(Gap.lg))

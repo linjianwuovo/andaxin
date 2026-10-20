@@ -1,7 +1,6 @@
 package com.andaxin.feature.modules
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,11 +31,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
+import com.andaxin.core.design.Type
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
@@ -137,19 +138,20 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
             Box(
                 Modifier.weight(1f).height(46.dp).background(ink.offFill, Radius.field)
-                    .clickable { open("card/flows") }.padding(Gap.md),
+                    .pressClick { open("card/flows") }.padding(Gap.md),
                 contentAlignment = Alignment.Center,
-            ) { Text("流水", fontSize = 14.sp, color = ink.body) }
+            ) { Text("流水", fontSize = Type.body, color = ink.body) }
+            // 挂失是校方那条写接口，没批之前不能点：给它一个"按不动"的样子，
+            // 比挂一颗点了没反应的按钮诚实 —— 也免得他真去按。
             Box(
-                Modifier.weight(1f).height(46.dp).background(ink.offFill, Radius.field)
-                    .clickable { }.padding(Gap.md),
+                Modifier.weight(1f).height(46.dp).background(ink.hairline, Radius.field).padding(Gap.md),
                 contentAlignment = Alignment.Center,
-            ) { Text("挂失", fontSize = 14.sp, color = ink.body) }
+            ) { Text("挂失", fontSize = Type.body, color = ink.ghost) }
         }
         Spacer(Modifier.height(Gap.sm))
         Text(
-            text = "挂失暂未开放。",
-            fontSize = 11.sp,
+            text = "挂失要找学生活动中心，App 里按不了。",
+            fontSize = Type.micro,
             color = ink.faint,
         )
         Spacer(Modifier.height(Gap.md))
@@ -281,7 +283,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                 Modifier
                     .size(30.dp)
                     .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.offFill, Radius.field)
-                    .clickable { rememberPw = !rememberPw },
+                    .pressClick { rememberPw = !rememberPw },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -346,7 +348,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             text = "先不登录，用占位数据看看界面",
             fontSize = 13.sp,
             color = ink.muted,
-            modifier = Modifier.clickable {
+            modifier = Modifier.pressClick(shrink = false) {
                 scope.launch { graph.session.browseWithoutLogin() }
                 onBack()
             }.padding(vertical = Gap.sm),
@@ -384,7 +386,7 @@ fun OnboardingScreen(onAgree: () -> Unit) {
         }
         Box(
             Modifier.fillMaxWidth().height(50.dp).background(MaterialTheme.colorScheme.primary, Radius.card)
-                .clickable(onClick = onAgree),
+                .pressClick(onClick = onAgree),
             contentAlignment = Alignment.Center,
         ) {
             Text("知道了", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)

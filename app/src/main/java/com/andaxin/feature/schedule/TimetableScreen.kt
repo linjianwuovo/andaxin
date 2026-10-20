@@ -2,7 +2,6 @@ package com.andaxin.feature.schedule
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +46,8 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.enterFade
+import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.ErrorLine
 import com.andaxin.state.TimetableModel
@@ -103,7 +104,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
                 text = if (showDayMode) "看整周" else "只看今天",
                 fontSize = Type.meta,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { showDayMode = !showDayMode }.padding(vertical = Gap.sm),
+                modifier = Modifier.pressClick(shrink = false) { showDayMode = !showDayMode }.padding(vertical = Gap.sm),
             )
         }
 
