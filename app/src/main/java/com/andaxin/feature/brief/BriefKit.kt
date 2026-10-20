@@ -157,6 +157,8 @@ fun BriefListPage(
     onBack: () -> Unit,
     note: String = "这一屏的数据是占位，还没接真实报文。",
     empty: String = "暂时没有条目。",
+    newLabel: String? = null,
+    onNew: (() -> Unit)? = null,
 ) {
     val model = adxViewModel { ListModel(source) }
     val state by model.state.collectAsStateWithLifecycle()
@@ -194,6 +196,15 @@ fun BriefListPage(
             Spacer(Modifier.height(Gap.sm))
         }
         state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
+        // 「新建」那一行：以前那三张表单（报修、发起请假、离返校登记）根本没有入口，
+        // 页面写了却谁也进不去。有 onNew 才画这一行，没有就一行都不多。
+        if (newLabel != null && onNew != null) {
+            Spacer(Modifier.height(Gap.sm))
+            Sheet(modifier = Modifier.clickable(onClick = onNew)) {
+                Text(newLabel, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.height(Gap.sm))
         PlaceholderNote(note)
     }
 }
@@ -331,7 +342,12 @@ private fun FieldRow(
                 singleLine = true,
             )
         }
-        is Field.Person -> Labeled(label = field.label, value = "3 号楼 412（取本机设置，批次三接）")
+        // 宿舍这种"本机设置里填的东西"：填了什么就显示什么，没填就明说去哪儿填，
+        // 不拿一个假房间号顶着 —— 那会让报修单看着像已经填好了
+        is Field.Person -> Labeled(
+            label = field.label,
+            value = dorm.ifBlank { "没填 · 去「我的 · 宿舍」填一下" },
+        )
         is Field.Number -> Labeled(label = field.label, value = "未填 · ${field.unit}")
         is Field.Date -> Labeled(label = field.label, value = "点选日期（日期控件批次三补）")
         is Field.Choice -> Column {

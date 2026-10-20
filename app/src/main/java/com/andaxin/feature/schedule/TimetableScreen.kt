@@ -19,6 +19,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,7 +59,20 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
     val state by model.state.collectAsStateWithLifecycle()
     val ink = LocalInk.current
 
-    val today = remember { Calendar.getInstance().get(Calendar.DAY_OF_WEEK).let { if (it == Calendar.SUNDAY) 7 else it - 1 } }
+    /*
+     * 周几、现在第几节，都跟着真实时钟走：每分钟重新取一次。
+     * 以前这里是 `remember { Calendar... }` 一次算完就不动了 —— 网格开着跨过一节课，
+     * 高亮还停在上一节，看着像课表坏了。
+     */
+    var minute by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            minute++
+        }
+    }
+    val today = remember(minute) { Periods.today() }
+    val periodNow = remember(minute) { Periods.periodNow() }
     var showDayMode by remember { mutableStateOf(false) }
 
     Column(
@@ -87,7 +103,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
         if (showDayMode) {
             DayList(state.slots.filter { it.day == today }.ifEmpty { state.slots }, today)
         } else {
-            Grid(state.slots, today)
+            Grid(state.slots, today, periodNow)
         }
 
         if (state.slots.isEmpty() && !state.firstLoad) {
@@ -108,7 +124,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
 
 /** 周几 × 第几节的网格：左边一列节次，顶上不用再放星期头，格子里自带课程名。 */
 @Composable
-private fun Grid(slots: List<TimetableSlot>, today: Int) {
+private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
     val ink = LocalInk.current
     val byCell = remember(slots) {
         val map = mutableMapOf<Int, MutableList<TimetableSlot>>()
@@ -123,7 +139,9 @@ private fun Grid(slots: List<TimetableSlot>, today: Int) {
                     Modifier.height(ROW_HEIGHT.dp).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text("${i + 1}", fontSize = 11.sp, color = ink.faint)
+                    // 左边那列节次号：现在正在上的这一节标主色（现在本身就含了今天）
+                    val on = periodNow == i + 1
+                    Text("${i + 1}", fontSize = 11.sp, color = if (on) MaterialTheme.colorScheme.primary else ink.faint)
                     Text(start, fontSize = 9.sp, color = ink.ghost)
                 }
             }
@@ -147,13 +165,25 @@ private fun Grid(slots: List<TimetableSlot>, today: Int) {
                 )
                 PERIOD_TIMES.indices.forEach { p ->
                     val slot = byCell[day * 100 + (p + 1)]?.firstOrNull()
+                    // 正在上的那一节：格子左边一条主色竖条。没课的课间也标，
+                    // 因为"现在该在第几节"这件事本身就跟有没有排课无关
+                    val on = day == today && periodNow == p + 1
                     Box(
                         Modifier
                             .fillMaxWidth()
                             .height(ROW_HEIGHT.dp)
-                            .padding(1.dp),
+                            .padding(1.dp)
+                            .then(if (on) Modifier.background(ink.hairline) else Modifier),
                         contentAlignment = Alignment.TopStart,
                     ) {
+                        if (on) {
+                            Spacer(
+                                Modifier
+                                    .width(2.dp)
+                                    .fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.primary),
+                            )
+                        }
                         if (slot != null) {
                             CourseCell(slot)
                         }
