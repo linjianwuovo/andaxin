@@ -28,13 +28,10 @@ import com.andaxin.data.capture.ClassGroup
 import com.andaxin.data.capture.GroupKind
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import com.andaxin.core.design.Type
-import com.andaxin.shell.NoteBlock
 import com.andaxin.shell.RowLine
-import com.andaxin.shell.noteLines
 
 /**
  * 班级群与班内名单。
@@ -130,17 +127,9 @@ fun GroupScreen(onBack: () -> Unit) {
         } else if (busy) {
             Text("正在拉…", fontSize = Type.meta, color = ink.faint)
         } else {
-            Text(why ?: "校方这两条接口回了数据，但里面一个班都没有。", fontSize = Type.meta, color = ink.faint)
+            Text(why ?: "没有名单。", fontSize = Type.meta, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(
-            noteLines(
-            "群分类来自 myGroupChat、名单来自 mailListGroupHomePage，都是校方原样给的。" +
-                "名单里没有头像（那个键实测全空），也没有联系方式。" +
-                "这是别人的信息：只在本机看，这一版不做导出、不存副本。",
-            ),
-            shown = 1,
-        )
     }
 }

@@ -110,9 +110,7 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
             // 摘掉之后就只剩他自己猜了
             Sheet(modifier = Modifier.padding(horizontal = Gap.screen, vertical = Gap.sm)) {
                 Text(
-                    "这一页是学校自己的 H5。校方给的链接里没有拼登录参数，而我们还没有证据" +
-                        "官方是怎么把登录态带进这种页面的（抓包里这类 GET 一条都不带 token）。" +
-                        "所以它要是打开就是登录页，那不是坏了，是我们这条路还没打通。",
+                    "这是学校自己的页面，可能要你再登录一次。",
                     fontSize = 11.sp,
                     color = ink.faint,
                     lineHeight = 16.sp,

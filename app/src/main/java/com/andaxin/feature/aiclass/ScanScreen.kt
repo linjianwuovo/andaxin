@@ -43,7 +43,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -122,7 +121,6 @@ fun ScanScreen(onBack: () -> Unit) {
             )
         }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("识别只到「看见码」为止：签到是写操作，那一下留给你按，接口也还没接。")
     }
 }
 

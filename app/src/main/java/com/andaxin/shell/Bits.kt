@@ -31,14 +31,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
-import com.andaxin.app.TIMETABLE_NOTE
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
-import com.andaxin.core.store.Session
 import com.andaxin.data.brief.Flag
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
@@ -221,87 +219,6 @@ fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: 
             .padding(horizontal = Gap.md, vertical = Gap.sm),
     )
 }
-
-/**
- * 这一屏的数据还是占位时挂的说明条。
- * 规矩：只要某块走的是 LocalFeed，界面上就得挂着它，别拿假数据冒充校方给的东西。
- *
- * 长说明一律走 [NoteBlock] 那种"一句一行"，这里只放一句。
- */
-@Composable
-fun PlaceholderNote(text: String, modifier: Modifier = Modifier) {
-    val ink = LocalInk.current
-    val scheme = MiuixTheme.colorScheme
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(scheme.surfaceVariant, Radius.tag)
-            .padding(horizontal = Gap.md, vertical = Gap.md),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Spacer(
-            Modifier
-                .width(3.dp)
-                .height(14.dp)
-                .padding(top = 3.dp)
-                .background(scheme.primary, Radius.tag)
-        )
-        Spacer(Modifier.width(Gap.sm))
-        Text(text = text, fontSize = Type.micro, lineHeight = Type.microLine, color = ink.muted)
-    }
-}
-
-/**
- * 把"一句一段"那种长说明切成一行一句。
- *
- * 各屏底部那串 note 原本是一整段（三四句连在一起），11sp 灰字糊在卡片底下，
- * 实测没人读得进去。这里按中文句号/分号/换行切开，交给 [NoteBlock] 一句一行摆，
- * 默认只露一行，剩下的点「为什么」再看。
- */
-fun noteLines(text: String): List<String> =
-    text.split('\n', '。', '；')
-        .map { it.trim().removePrefix("·").trim() }
-        .filter { it.isNotBlank() }
-
-/**
- * 那种三五行起步的解释文字。
- *
- * 以前是一大段 11sp 灰字糊在卡片底下，实测没人读得进去（他自己那句"不够一目了然"
- * 有一半指的是这个）。这里改成**一句一行、前面一个小圆点**，并且默认只露 [shown] 行，
- * 剩下的收进「为什么」那一行点开才看 —— 想快的人一眼扫完，想细看的人能展开。
- */
-@Composable
-fun NoteBlock(lines: List<String>, shown: Int = 2, title: String = "说明", modifier: Modifier = Modifier) {
-    val ink = LocalInk.current
-    var open by remember(lines) { mutableStateOf(false) }
-    val visible = if (open || lines.size <= shown) lines else lines.take(shown)
-    Column(modifier.fillMaxWidth()) {
-        visible.forEach { line ->
-            Row(Modifier.padding(vertical = Gap.xxs)) {
-                Text("·", fontSize = Type.micro, color = ink.ghost)
-                Spacer(Modifier.width(Gap.xs))
-                Text(
-                    text = line,
-                    fontSize = Type.micro,
-                    lineHeight = Type.microLine,
-                    color = ink.faint,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        if (lines.size > shown) {
-            Text(
-                text = if (open) "收起" else "为什么？（还有 ${lines.size - shown} 条）",
-                fontSize = Type.micro,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clickable { open = !open }
-                    .padding(top = Gap.xs, bottom = Gap.xs),
-            )
-        }
-    }
-}
-
 @Composable
 fun StatBlock(label: String, value: String, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
@@ -355,46 +272,65 @@ fun Hairline(modifier: Modifier = Modifier) {
 @Composable
 fun FillHeight(modifier: Modifier = Modifier) = Spacer(modifier.fillMaxHeight())
 
+
+/* ───────────── 界面状态：一句话，不写文章 ───────────── */
+
 /**
- * 每一屏底部那句"这数据真不真"。
- *
- * 有错误先把错误说出来，再说哪几格还是占位 —— 以前只挂那句占位说明，
- * 接口挂了界面就是一屏空白加一句无关的话，看着像我们没做，其实是被服务器挡了。
- *
- * [scheduleNote] 给课表那一屏用：它接上的只有"今天"，整周那条还没取证，措辞不一样。
- *
- * [weakReason] 给首页用：某一格单独拉不到（比如校内那台 sports 出校门就连不上）时，
- * 别把那串英文异常塞进格子里当值 —— 10-20 那版就是那么干的，格子里显示半截异常，
- * 看着像数据坏了其实是文案位置放错了。格子一律显示「—」，原因挂在这句话后面补一句。
+ * 空状态。只说"这里现在没有东西"这一句事实，不解释是哪条接口、为什么没数据 ——
+ * 那些是我该写在 `docs/接入清单.md` 里的，不是给用户看的。
  */
 @Composable
-fun DataCaveat(
-    error: String? = null,
-    scheduleNote: Boolean = false,
-    weakReason: String? = null,
-    modifier: Modifier = Modifier,
-) {
-    val graph = LocalAppGraph.current
-    val session by graph.session.state.collectAsStateWithLifecycle(Session())
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (!error.isNullOrBlank()) {
+fun EmptyState(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        fontSize = Type.meta,
+        lineHeight = Type.metaLine,
+        color = LocalInk.current.faint,
+        modifier = modifier.fillMaxWidth().padding(vertical = Gap.lg),
+    )
+}
+
+/**
+ * 失败态：一行原因 + 一颗「重试」。
+ *
+ * 原因用服务端/网络给的那句短的，超过一行就截断 —— 用户要的是"现在没拿到、能不能再来一次"，
+ * 不是一篇说明文。
+ */
+@Composable
+fun ErrorLine(text: String, modifier: Modifier = Modifier, retry: (() -> Unit)? = null) {
+    val ink = LocalInk.current
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = text,
+            fontSize = Type.meta,
+            lineHeight = Type.metaLine,
+            color = MaterialTheme.colorScheme.error,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (retry != null) {
+            Spacer(Modifier.width(Gap.sm))
             Text(
-                text = error,
-                fontSize = Type.body,
-                lineHeight = Type.bodyLine,
-                color = MaterialTheme.colorScheme.error,
-            )
-            Spacer(Modifier.height(Gap.sm))
-        }
-        PlaceholderNote(if (scheduleNote) TIMETABLE_NOTE else graph.placeholderNote(session.loggedIn))
-        if (!weakReason.isNullOrBlank()) {
-            Spacer(Modifier.height(Gap.xs))
-            Text(
-                text = "这一格这次没拉到：" + weakReason,
+                text = "重试",
                 fontSize = Type.meta,
-                lineHeight = Type.metaLine,
-                color = LocalInk.current.faint,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = retry).padding(horizontal = Gap.xs, vertical = Gap.xs),
             )
         }
     }
+}
+
+/** 未登录时那几格假数据顶上的小标记。一句"示例"够了，不用一整条横幅。 */
+@Composable
+fun SampleTag(modifier: Modifier = Modifier) {
+    val ink = LocalInk.current
+    Text(
+        text = "示例",
+        fontSize = 10.sp,
+        color = ink.faint,
+        modifier = modifier
+            .background(ink.hairline, Radius.tag)
+            .padding(horizontal = Gap.xs, vertical = 2.dp),
+    )
 }

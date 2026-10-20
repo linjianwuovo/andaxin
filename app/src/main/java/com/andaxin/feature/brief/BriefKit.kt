@@ -53,10 +53,7 @@ import com.andaxin.data.brief.ListSource
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
-import com.andaxin.shell.NoteBlock
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.RowLine
-import com.andaxin.shell.noteLines
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
@@ -169,7 +166,6 @@ fun BriefListPage(
     source: ListSource,
     onRow: (String) -> Unit,
     onBack: () -> Unit,
-    note: String = "这一屏的数据是占位，还没接真实报文。",
     empty: String = "暂时没有条目。",
     newLabel: String? = null,
     onNew: (() -> Unit)? = null,
@@ -215,7 +211,6 @@ fun BriefListPage(
         }
         state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.sm))
-        NoteBlock(noteLines(note), shown = 1)
     }
 }
 
@@ -225,7 +220,6 @@ fun BriefDetailPage(
     source: DetailSource,
     id: String,
     onBack: () -> Unit,
-    note: String = "上面每一项都是校方接口给的；没取到的那几项空着，不编。",
 ) {
     val model = adxViewModel { DetailModel(source, id) }
     val state by model.state.collectAsStateWithLifecycle()
@@ -286,7 +280,6 @@ fun BriefDetailPage(
         }
         state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(noteLines(note), shown = 1)
     }
 }
 
@@ -331,7 +324,6 @@ fun BriefFormPage(
             Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote("提交这一侧还没接真实报文，按下去只会告诉你没接。")
     }
 }
 

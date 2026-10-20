@@ -40,11 +40,8 @@ import com.andaxin.data.capture.OpenCourse
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.Chip
-import com.andaxin.shell.NoteBlock
-import com.andaxin.shell.noteLines
 import com.andaxin.core.design.Type
 
 /*
@@ -129,13 +126,6 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(
-            noteLines(
-            "课程目录来自 FIF 那侧的 openCourse 四条口（热门 / 最新 / 全部 + 校方自配的栏目）。" +
-                "列表只有目录级的信息：课名、老师、报名人数 —— 报名和上课都不在这一版里。",
-            ),
-            shown = 1,
-        )
     }
 }
 
@@ -210,7 +200,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
             progress = p
             chapters = ch
             quizzes = graph.fifApi.adaptQuizzes(uid)
-            if (detail == null && ch.isEmpty()) throw Exception("详情与章节两条都没回数据（多半是那个号不对）")
+            if (detail == null && ch.isEmpty()) throw Exception("这一门课没有更多资料")
         }
         why = r.exceptionOrNull()?.message
     }
@@ -313,7 +303,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
         val q = quizzes
         if (q != null) {
             Text(
-                text = if (q.isEmpty()) "这一门课校方没挂测验" else "测验",
+                text = if (q.isEmpty()) "没有测验" else "测验",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 color = ink.muted,
@@ -332,13 +322,5 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(
-            noteLines(
-            "详情、章节进度、测验三条都来自 adapt-app 那组口（抓包真值对出来的）。" +
-                "看得到学到哪儿，但这一版不做任何「上课」动作 —— 播放与答题都不接。" +
-                (if (q != null && q.isEmpty()) "" else "\n测验那一条的条目字段名我们还没有实样。"),
-            ),
-            shown = 1,
-        )
     }
 }

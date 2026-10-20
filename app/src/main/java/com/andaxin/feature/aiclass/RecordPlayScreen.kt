@@ -35,9 +35,9 @@ import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
+import com.andaxin.core.design.Type
 import com.andaxin.data.capture.AiItem
 import com.andaxin.feature.brief.ScaffoldPage
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 
 /*
@@ -125,21 +125,20 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(Gap.sm))
-            PlaceholderNote(
-                "这一档是 ${cur.sub.ifBlank { "整堂" }}，拖动进度条会接着往下取流。" +
-                    "整堂录像是五百来兆，不在 Wi-Fi 下点之前先想想流量。",
-            )        } else {
+            // 一句就够：这一档多大、是不是接着上次播
+            Text(
+                text = listOfNotNull(
+                    cur.sub.takeIf { it.isNotBlank() }?.let { "这一档 $it" },
+                    seenAt?.takeIf { it.isNotBlank() && it != "0:00" }?.let { "接着 $it 播" },
+                ).joinToString(" · "),
+                fontSize = Type.micro,
+                color = ink.ghost,
+            )
+        } else {
             Sheet { Text(why ?: "没有可播的机位。", fontSize = 13.sp, color = ink.faint) }
         }
 
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
-            "播放地址是当场签名的直链，每次进来都要重新问一遍，存下来的链接过一会儿就换。" +
-                (seenAt?.let { "这台机器记着这条看到 $it，已经给你跳过去了。" }
-                    ?: "这台机器上这条还没放过，从头开始。") +
-                " 校方那两条进度上报（liveRecordLog、video/progressLog）实测回\"访问受限\"，" +
-                "所以进度只存在你这台手机上 —— 换一台、或者清了应用数据，就得从头看。",
-        )
     }
 }
 

@@ -36,10 +36,9 @@ import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
 import com.andaxin.data.MessageItem
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.DataCaveat
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
+import com.andaxin.shell.ErrorLine
 import com.andaxin.state.MessageModel
 
 @Composable
@@ -102,7 +101,7 @@ fun MessageScreen(modifier: Modifier = Modifier) {
             color = LocalInk.current.faint,
         )
         Spacer(Modifier.height(Gap.sm))
-        DataCaveat(state.error)
+        state.error?.let { ErrorLine(it) }
         Spacer(Modifier.height(Gap.xxl))
     }
 }

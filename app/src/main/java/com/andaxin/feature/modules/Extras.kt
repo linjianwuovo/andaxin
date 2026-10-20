@@ -41,7 +41,6 @@ import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -149,15 +148,11 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(Gap.sm))
         Text(
-            text = "挂失是写操作，接口没接之前这个按钮按了不动。",
+            text = "挂失暂未开放。",
             fontSize = 11.sp,
             color = ink.faint,
         )
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
-            "余额、有效期、流水都是校方那台新开普给的；「今天支出」「近 30 天支出」" +
-                "是我们自己按流水加的 —— 服务端那四条统计口在这个租户上是坏的，没有现成的合计。",
-        )
     }
 }
 
@@ -208,18 +203,13 @@ fun CardFlowsScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(Gap.xs))
                     Text(
                         text = listOf(f.what, f.term).filter { it.isNotBlank() }.joinToString(" · ")
-                            .ifBlank { "（这一笔服务端没给说明）" },
+                            .ifBlank { "（无说明）" },
                         fontSize = 11.sp, color = ink.faint,
                     )
                 }
             }
             Spacer(Modifier.height(Gap.sm))
         }
-        PlaceholderNote(
-            if (card != null && card.flows.isEmpty())
-                "近 30 天没有一笔消费记录（服务端回的是空行，不是没连上）。"
-            else "这一屏是近 30 天的行，最多 200 条；消费点名字是校方给的，没做翻译。",
-        )
     }
 }
 

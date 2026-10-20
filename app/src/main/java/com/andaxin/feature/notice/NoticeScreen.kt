@@ -24,13 +24,12 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.net.RemoteImage
 import com.andaxin.data.NoticeItem
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.DataCaveat
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.state.NoticeModel
 import com.andaxin.core.design.Type
 import com.andaxin.shell.RowLine
+import com.andaxin.shell.ErrorLine
 
 @Composable
 fun NoticeScreen(modifier: Modifier = Modifier) {
@@ -114,7 +113,7 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.lg))
-        DataCaveat(state.error)
+        state.error?.let { ErrorLine(it) }
         Spacer(Modifier.height(Gap.xxl))
     }
 }

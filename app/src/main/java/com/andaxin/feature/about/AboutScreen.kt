@@ -34,7 +34,6 @@ import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
 import kotlinx.coroutines.launch
 import com.andaxin.shell.Chip
-import com.andaxin.shell.NoteBlock
 import com.andaxin.core.design.Type
 
 @Composable
@@ -65,13 +64,6 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.xl))
-        NoteBlock(
-            listOf(
-                "课表、消息、公告、运动这些原本散在四五个官方 App 里的东西，放在一处。",
-                "数据全部直连校方接口，本机只存登录状态和你自己的设置。",
-            ),
-            shown = 2,
-        )
         Spacer(Modifier.height(Gap.lg))
         Text(
             text = "边界：不代你提交申请、不代你付款、不后台刷任何进度 —— 写操作一律停在最后一步，由你按下去。",
@@ -80,12 +72,7 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             color = ink.muted,
         )
         Spacer(Modifier.height(Gap.lg))
-        Text(
-            text = "还没接到真实报文的入口，那一屏上都会自己写明白，不拿假数据顶上去。",
-            fontSize = Type.micro,
-            lineHeight = Type.microLine,
-            color = ink.faint,
-        )
+
 
         VersionCard()
         Spacer(Modifier.height(Gap.xxl))
@@ -160,13 +147,6 @@ private fun VersionCard() {
         )
         Spacer(Modifier.height(Gap.md))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            listOf(DEFAULT_REF, "0").forEach { pick ->
-                val on = ref == pick
-                Text(
-                    text = if (pick == DEFAULT_REF) "按 $DEFAULT_REF 对照" else "按 0 对照",
-                    modifier = Modifier.clickable { ref = pick; query(pick) },
-                )
-            }
             Spacer(Modifier.weight(1f))
             Text(
                 text = if (busy) "…" else "查一次",
@@ -177,20 +157,14 @@ private fun VersionCard() {
                     .padding(horizontal = Gap.md, vertical = Gap.sm),
             )
         }
-        Spacer(Modifier.height(Gap.sm))
-        Text(
-            "「按 0 对照」是把号报到最小，服务端就一定回「有新版」—— 那一档只用来验这条通道怎么判新旧，" +
-                "不代表官方真出了新版。",
-            fontSize = 10.sp, color = ink.ghost, lineHeight = 14.sp,
-        )
+
         why?.let {
             Spacer(Modifier.height(Gap.sm))
             Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
         Text(
-            "这条通道回的是安小信自己的安装包，这一版不装它、也不提示你去装 —— " +
-                "它只有一个用处：官方一升级，我们就知道协议可能变了，得重新对一遍报文。",
+            "这是官方 App 自己的更新通道，我们只用它看官方升到哪儿了，不装它的包。",
             fontSize = 11.sp,
             color = ink.faint,
             lineHeight = 16.sp,

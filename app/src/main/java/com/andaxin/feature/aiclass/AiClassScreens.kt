@@ -42,11 +42,8 @@ import com.andaxin.data.capture.AiCourse
 import com.andaxin.data.capture.AiItem
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.Chip
-import com.andaxin.shell.NoteBlock
-import com.andaxin.shell.noteLines
 import com.andaxin.core.design.Type
 
 /*
@@ -136,14 +133,14 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             return@LaunchedEffect
         }
         val emptyWhy = when (tab) {
-            TAB_COURSEWARE -> "这一门没有课件，或者那个班号对不上 FIF 那边。"
+            TAB_COURSEWARE -> "这一门没有课件。"
             TAB_LIVE -> "这一门没有直录播记录。"
-            TAB_SIGN -> "这门课一次签到都没发起过。"
-            TAB_CLASS -> "这个学期这门课还没有开课记录。"
-            TAB_OTHER -> "这一门没归到「其他资源」里的东西。"
-            TAB_MEMBER -> "成员那一发没回数据。"
-            TAB_NOTE -> "笔记站通了，这个账号一条笔记都没有。"
-            TAB_CHAPTER -> "这门课没有章节树：chapterMode 回了数据，但一条章都没有。"
+            TAB_SIGN -> "这门课没有签到。"
+            TAB_CLASS -> "这个学期还没有开课记录。"
+            TAB_OTHER -> "没有其他资源。"
+            TAB_MEMBER -> "没有成员信息。"
+            TAB_NOTE -> "还没有笔记。"
+            TAB_CHAPTER -> "这一门没有章节。"
             else -> "这门课还没建小组。"
         }
         loads[tab] = loadPastFirstBlip {
@@ -233,8 +230,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                         why = when {
                             list.isNotEmpty() -> null
                             tab == TAB_SIGN && att?.evidenced == false ->
-                                "签到统计那一发没回数据（多半是班号对不上或它挂了），" +
-                                    "这跟「一次都没签」是两回事，别当缺勤看。"
+"这次没拿到签到统计，别当缺勤看。"
                             else -> emptyWhy
                         },
                     )
@@ -348,10 +344,10 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                             if (section && picked?.id == item.id) {
                                 Spacer(Modifier.height(Gap.sm))
                                 when {
-                                    sectionItems == null && sectionWhy == null -> Text("正在问这一节…", fontSize = 12.sp, color = ink.faint)
+                                    sectionItems == null && sectionWhy == null -> Text("…", fontSize = 12.sp, color = ink.faint)
                                     sectionWhy != null -> Text(sectionWhy!!, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                                     sectionItems!!.isEmpty() -> Text(
-                                        "这一节没挂内容 —— 和章节树上那个 itemCnt=0 是对的上的。",
+                                        "这一节没有内容。",
                                         fontSize = 12.sp, color = ink.faint,
                                     )
                                     else -> sectionItems!!.forEach { s ->
@@ -373,15 +369,6 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
         }
 
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(
-            noteLines(
-            "这九栏真去问 FIF（AI 课堂平台），第一次进要先过它的单点登录。报文形状都是我们自己盘出来的实样，" +
-                "10-20 又在 PC 上逐发打通过一遍、当天晚上把抓包响应逐条对过真值。" +
-                "底下这排是横着滑的，「成员」「笔记」「章节」在最右边，不滑过去看不见。" +
-                "哪栏回空先别当接口坏了：课件、小组、其他资源这几发实测就是回空，服务端真没内容。",
-            ),
-            shown = 1,
-        )
     }
 }
 
@@ -504,14 +491,5 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         if (courses.isEmpty() && why == null) Text("本周课表里没有课。", fontSize = 14.sp, color = ink.faint)
 
         Spacer(Modifier.height(Gap.md))
-        NoteBlock(
-            noteLines(
-            "课程列表走 FIF 自己的 myClassroom（抓包清点里 A 级实样那条），先要过它的单点登录。" +
-                "进课里有九栏：课件、直录播、考勤、上课、小组、其他资源、成员、笔记、章节（最后四栏要往右滑）。" +
-                "**签到只能看，不能按** —— 提交签到那几发（扫码、点选、坐标上报）磁盘上一条报文都没有，" +
-                "不拿猜的字段填上去。",
-            ),
-            shown = 1,
-        )
     }
 }

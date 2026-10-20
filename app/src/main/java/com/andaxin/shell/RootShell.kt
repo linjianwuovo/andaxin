@@ -54,7 +54,6 @@ import com.andaxin.feature.modules.CardFlowsScreen
 import com.andaxin.feature.modules.CreditDetailScreen
 import com.andaxin.feature.modules.CreditListScreen
 import com.andaxin.feature.modules.DormDetailScreen
-import com.andaxin.feature.modules.DormListScreen
 import com.andaxin.feature.modules.ExamDetailScreen
 import com.andaxin.feature.modules.ExamListScreen
 import com.andaxin.feature.modules.HolidayDetailScreen
@@ -195,8 +194,6 @@ fun RootShell() {
             BriefDetailPage(
                 title = "签到详情", source = graph.dormTaskDetail, id = e.arguments?.getString(ID_ARG).orEmpty(),
                 onBack = { nav.popBackStack() },
-                note = "这一屏的字段来自 fdygl 的 getTaskInfoByDateId（dateId 就是列表那条的 id）。" +
-                    "签到是写操作（定位/拍照/扫码），这一版不接。",
             )
         }
         composable(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->

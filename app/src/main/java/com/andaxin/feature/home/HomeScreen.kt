@@ -46,12 +46,12 @@ import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.capture.HomeExtras
 import com.andaxin.data.capture.SchoolService
 import com.andaxin.shell.Chip
-import com.andaxin.shell.DataCaveat
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.MetricCell
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
+import com.andaxin.shell.ErrorLine
 import com.andaxin.state.HomeModel
 
 /*
@@ -63,8 +63,7 @@ import com.andaxin.state.HomeModel
  *    改成**一张卡里三行 + 分隔线**，这也是这一屏最占地方的那一段；
  * ③ 服务清单原来是"一行一个、右边一个域名"，七行拉得老长 ——
  *    改成四列图标网格，名字下面不留副标题；
- * ④ 底部那几段解释统一收成 [com.andaxin.shell.NoteBlock] 那种"一句一行、能展开"，
- *    不再糊一大块 11sp 灰字。
+ * ④ 底部那几段取证说明全部拿掉了 —— 界面只留一句状态，那些话在 docs/接入清单.md。
  */
 
 @Composable
@@ -150,10 +149,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         }
 
         // 跑量那一格挂不上时，原因写在下面这句里，不塞进格子里当值。
-        DataCaveat(
-            state.error,
-            weakReason = if (d?.runSemesterKm == null) d?.runWhy else null,
-        )
+        state.error?.let { ErrorLine(it) }
 
         if (state.today.isNotEmpty()) {
             // 一门课一张卡是上一版最"肿"的地方：三张卡之间的缝比内容还显眼
@@ -214,7 +210,7 @@ private fun Extras(e: HomeExtras, open: (String) -> Unit) {
     val ink = LocalInk.current
 
     if (e.banners.isNotEmpty()) {
-        SectionBlock("校方给的图")
+        SectionBlock("校园图讯")
         Row(
             horizontalArrangement = Arrangement.spacedBy(Gap.sm),
             modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -280,7 +276,6 @@ private fun Extras(e: HomeExtras, open: (String) -> Unit) {
 
     if (e.why.isNotEmpty()) {
         Spacer(Modifier.height(Gap.md))
-        com.andaxin.shell.NoteBlock(e.why.map { it }, shown = 1)
     }
 }
 
