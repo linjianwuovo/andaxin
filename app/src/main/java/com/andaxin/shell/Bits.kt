@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -201,7 +202,13 @@ fun MetricCell(
     }
 }
 
-/** 一排可选的小胶囊（周次、视图切换、提前量都用它）。 */
+/**
+ * 一排可选的小胶囊（周次、视图切换、提前量、首页快捷入口都用它）。
+ *
+ * 10-20 深夜他定的一条：**没选中的那颗要给灰底**，选中的那颗换成主色淡底。
+ * 原来没选中用的是 `ink.hairline`（6% 黑），在浅色主题下几乎看不出来，
+ * 结果"没选中"看着像没画完、"选中"（surfaceVariant）反而像灰的 —— 状态正好是反的。
+ */
 @Composable
 fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val ink = LocalInk.current
@@ -212,7 +219,7 @@ fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: 
         color = if (picked) MaterialTheme.colorScheme.primary else ink.muted,
         modifier = modifier
             .background(
-                if (picked) MaterialTheme.colorScheme.surfaceVariant else ink.hairline,
+                if (picked) MaterialTheme.colorScheme.primary.copy(alpha = 0.13f) else ink.offFill,
                 Radius.pill,
             )
             .clickable(onClick = onClick)
