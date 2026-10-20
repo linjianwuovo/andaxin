@@ -204,11 +204,19 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
                         color = if (isToday) accent else ink.muted,
                     )
                 }
-                // 今天这一列：只在课表格子那一段铺一层淡底，圆角收住，别连星期头一起糊
+                // 今天这一列：只在课表格子那一段铺一层淡底，圆角收住，别连星期头一起糊。
+                // 底色走强调色而不是灰底 —— 夜里 `hairline` 是 8% 白，铺在 12 行高的整列上
+                // 就是一块灰板，比课格子本身还抢眼（10-21 凌晨深色扫屏实测）；
+                // 强调色压到百分之几只是"这一列被点了一下"。
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .then(if (isToday) Modifier.background(ink.hairline, Radius.tag) else Modifier),
+                        .then(
+                            if (isToday) Modifier.background(
+                                accent.copy(alpha = if (ink.dark) 0.07f else 0.05f),
+                                Radius.tag,
+                            ) else Modifier
+                        ),
                 ) {
                     val list = byDay[day].orEmpty()
                     var cursor = 1

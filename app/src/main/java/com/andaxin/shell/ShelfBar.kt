@@ -131,9 +131,17 @@ fun ShelfBar(
     val ink = LocalInk.current
     val density = LocalDensity.current
     val ltr = LocalLayoutDirection.current == LayoutDirection.Ltr
-    val isDark = ink.strong.luminance() < 0.5f
+    /*
+     * 夜间判据只能问 `InkSet.dark`。这里以前写的是 `ink.strong.luminance() < 0.5f`，
+     * 而夜间那一套 `strong` 是浅灰白（亮度约 0.9）—— 判断整个是反的，于是夜里这条栏
+     * 一直吃的是白天那份 0.34 的奶油底，实测截图里它是**整屏最亮的一块**，
+     * 比它服务的每一屏都抢眼。和 `TimetableScreen.courseInk` 是同一个坑，那处已修，这处漏了。
+     */
+    val isDark = ink.dark
     val surface = Palette.Paper.copy(alpha = if (isDark) 0.16f else 0.34f)
-    val frostTint = Palette.Paper.copy(alpha = 0.58f)
+    // 毛玻璃那一档的整块底色：白天是奶油，夜里必须连底色一起换 ——
+    // 只调 alpha 的白纱在黑底上还是一层白纱。
+    val frostTint = if (isDark) Palette.NightCream.copy(alpha = 0.66f) else Palette.Paper.copy(alpha = 0.58f)
     val accent = MaterialTheme.colorScheme.primary
 
     // 水球要连图标和文字一起折：标签那一层自己录进 labelLayer，球采的是"页面 + 标签"。
