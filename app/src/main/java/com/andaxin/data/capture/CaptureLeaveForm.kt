@@ -98,19 +98,39 @@ class CaptureLeaveForm(
             if (type in CONTAINERS) continue          // 空容器只是排版，不是字段，别报成"没实现"
             if (props.optBoolean("hidden", false)) continue
             when (type) {
-                "input", "textarea", "text" ->
-                    out.add(Field.Text(key, label, hint = if (type == "text") "（这一条是说明文字）" else ""))
+                // 校方那种"说明文字"节点：内容在 value/content/text 这几个键里挑第一个有的。
+                // 一个都没有就整条不报 —— 原来摆一个能输入的框、里面写"（这一条是说明文字）"，
+                // 装机看着像有两项没填完。
+                "text" -> plain(props)?.let { out.add(Field.Note(key, label, it)) }
+                "input", "textarea" ->
+                    out.add(Field.Text(key, label, hint = ""))
                 "number", "money", "formula" ->
                     out.add(Field.Number(key, label, unit = props.optString("unit")))
                 "radio", "checkbox", "select", "m-select", "dept", "course", "person" ->
                     out.add(Field.Choice(key, label, options(props)))
                 "date", "dateRange" -> out.add(Field.Date(key, label))
                 "" -> {}
-                else -> out.add(
-                    Field.Text(key, label, hint = "这一项是 $type 控件，本机没实现，去官方 App 填"),
-                )
+                // 认不出来的控件：只读一条摆回原位，不给输入框，也不写"去官方 App 填"那种话
+                else -> out.add(Field.Note(key, label, "这一项本机填不了"))
             }
         }
+    }
+
+    /**
+     * 从"说明文字"那一类节点里把给人看的正文抠出来：
+     * 键名不固定（value / content / text 都见过），里面还常带一层 HTML 标签。
+     * 全空就回 null —— 宁可不摆这一条，也不摆一个空框。
+     */
+    private fun plain(props: JSONObject): String? {
+        val raw = listOf("value", "content", "text", "html").asSequence()
+            .map { props.optString(it) }
+            .firstOrNull { it.isNotBlank() && it != "null" }
+            ?: return null
+        val txt = raw.replace(Regex("<[^>]*>"), " ")
+            .replace("&nbsp;", " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return txt.takeIf { it.isNotBlank() }
     }
 
     /** options 元素只有 `{label, value}`；实样 13/13 是 label === value（value 就是中文）。 */

@@ -66,10 +66,12 @@ class CaptureRepairList(private val school: School) : ListSource {
                     id = no,
                     // 标题放故障描述：类型那一串（"水暖,水龙头"）放副标题更顺眼
                     title = o.optString("gzms").ifBlank { o.optString("bxlx").ifBlank { "报修单 $no" } },
+                    // 顺序改了：日期挪到单号前面。这一行只放得下两段，装机看到被截的是
+                    // "… · 10…"（日期被砍头），而单号在详情第一行就有，日期在这儿是唯一一处。
                     sub = listOf(
                         o.optString("xqmc"), o.optString("lymc"), o.optString("qyfjh"),
                     ).filter { it.isNotBlank() }.joinToString(" ") +
-                        " · 单号 $no · " + short(o.optString("bxsj")),
+                        " · " + short(o.optString("bxsj")) + " · 单号 $no",
                     right = o.optString("dqztMc").ifBlank { o.optString("dqzt") },
                     // 状态码没有字典（现打只见过 '4'），所以未知码一律不给颜色，别硬归到"处理中"
                     flag = when (o.optString("dqzt")) {
