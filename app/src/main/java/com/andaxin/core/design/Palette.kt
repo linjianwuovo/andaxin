@@ -16,11 +16,19 @@ object Palette {
     val SandDeep = Color(0xFFDCE1E9)
     val Hairline = Color(0x0F000000)
 
+    /*
+     * 墨色五档是**按 WCAG AA 现算过一遍再定的**（10-21 凌晨，脚本在 `lxtmp/contrast.py`）。
+     * 以前下面三档是凭手感往浅里走的：`InkFaint` 在纸色上只有 **2.41:1**、`InkGhost` **1.51:1**，
+     * 而 `faint` 是拿来写时间戳和每一行副标题的 —— 那不是装饰，是正文。
+     * 现在这五档在纸 #F4F6F9 上的对比度是 15.8 / 9.5 / 6.3 / 4.6 / 3.1：
+     * 写小字的四档全部 ≥4.5（AA），只有最浅那档留给占位符、禁用态这类"看不清也没关系"的东西。
+     * 层级没有变平：步长从"浅到糊"换成"深到能读"，五档还是一档比一档轻。
+     */
     val Ink = Color(0xFF191C22)
     val InkSoft = Color(0xFF3B4149)
-    val InkMuted = Color(0xFF6A7280)
-    val InkFaint = Color(0xFF99A1AE)
-    val InkGhost = Color(0xFFC5CBD5)
+    val InkMuted = Color(0xFF535B69)
+    val InkFaint = Color(0xFF69717E)
+    val InkGhost = Color(0xFF878D97)
 
     // 暗色
     val NightPaper = Color(0xFF0E1116)
@@ -35,8 +43,11 @@ object Palette {
     val NightInk = Color(0xFFE7EAF0)
     val NightInkSoft = Color(0xFFC3C9D4)
     val NightInkMuted = Color(0xFF98A1AF)
-    val NightInkFaint = Color(0xFF6A7280)
-    val NightInkGhost = Color(0xFF444B57)
+    // 同上一趟浅色阶梯一起量的：这两档以前是 3.90 / 2.15，写时间戳和副标题读不动。
+    // 现在夜纸 #0E1116 上是 15.7 / 11.4 / 7.3 / 5.0 / 3.1；faint 单独再按夜卡 #161A21 上
+    // 也够（4.63）复核过一次 —— 大部分副标题是写在卡里的。
+    val NightInkFaint = Color(0xFF7C8492)
+    val NightInkGhost = Color(0xFF5C636F)
 
     // 语义色：亮/暗各一档，soft 是同一色的低透明版，用来做底色而不是描边
     val Blue = Color(0xFF2563EB)
@@ -46,11 +57,20 @@ object Palette {
     val TealSoft = Color(0x1A0D9488)
     val Amber = Color(0xFFF59E0B)
     val AmberSoft = Color(0x1AF59E0B)
+    /*
+     * 状态色里"拿去写小字"的那一档。上面 `Teal`/`Amber` 是给大数字、圆点、淡底用的，
+     * 直接写 12sp 的状态字（通过 / 审批中）在纸色上只有 3.46 和 1.98:1 —— 琥珀那颗几乎读不出。
+     * 所以同一族压深一档只给文字：`TealInk` 4.71、`AmberInk` 4.72（AA 门槛 4.5）。
+     * 夜间不用另压：`NightTeal` 10.1、`NightAmber` 11.3，本来就在浅的那一头。
+     */
+    val TealInk = Color(0xFF007C70)
+    val AmberInk = Color(0xFFAD5600)
     val Violet = Color(0xFF8B5CF6)
     val VioletSoft = Color(0x1A8B5CF6)
     val Slate = Color(0xFF64748B)
     val SlateSoft = Color(0x1A64748B)
-    val Rose = Color(0xFFE5484D)
+    /** 报错文字、失败状态都吃这颗。原来是 #E5484D，纸色上 3.61:1，写小字不合格 → 压到 4.73。 */
+    val Rose = Color(0xFFCC333A)
 
     val NightBlue = Color(0xFF7AA2FF)
     val NightBlueSoft = Color(0x337AA2FF)

@@ -361,7 +361,8 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                             }
                         }
                         if (item.right.isNotBlank()) {
-                            Text(item.right, fontSize = Type.meta, color = Palette.Teal)
+                            Text(item.right, fontSize = Type.meta,
+                                    color = if (ink.dark) Palette.NightTeal else Palette.TealInk)
                         }
                     }
                 }

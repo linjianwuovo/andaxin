@@ -242,9 +242,11 @@ fun RowLine(
                 fontSize = Type.meta,
                 lineHeight = Type.metaLine,
                 color = when (flag) {
-                    Flag.Ok -> Palette.Teal
+                    // 状态字是 12sp，吃"写字那一档"的状态色（见 `Palette` 里 TealInk/AmberInk 那段）；
+                    // 夜间本来就浅，直接吃亮档。
+                    Flag.Ok -> if (ink.dark) Palette.NightTeal else Palette.TealInk
                     Flag.Bad -> MaterialTheme.colorScheme.error
-                    Flag.Warn -> Palette.Amber
+                    Flag.Warn -> if (ink.dark) Palette.NightAmber else Palette.AmberInk
                     Flag.Unread -> MaterialTheme.colorScheme.primary
                     Flag.None -> ink.faint
                 },
