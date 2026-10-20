@@ -64,7 +64,13 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     var why by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(true) }
     var picked by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
+    /**
+     * 进屏拉一次、下拉再拉一次。
+     *
+     * 拉的时候**不清空 `board`**：旧内容留在原位，新的到了直接换 ——
+     * 一路加载一路蹦、中间闪一下空白，是他从第一天就烦的毛病。
+     */
+    suspend fun reload() {
         busy = true; why = null
         graph.dormBoard.load().fold(
             onSuccess = { board = it },
@@ -72,8 +78,9 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         )
         busy = false
     }
+    LaunchedEffect(Unit) { reload() }
 
-    ScaffoldPage(title = "查寝签到", onBack = onBack) {
+    ScaffoldPage(title = "查寝签到", onBack = onBack, onRefresh = { reload() }) {
         val b = board
         if (b == null && busy) Text("正在拉…", fontSize = Type.meta, color = ink.faint)
         why?.let { Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error) }

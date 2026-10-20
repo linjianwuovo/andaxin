@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -52,6 +53,7 @@ import com.andaxin.data.brief.FormSource
 import com.andaxin.data.brief.ListSource
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
+import com.andaxin.shell.Refreshable
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
@@ -434,6 +436,8 @@ private fun formatUtcDay(millis: Long): String =
 fun ScaffoldPage(
     title: String,
     onBack: () -> Unit,
+    /** 给了这一颗，这一屏就能下拉刷新；它是挂起的 —— 拉完才收指示器，不等就是假动作。 */
+    onRefresh: (suspend () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Scaffold(
@@ -452,16 +456,18 @@ fun ScaffoldPage(
         },
         containerColor = topBarBackdrop(),
     ) { bars ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(bars)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Gap.screen),
-        ) {
-            Spacer(Modifier.height(Gap.md))
-            content()
-            Spacer(Modifier.height(Gap.xxl))
+        Refreshable(onRefresh, Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(bars)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = Gap.screen),
+            ) {
+                Spacer(Modifier.height(Gap.md))
+                content()
+                Spacer(Modifier.height(Gap.xxl))
+            }
         }
     }
 }

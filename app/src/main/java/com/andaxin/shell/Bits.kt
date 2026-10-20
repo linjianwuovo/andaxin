@@ -20,11 +20,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +48,7 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
 import com.andaxin.data.brief.Flag
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -113,6 +116,38 @@ fun Modifier.enterFade(key: Any? = Unit): Modifier {
     val a = animateFloatAsState(if (shown) 1f else 0f, tween(Motion.enter, easing = Motion.EaseOut), label = "enter")
     // 读 state 而不是读裸值：这样动画每帧只重画这一层，不会把整块内容 recompose 一遍
     return graphicsLayer { alpha = a.value }
+}
+
+/**
+ * 一屏内容的下拉刷新壳。[onRefresh] 给 null 就等于没套（详情页这种没什么可刷的）。
+ *
+ * 那颗回调是**挂起**的：拉完才收指示器。不等它就收，是个假动作 —— 用户看到转圈停了
+ * 但数还没换，只会再拉一次。
+ */
+@Composable
+fun Refreshable(
+    onRefresh: (suspend () -> Unit)?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    if (onRefresh == null) {
+        content()
+        return
+    }
+    var refreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            scope.launch {
+                onRefresh()
+                refreshing = false
+            }
+        },
+        modifier = modifier,
+        content = { content() },
+    )
 }
 
 /**

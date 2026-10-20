@@ -49,19 +49,25 @@ class HomeModel(
     }
 
     fun reload() {
-        viewModelScope.launch {
-            val dash = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
-            val slots = try { timetable.week(0) } catch (e: Exception) { Result.failure(e) }
-            val list = slots.getOrDefault(emptyList())
-            _state.value = HomeUiState(
-                firstLoad = false,
-                data = dash.getOrNull() ?: _state.value.data,
-                // 今天星期几由 Periods 说，跟周网格、首页"几节课"同一张表 —— 这儿原来写死 ==1，
-                // 周一看着对，周二起就把周一的课当今天显示（10-20 上午装机读屏撞中的就是这个）。
-                today = list.filter { it.day == Periods.today() },
-                error = (dash.exceptionOrNull() ?: slots.exceptionOrNull())?.message,
-            )
-        }
+        viewModelScope.launch { refresh() }
+    }
+
+    /**
+     * 挂起版：下拉刷新要等这一趟真回来才收指示器，
+     * 所以给一个能等的（[reload] 是后台起协程，不等）。
+     */
+    suspend fun refresh() {
+        val dash = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
+        val slots = try { timetable.week(0) } catch (e: Exception) { Result.failure(e) }
+        val list = slots.getOrDefault(emptyList())
+        _state.value = HomeUiState(
+            firstLoad = false,
+            data = dash.getOrNull() ?: _state.value.data,
+            // 今天星期几由 Periods 说，跟周网格、首页"几节课"同一张表 —— 这儿原来写死 ==1，
+            // 周一看着对，周二起就把周一的课当今天显示（10-20 上午装机读屏撞中的就是这个）。
+            today = list.filter { it.day == Periods.today() },
+            error = (dash.exceptionOrNull() ?: slots.exceptionOrNull())?.message,
+        )
     }
 }
 
@@ -112,14 +118,17 @@ class MessageModel(private val feed: MessageFeed) : ViewModel() {
     }
 
     fun reload() {
-        viewModelScope.launch {
-            val r = try { feed.page(0) } catch (e: Exception) { Result.failure(e) }
-            _state.value = MessageUiState(
-                firstLoad = false,
-                items = r.getOrDefault(_state.value.items),
-                error = r.exceptionOrNull()?.message,
-            )
-        }
+        viewModelScope.launch { refresh() }
+    }
+
+    /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
+    suspend fun refresh() {
+        val r = try { feed.page(0) } catch (e: Exception) { Result.failure(e) }
+        _state.value = MessageUiState(
+            firstLoad = false,
+            items = r.getOrDefault(_state.value.items),
+            error = r.exceptionOrNull()?.message,
+        )
     }
 
     /**
@@ -161,10 +170,17 @@ class NoticeModel(private val feed: NoticeFeed) : ViewModel() {
     }
 
     fun reload() {
-        viewModelScope.launch {
-            val r = try { feed.list() } catch (e: Exception) { Result.failure(e) }
-            _state.value = _state.value.copy(firstLoad = false, items = r.getOrDefault(_state.value.items), error = r.exceptionOrNull()?.message)
-        }
+        viewModelScope.launch { refresh() }
+    }
+
+    /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
+    suspend fun refresh() {
+        val r = try { feed.list() } catch (e: Exception) { Result.failure(e) }
+        _state.value = _state.value.copy(
+            firstLoad = false,
+            items = r.getOrDefault(_state.value.items),
+            error = r.exceptionOrNull()?.message,
+        )
     }
 
     fun open(id: String) {
