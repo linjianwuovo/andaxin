@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,10 +18,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import kotlinx.coroutines.delay
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,24 +39,32 @@ import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
+import com.andaxin.core.design.Type
 import com.andaxin.core.schedule.Periods
 import com.andaxin.data.TimetableSlot
+import com.andaxin.shell.Chip
 import com.andaxin.shell.DataCaveat
-import com.andaxin.shell.PlaceholderNote
+import com.andaxin.shell.Hairline
+import com.andaxin.shell.RowLine
+import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.state.TimetableModel
-import java.util.Calendar
+import kotlinx.coroutines.delay
 
 private val DAYS = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
 /** 每节课的起止时刻。表在 `Periods` 里，和首页"下一节"共用一份。 */
 private val PERIOD_TIMES = Periods.START_AT
 
-private const val ROW_HEIGHT = 58
-private const val GUTTER = 34
+/**
+ * 一行多高。58 → 44：11 节课原来 638dp，一屏装不下必须滚，
+ * 而中午 12:00–14:00 那几行空档也是 58dp，看着像课表缺了一大块。
+ */
+private const val ROW_HEIGHT = 44
+private const val GUTTER = 28
 
 /** 星期头那一行的高度：左列也要垫同样高，不然时间轴和格子对不齐。 */
-private const val HEADER_HEIGHT = 26
+private const val HEADER_HEIGHT = 24
 
 @Composable
 fun TimetableScreen(modifier: Modifier = Modifier) {
@@ -89,24 +95,25 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Gap.screen),
     ) {
-        Spacer(Modifier.height(Gap.xl))
+        Spacer(Modifier.height(Gap.md))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text("课程表", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
+            Text("课程表", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
             Text(
                 text = if (showDayMode) "看整周" else "只看今天",
-                fontSize = 13.sp,
+                fontSize = Type.meta,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable { showDayMode = !showDayMode }.padding(vertical = Gap.sm),
             )
         }
 
-        Spacer(Modifier.height(Gap.lg))
+        // 周次切换原来单占一行、离标题 16dp，看着像两个不相干的控件；现在贴着标题下面一排
+        Spacer(Modifier.height(Gap.xxs))
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            WeekChip("本周", state.weekOffset == 0) { model.load(0) }
-            WeekChip("下周", state.weekOffset == 1) { model.load(1) }
+            Chip("本周", state.weekOffset == 0) { model.load(0) }
+            Chip("下周", state.weekOffset == 1) { model.load(1) }
         }
 
-        Spacer(Modifier.height(Gap.lg))
+        Spacer(Modifier.height(Gap.md))
 
         if (showDayMode) {
             DayList(state.slots.filter { it.day == today }.ifEmpty { state.slots }, today)
@@ -116,12 +123,12 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
 
         if (state.slots.isEmpty() && !state.firstLoad) {
             Spacer(Modifier.height(Gap.xl))
-            Text("这一周没有课。", fontSize = 14.sp, color = ink.faint)
+            Text("这一周没有课。", fontSize = Type.body, color = ink.faint)
         }
 
         state.error?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
         }
 
         Spacer(Modifier.height(Gap.lg))
@@ -130,22 +137,34 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
     }
 }
 
-/** 周几 × 第几节的网格。左边一列节次，顶上一排星期头，块按"连排几节"占几行。 */
+/**
+ * 周几 × 第几节的网格。
+ *
+ * 10-20 晚这一版改了三件事，全冲着"格子读不出来"去的：
+ * ① **没有课的周末不再占列**。周六周日实测常年空着，却占掉 2/7 的宽度 ——
+ *    七列时每列只有约 59dp，10sp 的字一行放不下五个字，「高等数学I（1）」被断成四行；
+ *    五列时每列约 86dp，一行八个字，课名两行就够。
+ * ② 行高 58→44，11 节一共 484dp，一屏装得下，不用滚；
+ * ③ 色块左边那根独立的小竖杠改成**整块描边**：那根杠要吃掉 5dp 内容宽度，
+ *    而"哪块是哪门课"的辨识作用和描边是一样的。
+ *
+ * 每一列自己按 startPeriod 排，块高 = 连排节数 × 行高，块与块之间用空行垫。
+ * 再往前一版不是这么排的：它把课塞进 `byCell[day*100+startPeriod]` 那张表里，
+ * 每格固定一格高 —— 于是"第 1-2 节"的课只占第 1 节那一行，块的下沿停在 08:55
+ * 而不是 09:55，整张表看着就是"区块没对准"。
+ */
 @Composable
 private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
     val ink = LocalInk.current
     val accent = MaterialTheme.colorScheme.primary
 
-    /*
-     * 每一列自己按 startPeriod 排，块高 = 连排节数 × 行高，块与块之间用空行垫。
-     *
-     * 以前不是这么排的：它把课塞进 `byCell[day*100+startPeriod]` 这张表里，
-     * 每格固定一格高、`fillMaxHeight()` 也只有一格 —— 于是"第 1-2 节"的课只占第 1 节那一行，
-     * 第 2 节空着，块的下沿停在 08:55 而不是 09:55，整张表看着就是"区块没对准"。
-     * `periodCount` 这个字段在网格那一屏压根没用过（只有"只看今天"那个列表用了）。
-     */
     val byDay = remember(slots) {
         slots.groupBy { it.day }.mapValues { (_, v) -> v.sortedBy { it.startPeriod } }
+    }
+    // 只留"这周真有课的几天" + 今天（今天没课也要留着，不然高亮没地方放）
+    val days = remember(slots, today) {
+        val busy = slots.map { it.day }.toSet()
+        (1..7).filter { it in busy || it == today }
     }
 
     Row(Modifier.fillMaxWidth()) {
@@ -160,16 +179,15 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         // 现在正在上的那一节标主色
                         val on = periodNow == i + 1
-                        Text("${i + 1}", fontSize = 11.sp, color = if (on) accent else ink.faint)
-                        Text(start, fontSize = 9.sp, color = ink.ghost)
+                        Text("${i + 1}", fontSize = Type.micro, color = if (on) accent else ink.faint)
+                        Text(start, fontSize = 8.5.sp, color = ink.ghost)
                     }
                 }
             }
         }
-        Spacer(Modifier.width(Gap.xs))
+        Spacer(Modifier.width(Gap.xxs))
 
-        DAYS.indices.forEach { dayIndex ->
-            val day = dayIndex + 1
+        days.forEach { day ->
             val isToday = day == today
             Column(
                 Modifier
@@ -178,8 +196,8 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
             ) {
                 Box(Modifier.fillMaxWidth().height(HEADER_HEIGHT.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        text = DAYS[dayIndex],
-                        fontSize = 11.sp,
+                        text = DAYS.getOrElse(day - 1) { "周" },
+                        fontSize = Type.micro,
                         fontWeight = if (isToday) FontWeight.Medium else FontWeight.Normal,
                         color = if (isToday) accent else ink.muted,
                     )
@@ -188,13 +206,7 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .then(
-                            if (isToday) {
-                                Modifier.background(ink.hairline, Radius.tag)
-                            } else {
-                                Modifier
-                            },
-                        ),
+                        .then(if (isToday) Modifier.background(ink.hairline, Radius.tag) else Modifier),
                 ) {
                     val list = byDay[day].orEmpty()
                     var cursor = 1
@@ -205,13 +217,15 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
                         // 连排几节就占几行；万一校方排出两门课同一节起，前一门裁到一行，
                         // 后一门照排 —— 宁可挤，也不许把课藏掉（藏掉看着像没排课）。
                         val nextStart = list.getOrNull(i + 1)?.startPeriod ?: Int.MAX_VALUE
-                        val span = (minOf(slot.periodCount, nextStart - slot.startPeriod))
-                            .coerceAtLeast(1)
-                        CourseCell(slot, span, isToday && periodNow != null &&
-                            periodNow in slot.startPeriod until (slot.startPeriod + span))
+                        val span = minOf(slot.periodCount, nextStart - slot.startPeriod).coerceAtLeast(1)
+                        CourseCell(
+                            slot, span,
+                            isToday && periodNow != null &&
+                                periodNow in slot.startPeriod until (slot.startPeriod + span),
+                        )
                         cursor = slot.startPeriod + span
                     }
-                    // 尾巴补满，七列才一样高
+                    // 尾巴补满，几列才一样高
                     if (cursor <= PERIOD_TIMES.size) {
                         Spacer(Modifier.height(((PERIOD_TIMES.size - cursor + 1) * ROW_HEIGHT).dp))
                     }
@@ -230,40 +244,52 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean) {
         Modifier
             .fillMaxWidth()
             .height((span * ROW_HEIGHT - 3).dp)
-            .padding(1.5.dp)
+            .padding(horizontal = 1.5.dp, vertical = 1.5.dp)
             .background(tint, Radius.tag)
-            .then(if (now) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, Radius.tag) else Modifier)
-            .padding(horizontal = 4.dp, vertical = 3.dp),
-        verticalArrangement = Arrangement.Top,
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            // 左边那条竖杠就是这门课的颜色，扫一眼能分清哪块是哪门
-            Spacer(Modifier.width(2.dp).height(11.dp).background(bar, Radius.tag))
-            Text(
-                text = slot.course,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = ink.strong,
-                maxLines = if (span >= 2) 5 else 3,
-                lineHeight = 12.sp,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+            .border(
+                width = if (now) 2.dp else 1.dp,
+                color = if (now) MaterialTheme.colorScheme.primary else bar.copy(alpha = 0.5f),
+                Radius.tag,
             )
-        }
+            .padding(start = 4.dp, end = 3.dp, top = 2.dp, bottom = 1.dp),
+    ) {
         Text(
-            text = slot.room,
-            fontSize = 9.sp,
-            color = ink.muted,
-            maxLines = 1,
+            text = slot.course,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = ink.strong,
+            maxLines = if (span >= 2) 3 else 2,
+            lineHeight = 12.sp,
             overflow = TextOverflow.Ellipsis,
         )
-        // 不再写"第 1-2 节"：块占几行本身已经说了这件事，而七个列的格子很窄，
+        if (span >= 2) {
+            Spacer(Modifier.height(1.dp))
+            Text(
+                text = shortRoom(slot.room),
+                fontSize = 8.5.sp,
+                color = ink.muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        // 不再写"第 1-2 节"：块占几行本身已经说了这件事，而格子很窄，
         // 多这一行就是把课名挤成"高等数…"的那只手（10-20 装机他嫌难看的就是这个）。
     }
 }
 
 /**
- * 课程名 → 一对（淡底、主色杠）。同一门课每次算出来都一样，所以整周颜色是稳的。
+ * 教室名压短。校方给的是「博雅楼（A1）S103」这种一整串，一格六七十 dp 宽放不下。
+ * 规则：去掉"楼/栋"和括号，只留 楼栋短名 + 房号 ——「博雅A1 S103」。
+ * 认不出这个格式的原样返回，不硬切（切错了比长得更难看）。
+ */
+private fun shortRoom(room: String): String {
+    val m = Regex("^(.{2,4}?)[楼栋]?（(.+?)）\\s*(\\S+)$").find(room.trim()) ?: return room.trim()
+    val (name, zone, code) = m.destructured
+    return "$name$zone $code"
+}
+
+/**
+ * 课程名 → 一对（淡底、主色）。同一门课每次算出来都一样，所以整周颜色是稳的。
  * 深色主题下换 Night 那一档，不然低透明的淡底在黑底上根本看不出来。
  */
 @Composable
@@ -289,58 +315,34 @@ private fun courseInk(course: String): Pair<Color, Color> {
     }
 }
 
+/** 「只看今天」那一档：一张卡里一行一节、中间分隔线，不再一门课一张卡。 */
 @Composable
 private fun DayList(slots: List<TimetableSlot>, today: Int) {
     val ink = LocalInk.current
-    Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
-        Text(
-            text = DAYS.getOrElse(today - 1) { "周一" },
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = ink.muted,
-            modifier = Modifier.padding(bottom = Gap.xs, start = Gap.xxs),
-        )
-        slots.sortedBy { it.startPeriod }.forEach { slot ->
-            CourseRow(slot)
-        }
-    }
-}
-
-@Composable
-private fun CourseRow(slot: TimetableSlot) {
-    val ink = LocalInk.current
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, Radius.card)
-            .padding(Gap.lg),
-    ) {
-        Row(Modifier.fillMaxWidth()) {
-            Column(Modifier.width(56.dp)) {
-                Text("第 ${slot.startPeriod} 节", fontSize = 12.sp, color = ink.faint)
-                Spacer(Modifier.height(Gap.xxs))
-                Text("${slot.periodCount} 节连排", fontSize = 10.sp, color = ink.ghost)
-            }
-            Column(Modifier.fillMaxWidth()) {
-                Text(slot.course, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = ink.strong)
-                Spacer(Modifier.height(Gap.xs))
-                Text(if (slot.teacher.isBlank()) slot.room else "${slot.teacher} · ${slot.room}", fontSize = 12.sp, color = ink.muted)
-            }
-        }
-    }
-}
-
-@Composable
-private fun WeekChip(text: String, picked: Boolean, onClick: () -> Unit) {
-    val ink = LocalInk.current
+    val sorted = slots.sortedBy { it.startPeriod }
     Text(
-        text = text,
-        fontSize = 13.sp,
-        fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
-        color = if (picked) ink.strong else ink.muted,
-        modifier = Modifier
-            .background(if (picked) ink.hairline else androidx.compose.ui.graphics.Color.Transparent, Radius.pill)
-            .clickable(onClick = onClick)
-            .padding(horizontal = Gap.lg, vertical = Gap.sm),
+        text = DAYS.getOrElse(today - 1) { "周一" } + " · ${sorted.size} 节",
+        fontSize = Type.meta,
+        color = ink.muted,
+        modifier = Modifier.padding(bottom = Gap.xs, start = Gap.xxs),
     )
+    Sheet {
+        sorted.forEachIndexed { i, slot ->
+            RowLine(
+                title = slot.course,
+                sub = listOf(
+                    shortRoom(slot.room),
+                    if (slot.periodCount > 1) "${slot.periodCount} 节连排" else "",
+                ).filter { it.isNotBlank() }.joinToString(" · "),
+                right = if (slot.periodCount > 1)
+                    "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
+                else "第 ${slot.startPeriod} 节",
+            )
+            if (i != sorted.lastIndex) {
+                Spacer(Modifier.height(Gap.xs))
+                Hairline()
+                Spacer(Modifier.height(Gap.xs))
+            }
+        }
+    }
 }

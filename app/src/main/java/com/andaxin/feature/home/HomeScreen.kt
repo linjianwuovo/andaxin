@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,191 +39,187 @@ import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
+import com.andaxin.core.design.Rhythm
+import com.andaxin.core.design.Type
 import com.andaxin.core.net.RemoteImage
-import com.andaxin.shell.Hairline
-import com.andaxin.shell.Labeled
+import com.andaxin.data.capture.HomeExtras
+import com.andaxin.data.capture.SchoolService
+import com.andaxin.shell.Chip
 import com.andaxin.shell.DataCaveat
-import com.andaxin.shell.PlaceholderNote
-import com.andaxin.shell.Route
-import com.andaxin.shell.SectionTitle
+import com.andaxin.shell.Hairline
+import com.andaxin.shell.MetricCell
+import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.state.HomeModel
+
+/*
+ * 首页。10-20 晚重排过一次，方向是"少一点、密一点"：
+ *
+ * ① 原来六行「标签 — 值」的流水账（今天/下一节/未读/查寝/跑量/晨跑）换成**两行三格的数字**，
+ *    数字给 [Type.num]、单位缩在右下 —— 要看的是数，不是"本学期跑步"这五个字；
+ * ② 今日课程原来一门课一张卡，三节课就是三张卡叠着，中间全是缝 ——
+ *    改成**一张卡里三行 + 分隔线**，这也是这一屏最占地方的那一段；
+ * ③ 服务清单原来是"一行一个、右边一个域名"，七行拉得老长 ——
+ *    改成四列图标网格，名字下面不留副标题；
+ * ④ 底部那几段解释统一收成 [com.andaxin.shell.NoteBlock] 那种"一句一行、能展开"，
+ *    不再糊一大块 11sp 灰字。
+ */
 
 @Composable
 fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
     val model = adxViewModel { HomeModel(it.dashboard, it.timetable) }
     val state by model.state.collectAsStateWithLifecycle()
+    val ink = LocalInk.current
     /*
      * 首页下半屏那些东西（服务清单、轮播图、联系方式、校历）是另外四条接口，
-     * 和上面那一叠数字不是一个来源，所以各存各的状态；
-     * 但它们**作为一个整块一次出现** —— 没拉齐之前这一整块一个字节都不画，
-     * 免得半屏东西先蹦出来、剩下的一路补。
+     * 和上面那一叠数字不是一个来源，所以各存各的状态；但它们**作为一个整块一次出现**。
      *
-     * key 用的是 `session.generation`，不是 `Unit`。这一条是装机读屏撞出来的：
-     * 冷启动时首页这五发和"被顶号之后自动重登"撞在一起，三条拿着**旧票**先发了出去，
-     * 屏幕上就写着「轮播图没拉到：登录已在别处被顶掉」，而同一屏的校历（后发那条）是真数据 ——
-     * 看着像我们只接好了一半。换票之后重拉一次，才是这件事该有的样子。
+     * key 用的是 `session.generation`，不是 `Unit`：冷启动时这五发和"被顶号之后自动重登"
+     * 撞在一起，三条拿着旧票先发了出去，屏幕上就写着「轮播图没拉到：登录已在别处被顶掉」，
+     * 而同一屏的校历是真数据 —— 看着像只接好了一半。换票之后重拉一次。
      */
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
-    var extras by remember { mutableStateOf<com.andaxin.data.capture.HomeExtras?>(null) }
+    var extras by remember { mutableStateOf<HomeExtras?>(null) }
     LaunchedEffect(session.generation) {
         extras = null
         graph.home.load().onSuccess { extras = it }
     }
 
+    val d = state.data
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Gap.screen),
-        verticalArrangement = Arrangement.spacedBy(Gap.md),
     ) {
-        Spacer(Modifier.height(Gap.xl))
+        Spacer(Modifier.height(Gap.md))
         Text(
-            text = state.data?.greeting ?: "…",
-            fontSize = 24.sp,
+            text = d?.greeting ?: "…",
+            fontSize = Type.display,
             fontWeight = FontWeight.SemiBold,
-            color = LocalInk.current.strong,
+            color = ink.strong,
         )
+        // 校历那一行跟着问候语走：它就是"今天算第几周"这句话，不该单独占一个区块
+        if (!extras?.calendar.isNullOrBlank()) {
+            Spacer(Modifier.height(Gap.xxs))
+            Text(extras!!.calendar, fontSize = Type.meta, color = ink.faint)
+        }
 
+        Spacer(Modifier.height(Gap.md))
         Sheet {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("今天", fontSize = 13.sp, color = LocalInk.current.muted)
-                Text(
-                    text = state.data?.let { "${it.todayLessons} 节课" } ?: "—",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = LocalInk.current.strong,
+            Row(Modifier.fillMaxWidth()) {
+                MetricCell("今天有课", d?.let { "${it.todayLessons}" } ?: "—", "节", modifier = Modifier.weight(1f))
+                MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
+                MetricCell(
+                    "查寝",
+                    // 那一格只放时间本体（"10-20 21:00"），年份和"晚点名"三个字都不占位
+                    d?.dormCheckState?.trimStart('—')?.ifBlank { "—" } ?: "—",
+                    "",
+                    modifier = Modifier.weight(1.4f),
                 )
             }
-            Spacer(Modifier.height(Gap.sm))
+            Spacer(Modifier.height(Gap.md))
             Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            Labeled(
-                label = "下一节",
-                value = state.data?.nextLesson ?: "今天没有课了",
-            )
-            Spacer(Modifier.height(Gap.sm))
-            Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            Labeled(
-                label = "未读消息",
-                value = state.data?.let { "${it.unreadMessages} 条" } ?: "—",
-            )
-            Spacer(Modifier.height(Gap.sm))
-            Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "查寝", value = state.data?.dormCheckState ?: "—")
-            Spacer(Modifier.height(Gap.sm))
-            Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            Labeled(
-                label = "本学期跑步",
-                value = state.data?.runSemesterKm?.let { "%.2f 公里".format(it) } ?: "—",
-            )
-            Spacer(Modifier.height(Gap.sm))
-            Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            Labeled(
-                label = "其中晨跑",
-                value = state.data?.runMorningKm?.let { "%.2f 公里".format(it) } ?: "—",
-            )
+            Spacer(Modifier.height(Gap.md))
+            Row(Modifier.fillMaxWidth()) {
+                MetricCell(
+                    "学期跑量",
+                    d?.runSemesterKm?.let { "%.2f".format(it) } ?: "—",
+                    "公里",
+                    modifier = Modifier.weight(1f),
+                )
+                MetricCell(
+                    "其中晨跑",
+                    d?.runMorningKm?.let { "%.2f".format(it) } ?: "—",
+                    "公里",
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.weight(1f))
+            }
+            // 下一节是一句话不是数字，所以它单独占一行，不跟上面那两行格子挤
+            if (!d?.nextLesson.isNullOrBlank()) {
+                Spacer(Modifier.height(Gap.sm))
+                Hairline()
+                RowLine("下一节", sub = d!!.nextLesson!!)
+            }
         }
 
         // 跑量那一格挂不上时，原因写在下面这句里，不塞进格子里当值。
-        // 只有真去拉过又没拉到才说：没登录 / 本地演示数据那两种情况 runWhy 本来就是 null。
         DataCaveat(
             state.error,
-            weakReason = if (state.data?.runSemesterKm == null) state.data?.runWhy else null,
+            weakReason = if (d?.runSemesterKm == null) d?.runWhy else null,
         )
 
         if (state.today.isNotEmpty()) {
-            Text(
-                text = "今日课程",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = LocalInk.current.muted,
-                modifier = Modifier.padding(top = Gap.xl, bottom = Gap.sm, start = Gap.xxs),
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                state.today.forEach { slot ->
-                    Sheet {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) {
-                                Text(slot.course, fontSize = 15.sp, color = LocalInk.current.strong)
-                                Spacer(Modifier.height(Gap.xs))
-                                Text(slot.room, fontSize = 12.sp, color = LocalInk.current.muted)
-                            }
-                            Text(
-                                // 连堂的要写全"第 1-2 节"，只写起始节次会让人以为 9:40 就下课
-                                text = if (slot.periodCount > 1)
-                                    "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
-                                else "第 ${slot.startPeriod} 节",
-                                fontSize = 12.sp,
-                                color = LocalInk.current.faint,
-                            )
-                        }
-                    }
+            // 一门课一张卡是上一版最"肿"的地方：三张卡之间的缝比内容还显眼
+            SectionBlock("今日课程")
+            Sheet {
+                state.today.forEachIndexed { i, slot ->
+                    RowLine(
+                        title = slot.course,
+                        sub = slot.room,
+                        right = if (slot.periodCount > 1)
+                        // 连堂的要写全"第 1-2 节"，只写起始节次会让人以为 9:40 就下课
+                            "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
+                        else "第 ${slot.startPeriod} 节",
+                    )
+                    if (i != state.today.lastIndex) Hairline()
                 }
             }
         }
 
-        Spacer(Modifier.height(Gap.xl))
         // 四枚快捷格只负责跳，不在这儿摆数据：数据在各自那一屏里。
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            listOf("运动" to Route.SPORT, "查寝" to Route.DORM, "校园卡" to Route.CARD, "报修" to Route.REPAIR)
-                .forEach { (name, at) ->
-                    Text(
-                        text = name,
-                        fontSize = 13.sp,
-                        color = LocalInk.current.muted,
-                        modifier = Modifier
-                            .clip(Radius.pill)
-                            .background(MaterialTheme.colorScheme.surfaceVariant, Radius.pill)
-                            .clickable { open(at) }
-                            .padding(horizontal = Gap.lg, vertical = Gap.md),
-                    )
-                }
+        Spacer(Modifier.height(Rhythm.sectionGap))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        ) {
+            listOf("运动" to com.andaxin.shell.Route.SPORT, "查寝" to com.andaxin.shell.Route.DORM,
+                "校园卡" to com.andaxin.shell.Route.CARD, "报修" to com.andaxin.shell.Route.REPAIR,
+                "AI 课堂" to com.andaxin.shell.Route.AICLASS, "待办" to com.andaxin.shell.Route.AFFAIR)
+                .forEach { (name, at) -> Chip(name, picked = false) { open(at) } }
         }
 
-        state.error?.let {
-            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
-        }
-
-        extras?.let { ExtrasSection(it, open) }
+        extras?.let { Extras(it, open) }
         Spacer(Modifier.height(Gap.xxl))
     }
 }
 
+/** 区块小标题：字号走 [Type.meta]，但比 SectionTitle 那种灰字稍重一点。 */
+@Composable
+private fun SectionBlock(text: String) {
+    Text(
+        text = text,
+        fontSize = Type.meta,
+        fontWeight = FontWeight.Medium,
+        color = LocalInk.current.muted,
+        modifier = Modifier.padding(top = Rhythm.sectionGap, bottom = Gap.xs, start = Gap.xxs),
+    )
+}
+
 /**
- * 首页下半屏：校历一行 + 轮播图 + 校方给的服务清单 + 那几个联系方式。
+ * 首页下半屏：轮播图 + 校方服务清单 + 求助电话。
  *
- * 这四块全是 `in.aiit.edu.cn` 直接给的（取证与字段选择见 `data/capture/CaptureHome.kt`），
- * 不是我们在代码里列的那几格。服务清单上每一格的名字、图标、去处都照它给的，
- * 点开了走自带 WebView —— 不做"跳系统浏览器"那一种。
+ * 这四块全是 `in.aiit.edu.cn` 直接给的（字段选择与取证见 `data/capture/CaptureHome.kt`）。
+ * 服务清单点开了走自带 WebView —— 不做"跳系统浏览器"那一种。
  */
 @Composable
-private fun ExtrasSection(e: com.andaxin.data.capture.HomeExtras, open: (String) -> Unit) {
+private fun Extras(e: HomeExtras, open: (String) -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
 
-    if (e.calendar.isNotBlank()) {
-        Spacer(Modifier.height(Gap.xl))
-        Text(e.calendar, fontSize = 12.sp, color = ink.faint, modifier = Modifier.padding(start = Gap.xxs))
-    }
-
     if (e.banners.isNotEmpty()) {
-        Spacer(Modifier.height(Gap.lg))
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        SectionBlock("校方给的图")
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        ) {
             e.banners.forEach { b ->
                 Column(
                     Modifier
-                        .width(220.dp)
+                        .width(200.dp)
                         .clip(Radius.card)
                         .background(MaterialTheme.colorScheme.surface)
                         .then(
@@ -229,17 +228,21 @@ private fun ExtrasSection(e: com.andaxin.data.capture.HomeExtras, open: (String)
                                 open("web/${com.andaxin.feature.web.encodeUrl(b.targetUrl)}")
                             } else Modifier
                         )
-                        .padding(bottom = Gap.md),
+                        .padding(bottom = Gap.sm),
                 ) {
                     RemoteImage(
                         url = b.imageUrl,
                         contentDescription = b.title.ifBlank { "校方图" },
                         cacheDir = graph.context.cacheDir,
-                        modifier = Modifier.fillMaxWidth().height(96.dp),
+                        modifier = Modifier.fillMaxWidth().height(92.dp),
                     )
                     if (b.title.isNotBlank()) {
                         Spacer(Modifier.height(Gap.xs))
-                        Text(b.title, fontSize = 12.sp, color = ink.muted, maxLines = 1)
+                        Text(
+                            b.title, fontSize = Type.meta, color = ink.muted,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = Gap.sm),
+                        )
                     }
                 }
             }
@@ -247,68 +250,77 @@ private fun ExtrasSection(e: com.andaxin.data.capture.HomeExtras, open: (String)
     }
 
     if (e.services.isNotEmpty()) {
-        Spacer(Modifier.height(Gap.xl))
-        SectionTitle("校方服务清单")
-        Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            e.services.forEach { s ->
-                Sheet(
-                    modifier = Modifier.then(
-                        if (s.targetUrl.startsWith("http")) Modifier.clickable {
-                            open("web/${com.andaxin.feature.web.encodeUrl(s.targetUrl)}")
-                        } else Modifier
-                    )
-                ) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        if (s.iconUrl.startsWith("http")) {
-                            RemoteImage(
-                                url = s.iconUrl,
-                                contentDescription = s.name,
-                                cacheDir = graph.context.cacheDir,
-                                modifier = Modifier.size(28.dp),
-                            )
-                            Spacer(Modifier.width(Gap.md))
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(s.name, fontSize = 15.sp, color = ink.strong)
-                            // 只有真是链接才把域名摆出来当副标题。「智慧运动」那一格实测 `sjdfwdz` 就是字面 "1"
-                            // （校方给的是原生路由号不是 URL），以前直接印出来就是个孤零零的 1，看着像数据坏了。
-                            if (s.targetUrl.startsWith("http")) {
-                                Spacer(Modifier.height(Gap.xxs))
-                                Text(
-                                    text = Uri.parse(s.targetUrl).host ?: s.targetUrl,
-                                    fontSize = 11.sp,
-                                    color = ink.ghost,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-                        if (!s.online) Text("未上线", fontSize = 11.sp, color = Palette.Amber)
-                    }
+        SectionBlock("校方服务清单")
+        // 四列图标网格：一行一个拉七行、右边还挂个域名，是这一屏最肿的一段
+        Sheet {
+            e.services.chunked(4).forEachIndexed { rowIdx, row ->
+                Row(Modifier.fillMaxWidth()) {
+                    row.forEach { s -> ServiceTile(s, graph, ink, Modifier.weight(1f)) { url -> open(url) } }
+                    // 不满四格时把剩下的宽度占住，否则最后一格会被拉宽
+                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
+                if (rowIdx != e.services.chunked(4).lastIndex) Spacer(Modifier.height(Gap.md))
             }
         }
     }
 
     if (e.contacts.isNotEmpty()) {
-        Spacer(Modifier.height(Gap.xl))
-        SectionTitle("求助电话")
+        SectionBlock("求助电话")
         Sheet {
             e.contacts.forEachIndexed { i, c ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(c.label, fontSize = 14.sp, color = ink.body)
-                    // 这发的 `infoName` 里装的是电话号码（真值见 CaptureHome 顶上第①条），
-                    // 键名骗人，所以这里原样念出来，不叫"名称"
-                    Text(c.contact, fontSize = 14.sp, color = ink.strong)
-                }
-                if (i != e.contacts.lastIndex) {
-                    Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-                }
+                // 这发的 `infoName` 里装的是电话号码（真值见 CaptureHome 顶上第①条），键名骗人
+                RowLine(title = c.label, right = c.contact)
+                if (i != e.contacts.lastIndex) Hairline()
             }
         }
     }
 
     if (e.why.isNotEmpty()) {
         Spacer(Modifier.height(Gap.md))
-        e.why.forEach { Text(it, fontSize = 11.sp, color = ink.faint) }
+        com.andaxin.shell.NoteBlock(e.why.map { it }, shown = 1)
     }
 }
+
+@Composable
+private fun ServiceTile(
+    s: SchoolService,
+    graph: com.andaxin.app.AppGraph,
+    ink: com.andaxin.core.design.InkSet,
+    modifier: Modifier = Modifier,
+    go: (String) -> Unit,
+) {
+    val target = "web/${com.andaxin.feature.web.encodeUrl(s.targetUrl)}"
+    val clickable = s.targetUrl.startsWith("http")
+    Column(
+        modifier
+            .then(if (clickable) Modifier.clickable { go(target) } else Modifier)
+            .padding(vertical = Gap.xs),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+            if (s.iconUrl.startsWith("http")) {
+                RemoteImage(
+                    url = s.iconUrl,
+                    contentDescription = s.name,
+                    cacheDir = graph.context.cacheDir,
+                    modifier = Modifier.size(30.dp),
+                )
+            } else {
+                Text(s.name.take(1), fontSize = Type.title, color = Palette.Blue)
+            }
+        }
+        Spacer(Modifier.height(Gap.xs))
+        Text(
+            text = s.name,
+            fontSize = Type.micro,
+            color = if (s.online) ink.body else ink.ghost,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // 域名那行整个去掉：四列网格里放不下，而且它不是"要看的东西"，点进去自然知道是哪个页面
+    }
+}
+
+/** 只在需要时把 host 拿出来用（服务清单的副标题已经不显示了，留着给详情用）。 */
+internal fun hostOf(url: String): String = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()

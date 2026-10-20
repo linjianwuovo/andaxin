@@ -44,6 +44,10 @@ import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.Chip
+import com.andaxin.shell.NoteBlock
+import com.andaxin.shell.noteLines
+import com.andaxin.core.design.Type
 
 /*
  * AI 课堂的两屏：课程列表 + 课堂详情（课件 / 直录播 / 考勤 / 上课 / 小组）。
@@ -268,20 +272,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             modifier = Modifier.horizontalScroll(rememberScrollState()),
         ) {
             listOf("课件", "直录播", "考勤", "上课", "小组", "其他资源", "成员", "笔记", "章节").forEachIndexed { i, name ->
-                val on = i == tab
-                Text(
-                    text = name,
-                    fontSize = 13.sp,
-                    fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                    color = if (on) MaterialTheme.colorScheme.primary else ink.muted,
-                    modifier = Modifier
-                        .background(
-                            if (on) MaterialTheme.colorScheme.surfaceVariant else ink.hairline,
-                            Radius.pill,
-                        )
-                        .clickable { tab = i }
-                        .padding(horizontal = Gap.md, vertical = Gap.sm),
-                )
+                Chip(name, i == tab) { tab = i }
             }
         }
         Spacer(Modifier.height(Gap.md))
@@ -296,8 +287,8 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                 horizontalArrangement = Arrangement.spacedBy(Gap.sm),
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
             ) {
-                chip("全部", week == "") { week = "" }
-                weeks.forEach { w -> chip("第 $w 周", week == w.toString()) { week = w.toString() } }
+                Chip("全部", week == "") { week = "" }
+                weeks.forEach { w -> Chip("第 $w 周", week == w.toString()) { week = w.toString() } }
             }
             Spacer(Modifier.height(Gap.md))
         }
@@ -336,7 +327,8 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                             // 章顶格、节缩进一格：层级就靠这一下看出来，不靠我们自己编号
                             Text(
                                 text = item.title,
-                                fontSize = if (item.extra["level"] == "1") 16.sp else 15.sp,
+                                lineHeight = Type.bodyLine,
+                                fontSize = if (item.extra["level"] == "1") Type.title else Type.body,
                                 fontWeight = if (item.extra["level"] == "1") FontWeight.Medium else FontWeight.Normal,
                                 color = ink.strong,
                                 modifier = Modifier.padding(
@@ -372,7 +364,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                             }
                         }
                         if (item.right.isNotBlank()) {
-                            Text(item.right, fontSize = 12.sp, color = Palette.Teal)
+                            Text(item.right, fontSize = Type.meta, color = Palette.Teal)
                         }
                     }
                 }
@@ -381,32 +373,18 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
         }
 
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
+        NoteBlock(
+            noteLines(
             "这九栏真去问 FIF（AI 课堂平台），第一次进要先过它的单点登录。报文形状都是我们自己盘出来的实样，" +
                 "10-20 又在 PC 上逐发打通过一遍、当天晚上把抓包响应逐条对过真值。" +
                 "底下这排是横着滑的，「成员」「笔记」「章节」在最右边，不滑过去看不见。" +
                 "哪栏回空先别当接口坏了：课件、小组、其他资源这几发实测就是回空，服务端真没内容。",
+            ),
+            shown = 1,
         )
     }
 }
 
-/** tab 与周次共用的小胶囊。 */
-@Composable
-private fun chip(text: String, picked: Boolean, onClick: () -> Unit) {
-    Text(
-        text = text,
-        fontSize = 12.sp,
-        fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
-        color = if (picked) MaterialTheme.colorScheme.primary else LocalInk.current.muted,
-        modifier = Modifier
-            .background(
-                if (picked) MaterialTheme.colorScheme.surfaceVariant else LocalInk.current.hairline,
-                Radius.pill,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = Gap.md, vertical = Gap.xs),
-    )
-}
 
 /**
  * 考勤那五个数。键名用的是服务端自己的四个拼音（`chuqin/chidao/kuangke/qingjia`），
@@ -526,11 +504,14 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         if (courses.isEmpty() && why == null) Text("本周课表里没有课。", fontSize = 14.sp, color = ink.faint)
 
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
+        NoteBlock(
+            noteLines(
             "课程列表走 FIF 自己的 myClassroom（抓包清点里 A 级实样那条），先要过它的单点登录。" +
                 "进课里有九栏：课件、直录播、考勤、上课、小组、其他资源、成员、笔记、章节（最后四栏要往右滑）。" +
                 "**签到只能看，不能按** —— 提交签到那几发（扫码、点选、坐标上报）磁盘上一条报文都没有，" +
                 "不拿猜的字段填上去。",
+            ),
+            shown = 1,
         )
     }
 }

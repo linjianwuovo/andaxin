@@ -83,14 +83,20 @@ private val DarkScheme: ColorScheme = darkColorScheme(
     error = Palette.NightRose,
 )
 
-// 字号：整屏只有这六档，正文 15 是基准（系统默认 14 在我们那套留白下偏小）
-private val Type = Typography(
-    headlineSmall = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold),
-    titleLarge = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.Medium),
-    bodyLarge = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Normal),
-    bodyMedium = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Normal),
-    labelSmall = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+/*
+ * 字号只有一张表 —— `Dimens.kt` 里的 [Type]。
+ *
+ * 这里以前另写了一套 24/20/17/15/13/11，界面各处又各自手写 sp，
+ * 结果同一屏里"副标题"能同时出现 11/12/13 三种、大数字出现 17/20/24/30 四种。
+ * 现在 Material 的 typography 也从那张表搭，谁再想加一档就得改 Dimens 那一处。
+ */
+private val AdxTypography = Typography(
+    headlineSmall = TextStyle(fontSize = Type.display, fontWeight = FontWeight.SemiBold),
+    titleLarge = TextStyle(fontSize = Type.title, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = Type.body, fontWeight = FontWeight.Medium),
+    bodyLarge = TextStyle(fontSize = Type.body, fontWeight = FontWeight.Normal),
+    bodyMedium = TextStyle(fontSize = Type.meta, fontWeight = FontWeight.Normal),
+    labelSmall = TextStyle(fontSize = Type.micro, fontWeight = FontWeight.Medium),
 )
 
 private fun String.toColorOrNull(): Color? = runCatching {
@@ -132,7 +138,7 @@ fun AndaXinTheme(
         )
         MaterialTheme(
             colorScheme = scheme,
-            typography = Type,
+            typography = AdxTypography,
             shapes = Shapes,
             content = {
                 // Miuix 那套组件只认 MiuixTheme 的颜色，不认 MaterialTheme。两套并着走：

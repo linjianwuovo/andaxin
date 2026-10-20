@@ -42,6 +42,10 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.Chip
+import com.andaxin.shell.NoteBlock
+import com.andaxin.shell.noteLines
+import com.andaxin.core.design.Type
 
 /*
  * 公开课这两屏。
@@ -84,20 +88,7 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
     ScaffoldPage(title = "公开课", onBack = onBack) {
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
             TABS.forEachIndexed { i, (name, _) ->
-                val on = i == tab
-                Text(
-                    text = name,
-                    fontSize = 13.sp,
-                    fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                    color = if (on) MaterialTheme.colorScheme.primary else ink.muted,
-                    modifier = Modifier
-                        .background(
-                            if (on) MaterialTheme.colorScheme.surfaceVariant else ink.hairline,
-                            Radius.pill,
-                        )
-                        .clickable { tab = i }
-                        .padding(horizontal = Gap.lg, vertical = Gap.sm),
-                )
+                Chip(name, i == tab) { tab = i }
             }
         }
         Spacer(Modifier.height(Gap.lg))
@@ -138,9 +129,12 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
+        NoteBlock(
+            noteLines(
             "课程目录来自 FIF 那侧的 openCourse 四条口（热门 / 最新 / 全部 + 校方自配的栏目）。" +
                 "列表只有目录级的信息：课名、老师、报名人数 —— 报名和上课都不在这一版里。",
+            ),
+            shown = 1,
         )
     }
 }
@@ -164,19 +158,28 @@ private fun CourseLine(
             Spacer(Modifier.width(Gap.md))
         }
         Column(Modifier.weight(1f)) {
-            Text(c.name.ifBlank { "（课名空）" }, fontSize = 15.sp, color = ink.strong, maxLines = if (compact) 2 else 1)
+            Text(
+                text = c.name.ifBlank { "（课名空）" },
+                fontSize = Type.title,
+                lineHeight = Type.bodyLine,
+                fontWeight = FontWeight.Medium,
+                color = ink.strong,
+                maxLines = if (compact) 2 else 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             if (!compact && (c.teacher.isNotBlank() || c.schoolName.isNotBlank())) {
                 Spacer(Modifier.height(Gap.xxs))
                 Text(
                     text = listOf(c.teacher, c.schoolName).filter { it.isNotBlank() }.joinToString(" · "),
-                    fontSize = 12.sp,
+                    fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
                     color = ink.muted,
                 )
             }
         }
         if (!compact) {
             // 真值里 `signCount` 是整数（热门那条 3553、测试课 0），所以直接当"多少人报过"
-            Text("${c.signCount} 人", fontSize = 12.sp, color = ink.faint)
+            Text("${c.signCount} 人", fontSize = Type.meta, color = ink.faint)
         }
     }
 }
@@ -329,10 +332,13 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(
+        NoteBlock(
+            noteLines(
             "详情、章节进度、测验三条都来自 adapt-app 那组口（抓包真值对出来的）。" +
                 "看得到学到哪儿，但这一版不做任何「上课」动作 —— 播放与答题都不接。" +
                 (if (q != null && q.isEmpty()) "" else "\n测验那一条的条目字段名我们还没有实样。"),
+            ),
+            shown = 1,
         )
     }
 }

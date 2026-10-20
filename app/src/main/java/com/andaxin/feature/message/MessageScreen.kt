@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -20,14 +21,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.design.Rhythm
+import com.andaxin.core.design.Type
 import com.andaxin.data.MessageItem
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.DataCaveat
@@ -48,28 +54,38 @@ fun MessageScreen(modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Gap.screen),
     ) {
-        Spacer(Modifier.height(Gap.xl))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("消息", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+        Spacer(Modifier.height(Gap.md))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+            Text("消息", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
             Text(
                 text = "${state.items.count { it.unread }} 未读",
-                fontSize = 12.sp,
+                fontSize = Type.meta,
                 color = LocalInk.current.faint,
-                modifier = Modifier.padding(top = 8.dp),
             )
         }
-        Spacer(Modifier.height(Gap.lg))
+        Spacer(Modifier.height(Gap.md))
 
-        Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            state.items.forEach { item ->
-                MessageRow(item) { model.markRead(item.id) }
+        // 一条一张卡 → 一张卡里一行一条。三十条消息原来就是三十张卡，
+        // 缝比字多，一屏数得过来的只有四五条。
+        if (state.items.isEmpty() && !state.firstLoad) {
+            Text("没有消息。", fontSize = Type.body, color = LocalInk.current.faint)
+        } else if (state.items.isNotEmpty()) {
+            Sheet {
+                state.items.forEachIndexed { i, item ->
+                    MessageRow(item) { model.markRead(item.id) }
+                    if (i != state.items.lastIndex) {
+                        Spacer(Modifier.height(Gap.xs))
+                        Hairline()
+                        Spacer(Modifier.height(Gap.xs))
+                    }
+                }
             }
         }
 
         // 标已读没成，红点就还在那儿 —— 这时候必须说一句为什么，不然看着像点了没反应
         state.readError?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.meta, lineHeight = Type.metaLine, color = MaterialTheme.colorScheme.error)
         }
 
         Spacer(Modifier.height(Gap.lg))
@@ -82,7 +98,7 @@ fun MessageScreen(modifier: Modifier = Modifier) {
                 else -> "上次刷新：" + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
                     .format(java.util.Date(lastRun)) + "，每 5 分钟一次"
             },
-            fontSize = 11.sp,
+            fontSize = Type.micro,
             color = LocalInk.current.faint,
         )
         Spacer(Modifier.height(Gap.sm))
@@ -94,28 +110,52 @@ fun MessageScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun MessageRow(item: MessageItem, onClick: () -> Unit) {
     val ink = LocalInk.current
-    Sheet(modifier = Modifier.clickable(onClick = onClick)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = Rhythm.rowV),
+    ) {
+        // 未读那个点放在最左边：原来它在最右边，跟正文挤在一起，扫的时候看不见
+        if (item.unread) {
+            Box(
+                Modifier
+                    .padding(top = 7.dp)
+                    .size(6.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+            )
+            Spacer(Modifier.width(Gap.sm))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                item.title,
+                fontSize = Type.title,
+                lineHeight = Type.bodyLine,
+                fontWeight = if (item.unread) FontWeight.Medium else FontWeight.Normal,
+                color = ink.strong,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (item.brief.isNotBlank()) {
+                Spacer(Modifier.height(Gap.xxs))
                 Text(
-                    item.title,
-                    fontSize = 15.sp,
-                    fontWeight = if (item.unread) FontWeight.Medium else FontWeight.Normal,
-                    color = ink.strong,
-                )
-                Spacer(Modifier.height(Gap.xs))
-                Text(item.brief, fontSize = 12.sp, color = ink.muted, maxLines = 2)
-                Spacer(Modifier.height(Gap.sm))
-                Text(item.sentAt, fontSize = 11.sp, color = ink.ghost)
-            }
-            Spacer(Modifier.width(Gap.md))
-            if (item.unread) {
-                Box(
-                    Modifier
-                        .size(7.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    item.brief,
+                    fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
+                    color = ink.muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
+        Spacer(Modifier.width(Gap.sm))
+        // 时间挪到右边那一栏：它以前占整行第三行，一行消息要三行才说完
+        Text(
+            text = item.sentAt.substringAfter(' ').ifBlank { item.sentAt },
+            fontSize = Type.micro,
+            color = ink.ghost,
+            textAlign = TextAlign.End,
+            modifier = Modifier.widthIn(max = 74.dp),
+        )
     }
 }

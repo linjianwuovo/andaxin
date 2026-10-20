@@ -41,6 +41,7 @@ import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
+import com.andaxin.core.design.Type
 import com.andaxin.data.brief.BriefDetail
 import com.andaxin.data.brief.BriefRow
 import com.andaxin.data.brief.DetailSource
@@ -52,7 +53,10 @@ import com.andaxin.data.brief.ListSource
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
+import com.andaxin.shell.NoteBlock
 import com.andaxin.shell.PlaceholderNote
+import com.andaxin.shell.RowLine
+import com.andaxin.shell.noteLines
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
@@ -175,8 +179,10 @@ fun BriefListPage(
     val ink = LocalInk.current
 
     ScaffoldPage(title = title, onBack = onBack) {
-        if (state.rows.isEmpty() && !state.loading) {
-            Text(empty, fontSize = 14.sp, color = ink.faint)
+        if (state.loading && state.rows.isEmpty()) {
+            Text("正在拉…", fontSize = Type.meta, color = ink.faint)
+        } else if (state.rows.isEmpty() && !state.loading) {
+            Text(empty, fontSize = Type.body, color = ink.faint)
         }
         // 「新建」那一行放在**列表上面**。它原来画在所有行的下面 —— 待办那一屏有 21 行，
         // 于是「＋ 发起请假」被推到屏幕外，装机时读屏根本找不到它（10-20 读屏验出来）。
@@ -187,36 +193,29 @@ fun BriefListPage(
             }
             Spacer(Modifier.height(Gap.sm))
         }
-        state.rows.forEach { row ->
-            Sheet(modifier = Modifier.clickable { onRow(row.id) }) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) {
-                        Text(row.title, fontSize = 15.sp, color = ink.strong)
-                        if (row.sub.isNotBlank()) {
-                            Spacer(Modifier.height(Gap.xs))
-                            Text(row.sub, fontSize = 12.sp, color = ink.muted)
-                        }
-                    }
-                    if (row.right.isNotBlank()) {
-                        Text(
-                            text = row.right,
-                            fontSize = 12.sp,
-                            color = when (row.flag) {
-                                Flag.Ok -> Palette.Teal
-                                Flag.Bad -> MaterialTheme.colorScheme.error
-                                Flag.Warn -> Palette.Amber
-                                Flag.Unread -> MaterialTheme.colorScheme.primary
-                                Flag.None -> ink.faint
-                            },
-                        )
+        // 一张卡里一行一条、中间分隔线。以前是一条一张卡：二十条待办就是二十张卡，
+        // 卡之间的缝比内容还显眼，滚两屏才看完 —— 这就是"肿"。
+        if (state.rows.isNotEmpty()) {
+            Sheet {
+                state.rows.forEachIndexed { i, row ->
+                    RowLine(
+                        title = row.title,
+                        sub = row.sub,
+                        right = row.right,
+                        flag = row.flag,
+                        onClick = { onRow(row.id) },
+                    )
+                    if (i != state.rows.lastIndex) {
+                        Spacer(Modifier.height(Gap.xs))
+                        Hairline()
+                        Spacer(Modifier.height(Gap.xs))
                     }
                 }
             }
-            Spacer(Modifier.height(Gap.sm))
         }
         state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.sm))
-        PlaceholderNote(note)
+        NoteBlock(noteLines(note), shown = 1)
     }
 }
 
@@ -287,7 +286,7 @@ fun BriefDetailPage(
         }
         state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.md))
-        PlaceholderNote(note)
+        NoteBlock(noteLines(note), shown = 1)
     }
 }
 

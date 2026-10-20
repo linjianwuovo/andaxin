@@ -40,6 +40,7 @@ import com.andaxin.core.design.Radius
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
+import com.andaxin.shell.RowLine
 import com.andaxin.shell.PlaceholderNote
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
@@ -70,13 +71,7 @@ fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
     ScaffoldPage(title = "更多功能", onBack = onBack) {
         Sheet {
             MORE.forEachIndexed { i, (label, route) ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { open(route) }.padding(vertical = Gap.md),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(label, fontSize = 15.sp, color = ink.strong)
-                    Text("›", fontSize = 15.sp, color = ink.ghost)
-                }
+                RowLine(title = label, right = "›", onClick = { open(route) })
                 if (i != MORE.lastIndex) Hairline()
             }
         }
