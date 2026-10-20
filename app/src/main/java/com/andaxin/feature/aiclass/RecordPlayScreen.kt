@@ -65,8 +65,12 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
     var picked by remember { mutableIntStateOf(0) }
     var why by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
+    // 这一条上次看到第几分（本机存的）。null = 这台机器上没放过
+    var seenAt by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(resourceId) {
+        seenAt = com.andaxin.core.media.PlayProgress.clock(graph.playProgress.positionOf(resourceId))
+            .takeIf { it.isNotBlank() }
         loading = true
         why = null
         graph.fif.ensure().fold(
@@ -112,7 +116,7 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.md))
 
             val cur = sources[picked.coerceIn(sources.indices)]
-            Player(url = cur.extra["path"].orEmpty(), tag = resourceId)
+            Player(id = cur.extra["resourceId"].orEmpty().ifBlank { resourceId }, url = cur.extra["path"].orEmpty(), tag = resourceId)
             Spacer(Modifier.height(Gap.sm))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(cur.sub, fontSize = 12.sp, color = ink.muted)
@@ -124,16 +128,17 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
             PlaceholderNote(
                 "这一档是 ${cur.sub.ifBlank { "整堂" }}，拖动进度条会接着往下取流。" +
                     "整堂录像是五百来兆，不在 Wi-Fi 下点之前先想想流量。",
-            )
-        } else {
+            )        } else {
             Sheet { Text(why ?: "没有可播的机位。", fontSize = 13.sp, color = ink.faint) }
         }
 
         Spacer(Modifier.height(Gap.md))
         PlaceholderNote(
             "播放地址是当场签名的直链，每次进来都要重新问一遍，存下来的链接过一会儿就换。" +
-                "进度上报那两条（liveRecordLog、video/progressLog）实测被服务端拒了（\"访问受限\"），" +
-                "所以看到第几分不会记，下次进来还是从头。",
+                (seenAt?.let { "这台机器记着这条看到 $it，已经给你跳过去了。" }
+                    ?: "这台机器上这条还没放过，从头开始。") +
+                " 校方那两条进度上报（liveRecordLog、video/progressLog）实测回\"访问受限\"，" +
+                "所以进度只存在你这台手机上 —— 换一台、或者清了应用数据，就得从头看。",
         )
     }
 }
@@ -141,21 +146,46 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
 /**
  * 一层壳包住 VideoView。
  *
- * 三件必须做的：`setVideoURI` 之前先挂好 MediaController（不然没控制条）；
- * 出错回调里把 what/extra 原样显示出来（黑屏不报错是最难查的）；
- * 离开这一屏一定要 stop()，MediaPlayer 不解散会一直占着硬解码，回首页再进来就播不动了。
+ * 四件必须做的：
+ * ① `setVideoURI` 之前先挂好 MediaController（不然没控制条）；
+ * ② 出错回调里把 what/extra 原样显示出来（黑屏不报错是最难查的）；
+ * ③ 离开这一屏一定要 `stopPlayback()`，MediaPlayer 不解散就一直占着硬解码，
+ *    而且声音会在后面继续跑；
+ * ④ 进度自己记 —— 服务端那两条上报被拒（见 `core/media/PlayProgress`），
+ *    所以每 5 秒往本机存一次，下次进来接着放。
+ *    `seekTo` 只在 `onPrepared` 之后调：prepare 是异步的，提前 seek 会被吞掉，
+ *    看着像"进度没记住"。
  */
 @Composable
-private fun Player(url: String, tag: String) {
+private fun Player(id: String, url: String, tag: String) {
+    val graph = LocalAppGraph.current
     val ink = LocalInk.current
     var trouble by remember(tag, url) { mutableStateOf<String?>(null) }
     var ready by remember(tag, url) { mutableStateOf(false) }
+    var resumeAt by remember(tag, url) { mutableStateOf(0) }
     var view by remember(tag, url) { mutableStateOf<VideoView?>(null) }
 
-    // 离开这一屏（换机位、返回、切走）一定要停手：MediaPlayer 不解散就一直占着硬解码，
-    // 回首页再进来就播不动了，而且声音会在后面继续跑
+    LaunchedEffect(id) {
+        resumeAt = graph.playProgress.positionOf(id)
+    }
+
+    // 每 5 秒存一次。退出那一瞬间也存（下面的 onDispose），两处都要 ——
+    // 只看十几秒就返回的话，光靠定时器那次可能还没轮到
+    LaunchedEffect(ready, url) {
+        if (!ready) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(5_000)
+            val v = view ?: continue
+            if (v.duration > 0 && v.isPlaying) graph.playProgress.save(id, v.currentPosition, v.duration)
+        }
+    }
+
     DisposableEffect(url) {
         onDispose {
+            val v = view
+            // 这里不能再起协程了：组合正在拆，scope.launch 可能还没排上就没了。
+            // 一次几 KB 的同步写换这点确定性，值。
+            if (v != null && v.duration > 0) graph.playProgress.saveNow(id, v.currentPosition, v.duration)
             view?.stopPlayback()
             view = null
         }
@@ -180,6 +210,8 @@ private fun Player(url: String, tag: String) {
                         setOnPreparedListener { mp ->
                             ready = true
                             trouble = null
+                            // 上次看的点离结尾还剩 20 秒以内就别跳了，从头放更合理
+                            if (resumeAt > 5_000 && resumeAt < mp.duration - 20_000) seekTo(resumeAt)
                             mp.start()
                         }
                         setOnErrorListener { _, what, extra ->

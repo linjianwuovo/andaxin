@@ -80,27 +80,39 @@ fun CreditDetailScreen(id: String, onBack: () -> Unit) {
 }
 
 @Composable
-fun LaborListScreen(open: (String) -> Unit, onBack: () -> Unit) = BriefListPage(
-    title = "劳动教育", source = Labor.list, onBack = onBack, onRow = { open("labor/detail/$it") },
-    note = "工时：ldjy 三个 .do，认定状态字段待抓包。",
-)
+fun LaborListScreen(open: (String) -> Unit, onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    BriefListPage(
+        title = "劳动教育", source = graph.laborList, onBack = onBack, onRow = { open("labor/detail/$it") },
+        note = "这五类工时来自 ldjy 那一发 queryPersonalTimesTotal。" +
+            "中文名是我按服务端字段名翻的（它一个字中文都没给），所以每行副标题把原始字段名也摆出来 —— " +
+            "翻反了一眼能看出来，别被我的中文骗过去。",
+    )
+}
 
 @Composable
-fun LaborDetailScreen(id: String, onBack: () -> Unit) =
-    BriefDetailPage(title = "工时明细", source = Labor.detail, id = id, onBack = onBack)
+fun LaborDetailScreen(id: String, onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    BriefDetailPage(title = "工时明细", source = graph.laborDetail, id = id, onBack = onBack)
+}
 
 /* ── 节假日离返校（接口与字段都零证据，最要先补的一块） ── */
 
 @Composable
-fun HolidayListScreen(open: (String) -> Unit, onBack: () -> Unit) = BriefListPage(
-    title = "节假日离返校", source = Holiday.list, onBack = onBack, onRow = { open("holiday/detail/$it") },
-    newLabel = "＋ 离返校登记", onNew = { open("holiday/form") },
-    note = "节假日：这一块连接口名都没抓到过，全是要补的。",
-)
+fun HolidayListScreen(open: (String) -> Unit, onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    BriefListPage(
+        title = "节假日离返校", source = graph.holidayList, onBack = onBack, onRow = { open("holiday/detail/$it") },
+        newLabel = "＋ 离返校登记", onNew = { open("holiday/form") },
+        note = "列表这一发接口已经通了（fdygl 的 getRegistrationPage，身份在请求头）。" +
+            "但我们手上那一次抓到的是**空列表**，所以条目里到底有哪些键还不知道 —— " +
+            "真登记过一次之后这一屏才会显出名字来，在那之前它就该是空的。",
+    )
+}
 
 @Composable
 fun HolidayDetailScreen(id: String, onBack: () -> Unit) =
-    BriefDetailPage(title = "假期详情", source = Holiday.detail, id = id, onBack = onBack)
+    BriefDetailPage(title = "假期详情", source = LocalAppGraph.current.holidayDetail, id = id, onBack = onBack)
 
 @Composable
 fun HolidayFormScreen(onBack: () -> Unit) =
