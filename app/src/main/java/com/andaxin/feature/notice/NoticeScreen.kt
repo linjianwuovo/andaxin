@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.shell.Refreshable
 import com.andaxin.shell.pressClick
@@ -49,7 +48,7 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.xl))
             Text(
                 "‹ 返回列表",
-                fontSize = 14.sp,
+                fontSize = Type.body,
                 color = LocalInk.current.muted,
                 modifier = Modifier.pressClick(shrink = false) { model.close() }.padding(vertical = Gap.sm),
             )

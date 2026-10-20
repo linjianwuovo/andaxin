@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
@@ -92,19 +93,19 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Section("路线")
         Sheet {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("画过的线", fontSize = 13.sp, color = ink.muted)
-                Text("${routes.size} 条", fontSize = 13.sp, color = ink.faint)
+                Text("画过的线", fontSize = Type.body, color = ink.muted)
+                Text("${routes.size} 条", fontSize = Type.body, color = ink.faint)
             }
             Spacer(Modifier.height(Gap.sm))
             Text(
                 "路线在地图上画、存在本机，用来对照着跑。",
-                fontSize = 11.sp,
+                fontSize = Type.micro,
                 color = ink.faint,
             )
             Spacer(Modifier.height(Gap.md))
             Text(
                 text = "＋ 画一条 / 看地图",
-                fontSize = 14.sp,
+                fontSize = Type.body,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.pressClick(shrink = false) { open("sport/planner") }.padding(vertical = Gap.sm),
             )
@@ -122,7 +123,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
         denied?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
         Spacer(Modifier.height(Gap.xxl))
@@ -164,7 +165,7 @@ fun SportRunScreen(onBack: () -> Unit) {
 
         state.error?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
         }
 
         Spacer(Modifier.height(Gap.xl))
@@ -190,7 +191,7 @@ fun SportRunScreen(onBack: () -> Unit) {
                 RunMode.AlongRoute -> "沿「${state.points.size} 个点采集」这条线走。"
                 else -> "采的是手机 GPS 的真实位置。楼边、室内会飘，飘出来的那几段学校那边也可能判无效。"
             },
-            fontSize = 11.sp,
+            fontSize = Type.micro,
             color = ink.faint,
         )
         Spacer(Modifier.height(Gap.xxl))
@@ -222,10 +223,10 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Hairline()
                 Spacer(Modifier.height(Gap.sm))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(r.pacePerKm + " · " + "%.1f 分钟".format(r.minutes), fontSize = 12.sp, color = ink.faint)
+                    Text(r.pacePerKm + " · " + "%.1f 分钟".format(r.minutes), fontSize = Type.meta, color = ink.faint)
                     Text(
                         text = if (r.valid) "有效" else r.invalidReason,
-                        fontSize = 12.sp,
+                        fontSize = Type.meta,
                         color = if (r.valid) Palette.Teal else MaterialTheme.colorScheme.error,
                     )
                 }
@@ -240,8 +241,8 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.md))
             Text(
                 text = "这一屏暂时没数：" + why,
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
+                fontSize = Type.body,
+                lineHeight = Type.bodyLine,
                 color = MaterialTheme.colorScheme.error,
             )
         }
@@ -270,8 +271,8 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
             // 也把我们早就知道"这条没接"这件事藏起来了。
             Text(
                 text = why ?: "明细拉取中…",
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
+                fontSize = Type.body,
+                lineHeight = Type.bodyLine,
                 color = if (why == null) ink.faint else MaterialTheme.colorScheme.error,
             )
             return@Page
@@ -325,8 +326,8 @@ fun SportMaintainScreen(onBack: () -> Unit) {
         if (log.isEmpty() && why != null) {
             Text(
                 text = "这一屏暂时没数：" + why,
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
+                fontSize = Type.body,
+                lineHeight = Type.bodyLine,
                 color = MaterialTheme.colorScheme.error,
             )
             Spacer(Modifier.height(Gap.md))
@@ -368,7 +369,7 @@ fun RoutePlannerScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.md))
         Text(
             text = "点图加一个拐点，连起来就是路线；拖动地图挪视野，两指缩放。",
-            fontSize = 12.sp,
+            fontSize = Type.meta,
             color = ink.faint,
         )
         Spacer(Modifier.height(Gap.lg))
@@ -407,12 +408,12 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnS
         Spacer(Modifier.height(Gap.xl))
         Text(
             "‹ 返回",
-            fontSize = 14.sp,
+            fontSize = Type.body,
             color = LocalInk.current.muted,
             modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
         )
         Spacer(Modifier.height(Gap.sm))
-        Text(title, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+        Text(title, fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
         Spacer(Modifier.height(Gap.lg))
         content()
     }
@@ -424,7 +425,7 @@ private typealias ColumnScope = androidx.compose.foundation.layout.ColumnScope
 private fun Section(text: String) {
     Text(
         text = text,
-        fontSize = 13.sp,
+        fontSize = Type.body,
         fontWeight = FontWeight.Medium,
         color = LocalInk.current.muted,
         modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
@@ -434,9 +435,9 @@ private fun Section(text: String) {
 @Composable
 private fun Stat(label: String, value: String) {
     Column {
-        Text(value, fontSize = 17.sp, fontWeight = FontWeight.Medium, color = LocalInk.current.strong)
+        Text(value, fontSize = Type.title, fontWeight = FontWeight.Medium, color = LocalInk.current.strong)
         Spacer(Modifier.height(Gap.xs))
-        Text(label, fontSize = 11.sp, color = LocalInk.current.faint)
+        Text(label, fontSize = Type.micro, color = LocalInk.current.faint)
     }
 }
 
@@ -450,7 +451,7 @@ private fun BigButton(text: String, onClick: () -> Unit) {
             .pressClick(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
+        Text(text, fontSize = Type.title, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
     }
 }
 
@@ -464,7 +465,7 @@ private fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String,
             .pressClick(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, fontSize = 14.sp, color = LocalInk.current.body, maxLines = 1)
+        Text(text, fontSize = Type.body, color = LocalInk.current.body, maxLines = 1)
     }
 }
 

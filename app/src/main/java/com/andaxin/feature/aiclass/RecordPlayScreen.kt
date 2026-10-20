@@ -28,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
@@ -88,7 +87,7 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
 
     ScaffoldPage(title = "看录像", onBack = onBack) {
         if (loading) {
-            Text("正在问资源中心要机位…", fontSize = 13.sp, color = ink.faint)
+            Text("正在问资源中心要机位…", fontSize = Type.body, color = ink.faint)
             return@ScaffoldPage
         }
 
@@ -101,7 +100,7 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
                     val on = i == picked
                     Text(
                         text = s.title,
-                        fontSize = 13.sp,
+                        fontSize = Type.body,
                         color = if (on) MaterialTheme.colorScheme.primary else ink.muted,
                         modifier = Modifier
                             .background(
@@ -119,9 +118,9 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
             Player(id = cur.extra["resourceId"].orEmpty().ifBlank { resourceId }, url = cur.extra["path"].orEmpty(), tag = resourceId)
             Spacer(Modifier.height(Gap.sm))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(cur.sub, fontSize = 12.sp, color = ink.muted)
+                Text(cur.sub, fontSize = Type.meta, color = ink.muted)
                 if (cur.extra["path"].isNullOrBlank()) {
-                    Text("这条没给播放地址", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                    Text("这条没给播放地址", fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
                 }
             }
             Spacer(Modifier.height(Gap.sm))
@@ -135,7 +134,7 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
                 color = ink.ghost,
             )
         } else {
-            Sheet { Text(why ?: "没有可播的机位。", fontSize = 13.sp, color = ink.faint) }
+            Sheet { Text(why ?: "没有可播的机位。", fontSize = Type.body, color = ink.faint) }
         }
 
         Spacer(Modifier.height(Gap.md))
@@ -197,7 +196,7 @@ private fun Player(id: String, url: String, tag: String) {
             .background(androidx.compose.ui.graphics.Color.Black, Radius.tag),
     ) {
         if (url.isBlank()) {
-            Text("没给地址", fontSize = 13.sp, color = ink.faint, modifier = Modifier.align(Alignment.Center))
+            Text("没给地址", fontSize = Type.body, color = ink.faint, modifier = Modifier.align(Alignment.Center))
         } else {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -234,7 +233,7 @@ private fun Player(id: String, url: String, tag: String) {
             if (!ready) {
                 Text(
                     text = trouble ?: "正在起流…",
-                    fontSize = 12.sp,
+                    fontSize = Type.meta,
                     color = ink.faint,
                     modifier = Modifier.align(Alignment.Center),
                 )

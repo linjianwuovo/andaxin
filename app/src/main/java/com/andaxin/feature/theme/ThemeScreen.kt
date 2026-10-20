@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.core.settings.Appearance
@@ -62,12 +63,12 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         Spacer(Modifier.height(Gap.xl))
         Text(
             "‹ 返回",
-            fontSize = 14.sp,
+            fontSize = Type.body,
             color = ink.muted,
             modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
         )
         Spacer(Modifier.height(Gap.sm))
-        Text("主题", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
+        Text("主题", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
 
         Spacer(Modifier.height(Gap.xl))
         GroupTitle("明暗")
@@ -91,7 +92,7 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             ) { draft = draft.copy(material = it); commit() }
             Text(
                 text = "毛玻璃和纯色只吃下面第一根滑杆，另外三根只对液态玻璃有效。",
-                fontSize = 11.sp,
+                fontSize = Type.micro,
                 color = ink.faint,
                 modifier = Modifier.padding(top = Gap.md),
             )
@@ -119,7 +120,7 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                         Spacer(Modifier.height(Gap.xs))
                         Text(
                             name,
-                            fontSize = 10.sp,
+                            fontSize = Type.tiny,
                             color = if (on) ink.strong else ink.faint,
                             fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
                         )
@@ -127,7 +128,7 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 }
             }
             Spacer(Modifier.height(Gap.sm))
-            Text("只换主色，底栏玻璃跟着走。", fontSize = 11.sp, color = ink.faint)
+            Text("只换主色，底栏玻璃跟着走。", fontSize = Type.micro, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.xl))
@@ -139,7 +140,7 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             SliderRow("色散", draft.dispersion, commit) { draft = draft.copy(dispersion = it) }
             Text(
                 text = "调完松手就存，底栏实时跟着变。",
-                fontSize = 11.sp,
+                fontSize = Type.micro,
                 color = ink.faint,
                 modifier = Modifier.padding(top = Gap.sm),
             )
@@ -161,7 +162,7 @@ private val ACCENTS = listOf(
 private fun GroupTitle(text: String) {
     Text(
         text = text,
-        fontSize = 13.sp,
+        fontSize = Type.body,
         fontWeight = FontWeight.Medium,
         color = LocalInk.current.muted,
         modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
@@ -176,7 +177,7 @@ private fun <T : Any> ChoiceRow(options: List<Pair<String, T>>, picked: T, onPic
             val on = value == picked
             Text(
                 text = label,
-                fontSize = 13.sp,
+                fontSize = Type.body,
                 fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
                 color = if (on) MaterialTheme.colorScheme.primary else ink.muted,
                 modifier = Modifier
@@ -197,8 +198,8 @@ private fun SliderRow(label: String, value: Float, onDone: () -> Unit, onChange:
     var local by remember(value) { mutableStateOf(value) }
     Column(Modifier.fillMaxWidth().padding(vertical = Gap.xs)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, fontSize = 13.sp, color = ink.body)
-            Text("%.2f".format(local), fontSize = 12.sp, color = ink.faint)
+            Text(label, fontSize = Type.body, color = ink.body)
+            Text("%.2f".format(local), fontSize = Type.meta, color = ink.faint)
         }
         MiuixSlider(
             value = local,

@@ -41,6 +41,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.andaxin.shell.pressClick
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.Sheet
@@ -81,11 +82,11 @@ fun ScanScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.xl))
         Text(
             "‹ 返回",
-            fontSize = 14.sp,
+            fontSize = Type.body,
             color = ink.muted,
             modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
         )
-        Text("扫码签到", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
+        Text("扫码签到", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
         Spacer(Modifier.height(Gap.lg))
 
         Box(
@@ -97,8 +98,8 @@ fun ScanScreen(onBack: () -> Unit) {
         ) {
             when {
                 granted -> CameraPreview(onCode = { code = it })
-                denied -> Text("没给相机权限", fontSize = 14.sp, color = Color.White)
-                else -> Text("正在要相机权限…", fontSize = 14.sp, color = Color.White)
+                denied -> Text("没给相机权限", fontSize = Type.body, color = Color.White)
+                else -> Text("正在要相机权限…", fontSize = Type.body, color = Color.White)
             }
             // 取景框：只画个框，不做识别区域裁剪，ML Kit 整帧识别够用
             Box(
@@ -111,11 +112,11 @@ fun ScanScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(Gap.lg))
         Sheet {
-            Text("码里是", fontSize = 12.sp, color = ink.muted)
+            Text("码里是", fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.xs))
             Text(
                 text = code ?: "对准二维码，识别到就显示在这儿",
-                fontSize = 14.sp,
+                fontSize = Type.body,
                 color = if (code == null) ink.ghost else ink.strong,
                 maxLines = 4,
             )
@@ -197,7 +198,7 @@ private fun CameraPreview(onCode: (String) -> Unit) {
         trouble?.let {
             Text(
                 text = it,
-                fontSize = 13.sp,
+                fontSize = Type.body,
                 color = Color.White,
                 modifier = Modifier.align(Alignment.BottomStart).padding(Gap.md),
             )

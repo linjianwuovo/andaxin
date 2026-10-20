@@ -20,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.unit.sp
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -103,7 +102,7 @@ fun GroupScreen(onBack: () -> Unit) {
             roster.forEach { g ->
                 Text(
                     text = "${g.name} · ${g.memberCount} 人 · 名单里 ${filtered.size} 条",
-                    fontSize = 12.sp,
+                    fontSize = Type.meta,
                     fontWeight = FontWeight.Medium,
                     color = ink.muted,
                     modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),

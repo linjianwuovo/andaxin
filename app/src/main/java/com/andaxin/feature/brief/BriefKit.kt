@@ -188,7 +188,7 @@ fun BriefListPage(
         // 有 onNew 才画这一行，没有就一行都不多。
         if (newLabel != null && onNew != null) {
             Sheet(modifier = Modifier.pressClick(onClick = onNew)) {
-                Text(newLabel, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+                Text(newLabel, fontSize = Type.body, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(Gap.sm))
         }
@@ -212,7 +212,7 @@ fun BriefListPage(
                 }
             }
         }
-        state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
+        state.error?.let { Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.sm))
     }
 }
@@ -233,7 +233,7 @@ fun BriefDetailPage(
     ScaffoldPage(title = state.data?.title ?: title, onBack = onBack) {
         val d = state.data
         if (d == null && state.loading && state.error == null) {
-            Text("正在拉这一条…", fontSize = 13.sp, color = ink.faint)
+            Text("正在拉这一条…", fontSize = Type.body, color = ink.faint)
         }
         if (d != null) {
             Sheet {
@@ -246,7 +246,7 @@ fun BriefDetailPage(
             }
             d.paragraphs.forEach {
                 Spacer(Modifier.height(Gap.md))
-                Text(it, fontSize = 14.sp, color = ink.body, lineHeight = 21.sp)
+                Text(it, fontSize = Type.body, color = ink.body, lineHeight = Type.bodyLine)
             }
             if (d.writable) {
                 Spacer(Modifier.height(Gap.lg))
@@ -271,7 +271,7 @@ fun BriefDetailPage(
                             armed -> "再按一次，真的${d.writeLabel.ifBlank { "提交" }}"
                             else -> d.writeLabel.ifBlank { "提交" }
                         },
-                        fontSize = 16.sp,
+                        fontSize = Type.title,
                         fontWeight = FontWeight.Medium,
                     )
                 }
@@ -279,9 +279,9 @@ fun BriefDetailPage(
         }
         state.done?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 13.sp, color = Palette.Teal, lineHeight = 19.sp)
+            Text(it, fontSize = Type.body, color = Palette.Teal, lineHeight = Type.bodyLine)
         }
-        state.error?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error) }
+        state.error?.let { Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(Gap.md))
     }
 }
@@ -316,15 +316,15 @@ fun BriefFormPage(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColorsPrimary(),
         ) {
-            Text("提交", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text("提交", fontSize = Type.title, fontWeight = FontWeight.Medium)
         }
         state.done?.let {
             Spacer(Modifier.height(Gap.md))
-            Text("已提交：$it", fontSize = 13.sp, color = Palette.Teal)
+            Text("已提交：$it", fontSize = Type.body, color = Palette.Teal)
         }
         state.error?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(Gap.md))
     }
@@ -341,7 +341,7 @@ private fun FieldRow(
     var picking by remember { mutableStateOf(false) }
     when (field) {
         is Field.Text -> Column {
-            Text(field.label, fontSize = 12.sp, color = ink.muted)
+            Text(field.label, fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.xs))
             MiuixTextField(
                 value = get(field.key),
@@ -368,7 +368,7 @@ private fun FieldRow(
                     confirmButton = {
                         Text(
                             text = "选定",
-                            fontSize = 14.sp,
+                            fontSize = Type.body,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .pressClick(shrink = false) {
@@ -381,7 +381,7 @@ private fun FieldRow(
                     dismissButton = {
                         Text(
                             text = "取消",
-                            fontSize = 14.sp,
+                            fontSize = Type.body,
                             color = ink.muted,
                             modifier = Modifier
                                 .pressClick(shrink = false) { picking = false }
@@ -394,17 +394,17 @@ private fun FieldRow(
             }
             val chosen = get(field.key)
             Column(Modifier.pressClick(shrink = false) { picking = true }) {
-                Text(field.label, fontSize = 12.sp, color = ink.muted)
+                Text(field.label, fontSize = Type.meta, color = ink.muted)
                 Spacer(Modifier.height(Gap.xs))
                 Text(
                     text = chosen.ifBlank { "点选日期" },
-                    fontSize = 15.sp,
+                    fontSize = Type.title,
                     color = if (chosen.isBlank()) ink.ghost else ink.strong,
                 )
             }
         }
         is Field.Choice -> Column {
-            Text(field.label, fontSize = 12.sp, color = ink.muted)
+            Text(field.label, fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
                 field.options.forEach { opt ->
@@ -447,7 +447,7 @@ fun ScaffoldPage(
                 navigationIcon = {
                     Text(
                         "‹ 返回",
-                        fontSize = 14.sp,
+                        fontSize = Type.body,
                         color = LocalInk.current.muted,
                         modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
                     )

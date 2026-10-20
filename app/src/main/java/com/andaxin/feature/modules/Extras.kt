@@ -95,11 +95,11 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 .padding(Gap.lg),
         ) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                Text("安徽信息工程学院 · 校园卡", fontSize = 13.sp, color = Palette.Cream)
+                Text("安徽信息工程学院 · 校园卡", fontSize = Type.body, color = Palette.Cream)
                 Column {
                     Text(
                         card?.let { "¥ %.2f".format(it.balance) } ?: "¥ —",
-                        fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = Palette.Cream,
+                        fontSize = Type.hero, fontWeight = FontWeight.SemiBold, color = Palette.Cream,
                     )
                     Text(
                         text = when {
@@ -107,7 +107,7 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                             why != null -> "余额暂时没取到 · 下拉再试一次"
                             else -> "正在取余额…"
                         },
-                        fontSize = 11.sp, color = Palette.Cream.copy(alpha = 0.78f),
+                        fontSize = Type.micro, color = Palette.Cream.copy(alpha = 0.78f),
                     )
                 }
             }
@@ -189,7 +189,7 @@ fun CardFlowsScreen(onBack: () -> Unit) {
         if (card == null) {
             Text(
                 text = why ?: "正在取…",
-                fontSize = 13.sp,
+                fontSize = Type.body,
                 color = if (why == null) ink.faint else MaterialTheme.colorScheme.error,
             )
         }
@@ -197,9 +197,9 @@ fun CardFlowsScreen(onBack: () -> Unit) {
             Sheet {
                 Column(Modifier.fillMaxWidth()) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(f.at.take(16), fontSize = 13.sp, color = ink.muted)
+                        Text(f.at.take(16), fontSize = Type.body, color = ink.muted)
                         Text(
-                            money(f), fontSize = 14.sp,
+                            money(f), fontSize = Type.body,
                             color = if (f.income) Palette.Teal else ink.body,
                             fontWeight = FontWeight.Medium,
                         )
@@ -208,7 +208,7 @@ fun CardFlowsScreen(onBack: () -> Unit) {
                     Text(
                         text = listOf(f.what, f.term).filter { it.isNotBlank() }.joinToString(" · ")
                             .ifBlank { "（无说明）" },
-                        fontSize = 11.sp, color = ink.faint,
+                        fontSize = Type.micro, color = ink.faint,
                     )
                 }
             }
@@ -266,10 +266,10 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         // 续期只能拿口令重登一次。不记住 = 每 8 小时、以及每次被顶号，都得回到这一屏手打。
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("记住密码", fontSize = 14.sp, color = ink.strong)
+                Text("记住密码", fontSize = Type.body, color = ink.strong)
                 Text(
                     "口令用系统 Keystore 里一把不可导出的密钥加密后存本机；到期或被顶号时代你自动重登（会把对方客户端挤下线，校方一个账号只留一个活会话）。",
-                    fontSize = 11.sp, color = ink.faint, lineHeight = 15.sp,
+                    fontSize = Type.micro, color = ink.faint, lineHeight = Type.microLine,
                 )
             }
             Spacer(Modifier.width(Gap.md))
@@ -290,7 +290,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             ) {
                 Text(
                     text = if (rememberPw) "✓" else "",
-                    fontSize = 16.sp, color = Palette.Cream, fontWeight = FontWeight.Medium,
+                    fontSize = Type.title, color = Palette.Cream, fontWeight = FontWeight.Medium,
                 )
             }
         }
@@ -338,17 +338,17 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         ) {
             Text(
                 text = if (busy) "正在登录…" else "登录",
-                fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                fontSize = Type.title, fontWeight = FontWeight.Medium,
             )
         }
         note?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.error, lineHeight = 19.sp)
+            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error, lineHeight = Type.bodyLine)
         }
         Spacer(Modifier.height(Gap.lg))
         Text(
             text = "先不登录，随便看看",
-            fontSize = 13.sp,
+            fontSize = Type.body,
             color = ink.muted,
             modifier = Modifier.pressClick(shrink = false) {
                 scope.launch { graph.session.browseWithoutLogin() }
@@ -368,22 +368,22 @@ fun OnboardingScreen(onAgree: () -> Unit) {
     ) {
         Column {
             Spacer(Modifier.height(Gap.xxl))
-            Text("用之前说一句", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = ink.strong)
+            Text("用之前说一句", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
             Spacer(Modifier.height(Gap.lg))
             Text(
                 text = "这个应用是给本校学生自己用的，数据直连学校接口，不经过任何第三方服务器；" +
                     "口令只存在你自己手机上。学校改了流程或者关掉某个入口，对应那一屏就会取不到数，" +
                     "这不是坏了，是学校那边变了。",
-                fontSize = 14.sp,
+                fontSize = Type.body,
                 color = ink.body,
-                lineHeight = 22.sp,
+                lineHeight = Type.bodyLine,
             )
             Spacer(Modifier.height(Gap.md))
             Text(
                 text = "还有：它不替你答题、不替你签到、不在后台刷任何进度。该你按的那一下，永远留给你按。",
-                fontSize = 14.sp,
+                fontSize = Type.body,
                 color = ink.muted,
-                lineHeight = 22.sp,
+                lineHeight = Type.bodyLine,
             )
         }
         Box(
@@ -391,7 +391,7 @@ fun OnboardingScreen(onAgree: () -> Unit) {
                 .pressClick(onClick = onAgree),
             contentAlignment = Alignment.Center,
         ) {
-            Text("知道了", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
+            Text("知道了", fontSize = Type.title, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
         }
     }
 }

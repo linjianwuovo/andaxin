@@ -42,11 +42,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
 import com.andaxin.core.design.DampedDragAnimation
+import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.settings.BarMaterial
@@ -424,7 +424,7 @@ private fun RowScope.ShelfCell(
         Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
-            fontSize = 11.sp,
+            fontSize = Type.micro,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
             color = if (active) accent else ink.strong,
         )
