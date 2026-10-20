@@ -327,6 +327,8 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val pageBackdrop = rememberLayerBackdrop()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
     val icons = Shelf.entries.map { it.iconRes }
+    // 五格里只有「消息」那一格有未读概念（公告那份数据里没有已读未读），顺序对齐 Shelf
+    val unreadMsgs by com.andaxin.core.store.Unread.messages.collectAsStateWithLifecycle()
 
     Box(Modifier.fillMaxSize()) {
         HorizontalPager(
@@ -358,6 +360,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             hazeState = haze,
             labels = labels,
             icons = icons,
+            badges = listOf(0, 0, unreadMsgs, 0, 0),
             modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
         )
     }
