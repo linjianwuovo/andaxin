@@ -58,11 +58,39 @@ class CaptureMessages(private val school: School, private val session: SessionSt
     }
 
     /**
-     * 标已读。【取证】`readPushMessage.do` 在旧清单里出现过，但我这次没发过它 ——
-     * 所以这里明确回失败，不许让界面以为已经读过了。
+     * 标已读。
+     *
+     * 【取证 · ① 我读到的官方前端代码】`in.aiit.edu.cn/app-portal` 的消息中心 chunk
+     * （`lxtmp/axx/portal/chunk-2a2e09ea.a4b42477.js`）里两条声明挨着放：
+     * ```
+     * c = t => r.a.post("/msgCenter/batchReadPushMessage.do", t)
+     * d = t => r.a.post("/msgCenter/readPushMessage.do",   t)
+     * ```
+     * 调用点在同一个文件的 `messageItem` 组件里，形状是**一个字段 `id`**：
+     * ```
+     * toRead(){ … this.$emit("show-dialog",{title:…, message:…}),
+     *           "1" !== this.record.readFlag && d({ id: this.record.id })
+     *                     .then(t => { this.record.readFlag = "1" }) }
+     * ```
+     * 也就是：点开一条消息 = 弹正文 + 顺手标已读，**服务端回成功后前端才把红点去掉** ——
+     * 跟下面这条实现一个顺序。`readFlag` 是 "0"/"1" 字符串。
+     *
+     * 两条边界写清楚：
+     * ① **这一发我自己还没现打过**（要真改服务端状态，得等他点，或者我拿一条真消息试一次再说）；
+     * ② `batchReadPushMessage.do`（批量已阅）**声明有、这个 chunk 里没有任何调用点**，
+     *    所以载荷里是什么字段完全没有依据 —— 那条不做，别哪天看见"批量已阅"四个字就照猜的填。
+     *
+     * 旧清单里那句"原生有 `msgCenter/read.do`"是**错的**：官方 APK 四个 dex 的字符串池里
+     * `msgCenter/` 只有 `mesDetailListNew.do`、`notReadCount.do`、`readPushMessage.do` 三条，
+     * 没有 `read.do`。
      */
-    override suspend fun markRead(id: String): Result<Unit> =
-        Result.failure(Exception("标已读这条还没取证，不代发"))
+    override suspend fun markRead(id: String): Result<Unit> {
+        if (id.isBlank()) return Result.failure(Exception("这条消息没有 id，标不了"))
+        return school.post("${School.SCPS}/msgCenter/readPushMessage.do", "id" to id).map {
+            // 这一族的判成功口径跟列表一样看 flag；服务端没给 false 就算成了
+            Unit
+        }
+    }
 
     private fun categorize(code: String): MessageCategory = when {
         code.contains("ts", ignoreCase = true) -> MessageCategory.Dorm      // 猜：查寝类短码含 ts

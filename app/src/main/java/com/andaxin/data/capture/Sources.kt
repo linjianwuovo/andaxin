@@ -50,7 +50,16 @@ class NoticeSource(
  * 首页那一块聚合卡。
  *
  * 【取证】`msgCenter/notReadCount.do` 回 `data:{date:"晚上好", count:0}` ——
- * 那串问候语是**服务器给的**，不是我们按小时算的，照它显示；`count` 就是未读数。
+ * 那串问候语是**服务器给的**，不是我们按小时算的，照它显示。
+ *
+ * **但那个 `count` 不是未读消息数**，这一条是 10-20 上午现打对出来的：
+ * 同一个账号，`mesDetailListNew.do(sourceType=2)` 一页 30 条里有 1 条 `readFlag="0"`，
+ * 而 `notReadCount.do` 和 `getNotReadPushCount.do` 两个口**同时回 `count:0`**
+ * （两个口的返回体长得一模一样，连 `date` 都带）。
+ * 装机表现就是首页写"未读消息 0 条"、消息那一屏右上角写"1 未读"，两屏互相打脸。
+ * 所以未读数改成**从消息列表自己数** —— 跟消息屏同一个来源、同一个口径，才可能一致。
+ * `count` 这一发留着只取问候语，不再当数字用。
+ *
  * 今日几节课、下一节是什么，用全周课表接口筛今天（见 `CaptureTimetable`）。
  *
  * 查寝那一格 10-19 接上了真数据：来源是 ywlz 待办列表里 `msgType=2` 的条目
@@ -64,18 +73,21 @@ class DashboardSource(
     private val local: DashboardFeed,
     private val today: TimetableFeed,
     private val tasks: YwlzTasks,
+    private val messages: MessageFeed,
 ) : DashboardFeed {
 
     override suspend fun snapshot(): Result<Dashboard> {
         if (!session.signedIn()) return local.snapshot()
-        // 三路互不相干，一起发：首页要"一次出"，不该一路加载一路蹦
+        // 四路互不相干，一起发：首页要"一次出"，不该一路加载一路蹦
         return coroutineScope {
             val counts = async { school.post("$SCPS/msgCenter/notReadCount.do").getOrNull() }
             val week = async { today.week(0).getOrDefault(emptyList()) }
             val dorm = async { tasks.all().getOrNull() }
+            val msgs = async { messages.page(0).getOrNull() }
             val data = counts.await()?.optJSONObject("data")
-            val unread = data?.optInt("count", 0) ?: 0
             val greeting = data?.optString("date").orEmpty().ifBlank { "你好" }
+            // 未读只数列表里 readFlag=0 的那几条，理由见上面那段取证
+            val unread = msgs.await()?.count { it.unread } ?: 0
             // 全周接口一次给七天，首页那一格只要今天
             val slots = week.await().filter { it.day == com.andaxin.core.schedule.Periods.today() }
             val next = slots.firstOrNull { it.startPeriod >= com.andaxin.core.schedule.Periods.current() }

@@ -99,6 +99,8 @@ data class MessageUiState(
     val firstLoad: Boolean = true,
     val items: List<MessageItem> = emptyList(),
     val error: String? = null,
+    /** 标已读失败的原因。跟列表失败分开：列表好好的、只有这一条没标上，是两种事。 */
+    val readError: String? = null,
 )
 
 class MessageModel(private val feed: MessageFeed) : ViewModel() {
@@ -120,11 +122,24 @@ class MessageModel(private val feed: MessageFeed) : ViewModel() {
         }
     }
 
-    /** 已读只在本地先落，服务端那一条要等他抓包补 markRead 的真实报文。 */
+    /**
+     * 标已读：**服务端说成了才把红点去掉**。
+     *
+     * 这不是洁癖 —— 官方前端就是这个顺序（`readPushMessage.do` 的 `.then` 里才改 `readFlag`）。
+     * 本地先划掉的话，下一次刷新红点又回来，看着像 App 在乱记。
+     * 失败的原因留在 [readError] 上，消息屏那一行下面会显示出来。
+     */
     fun markRead(id: String) {
         viewModelScope.launch {
-            try { feed.markRead(id) } catch (_: Exception) { }
-            _state.value = _state.value.copy(items = _state.value.items.map { if (it.id == id) it.copy(unread = false) else it })
+            val r = try { feed.markRead(id) } catch (e: Exception) { Result.failure(e) }
+            if (r.isSuccess) {
+                _state.value = _state.value.copy(
+                    readError = null,
+                    items = _state.value.items.map { if (it.id == id) it.copy(unread = false) else it },
+                )
+            } else {
+                _state.value = _state.value.copy(readError = r.exceptionOrNull()?.message ?: "服务端没认这条")
+            }
         }
     }
 }
