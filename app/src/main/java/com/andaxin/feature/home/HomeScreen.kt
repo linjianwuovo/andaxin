@@ -48,6 +48,7 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.MetricCell
 import com.andaxin.shell.RowLine
+import com.andaxin.shell.Refreshable
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
@@ -89,101 +90,109 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     }
 
     val d = state.data
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
-    ) {
-        Spacer(Modifier.height(Gap.md))
-        Text(
-            text = d?.greeting ?: "…",
-            fontSize = Type.display,
-            fontWeight = FontWeight.SemiBold,
-            color = ink.strong,
-        )
-        // 校历那一行跟着问候语走：它就是"今天算第几周"这句话，不该单独占一个区块
-        if (!extras?.calendar.isNullOrBlank()) {
-            Spacer(Modifier.height(Gap.xxs))
-            Text(extras!!.calendar, fontSize = Type.meta, color = ink.faint)
-        }
-
-        Spacer(Modifier.height(Gap.md))
-        Sheet(modifier = Modifier.enterFade(session.generation)) {
-            Row(Modifier.fillMaxWidth()) {
-                MetricCell("今天有课", d?.let { "${it.todayLessons}" } ?: "—", "节", modifier = Modifier.weight(1f))
-                MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
-                MetricCell(
-                    label = "查寝",
-                    // 那一格只放时间本体（"10-20 21:00"），年份和"晚点名"三个字都不占位
-                    value = d?.dormCheckState?.trimStart('—')?.ifBlank { "—" } ?: "—",
-                    unit = "",
-                    // 那一格放的是"10-20 21:00"这种时间串，26sp 会折行；时间不是"数字"，降一档
-                    size = if ((d?.dormCheckState ?: "").length > 6) Type.title else Type.num,
-                    modifier = Modifier.weight(1.4f),
-                )
-            }
+    // 下拉这一把手：数据只在进屏时拉一次，签完查寝、批完假之后不想杀进程重开。
+    // 刷新时旧内容留在原位（不清空、不闪），新的到了再换 —— 一路加载一路蹦是他最烦的。
+    // 两趟一起等：上面那一叠数和下半屏那几发不是一个来源，只等一边就是假动作。
+    Refreshable({
+        model.refresh()
+        graph.home.load().onSuccess { extras = it }
+    }, modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Gap.screen),
+        ) {
             Spacer(Modifier.height(Gap.md))
-            Hairline()
+            Text(
+                text = d?.greeting ?: "…",
+                fontSize = Type.display,
+                fontWeight = FontWeight.SemiBold,
+                color = ink.strong,
+            )
+            // 校历那一行跟着问候语走：它就是"今天算第几周"这句话，不该单独占一个区块
+            if (!extras?.calendar.isNullOrBlank()) {
+                Spacer(Modifier.height(Gap.xxs))
+                Text(extras!!.calendar, fontSize = Type.meta, color = ink.faint)
+            }
+
             Spacer(Modifier.height(Gap.md))
-            Row(Modifier.fillMaxWidth()) {
-                MetricCell(
-                    "学期跑量",
-                    d?.runSemesterKm?.let { "%.2f".format(it) } ?: "—",
-                    "公里",
-                    modifier = Modifier.weight(1f),
-                )
-                MetricCell(
-                    "其中晨跑",
-                    d?.runMorningKm?.let { "%.2f".format(it) } ?: "—",
-                    "公里",
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.weight(1f))
-            }
-            // 下一节是一句话不是数字，所以它单独占一行，不跟上面那两行格子挤
-            if (!d?.nextLesson.isNullOrBlank()) {
-                Spacer(Modifier.height(Gap.sm))
-                Hairline()
-                RowLine("下一节", sub = d!!.nextLesson!!.let { Regex("(（[^）]*）)").replace(it, "") })
-            }
-        }
-
-        // 跑量那一格挂不上时，原因写在下面这句里，不塞进格子里当值。
-        state.error?.let { ErrorLine(it) }
-
-        if (state.today.isNotEmpty()) {
-            // 一门课一张卡是上一版最"肿"的地方：三张卡之间的缝比内容还显眼
-            SectionBlock("今日课程")
-            Sheet(modifier = Modifier.enterFade()) {
-                state.today.forEachIndexed { i, slot ->
-                    RowLine(
-                        title = slot.course,
-                        sub = shortRoom(slot.room),
-                        right = if (slot.periodCount > 1)
-                        // 连堂的要写全"第 1-2 节"，只写起始节次会让人以为 9:40 就下课
-                            "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
-                        else "第 ${slot.startPeriod} 节",
+            Sheet(modifier = Modifier.enterFade(session.generation)) {
+                Row(Modifier.fillMaxWidth()) {
+                    MetricCell("今天有课", d?.let { "${it.todayLessons}" } ?: "—", "节", modifier = Modifier.weight(1f))
+                    MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
+                    MetricCell(
+                        label = "查寝",
+                        // 那一格只放时间本体（"10-20 21:00"），年份和"晚点名"三个字都不占位
+                        value = d?.dormCheckState?.trimStart('—')?.ifBlank { "—" } ?: "—",
+                        unit = "",
+                        // 那一格放的是"10-20 21:00"这种时间串，26sp 会折行；时间不是"数字"，降一档
+                        size = if ((d?.dormCheckState ?: "").length > 6) Type.title else Type.num,
+                        modifier = Modifier.weight(1.4f),
                     )
-                    if (i != state.today.lastIndex) Hairline()
+                }
+                Spacer(Modifier.height(Gap.md))
+                Hairline()
+                Spacer(Modifier.height(Gap.md))
+                Row(Modifier.fillMaxWidth()) {
+                    MetricCell(
+                        "学期跑量",
+                        d?.runSemesterKm?.let { "%.2f".format(it) } ?: "—",
+                        "公里",
+                        modifier = Modifier.weight(1f),
+                    )
+                    MetricCell(
+                        "其中晨跑",
+                        d?.runMorningKm?.let { "%.2f".format(it) } ?: "—",
+                        "公里",
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.weight(1f))
+                }
+                // 下一节是一句话不是数字，所以它单独占一行，不跟上面那两行格子挤
+                if (!d?.nextLesson.isNullOrBlank()) {
+                    Spacer(Modifier.height(Gap.sm))
+                    Hairline()
+                    RowLine("下一节", sub = d!!.nextLesson!!.let { Regex("(（[^）]*）)").replace(it, "") })
                 }
             }
-        }
 
-        // 四枚快捷格只负责跳，不在这儿摆数据：数据在各自那一屏里。
-        Spacer(Modifier.height(Rhythm.sectionGap))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-        ) {
-            listOf("运动" to com.andaxin.shell.Route.SPORT, "查寝" to com.andaxin.shell.Route.DORM,
-                "校园卡" to com.andaxin.shell.Route.CARD, "报修" to com.andaxin.shell.Route.REPAIR,
-                "AI 课堂" to com.andaxin.shell.Route.AICLASS, "待办" to com.andaxin.shell.Route.AFFAIR)
-                .forEach { (name, at) -> Chip(name, picked = false) { open(at) } }
-        }
+            // 跑量那一格挂不上时，原因写在下面这句里，不塞进格子里当值。
+            state.error?.let { ErrorLine(it) }
 
-        extras?.let { Extras(it, open) }
-        Spacer(Modifier.height(Gap.xxl))
+            if (state.today.isNotEmpty()) {
+                // 一门课一张卡是上一版最"肿"的地方：三张卡之间的缝比内容还显眼
+                SectionBlock("今日课程")
+                Sheet(modifier = Modifier.enterFade()) {
+                    state.today.forEachIndexed { i, slot ->
+                        RowLine(
+                            title = slot.course,
+                            sub = shortRoom(slot.room),
+                            right = if (slot.periodCount > 1)
+                            // 连堂的要写全"第 1-2 节"，只写起始节次会让人以为 9:40 就下课
+                                "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
+                            else "第 ${slot.startPeriod} 节",
+                        )
+                        if (i != state.today.lastIndex) Hairline()
+                    }
+                }
+            }
+
+            // 四枚快捷格只负责跳，不在这儿摆数据：数据在各自那一屏里。
+            Spacer(Modifier.height(Rhythm.sectionGap))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+            ) {
+                listOf("运动" to com.andaxin.shell.Route.SPORT, "查寝" to com.andaxin.shell.Route.DORM,
+                    "校园卡" to com.andaxin.shell.Route.CARD, "报修" to com.andaxin.shell.Route.REPAIR,
+                    "AI 课堂" to com.andaxin.shell.Route.AICLASS, "待办" to com.andaxin.shell.Route.AFFAIR)
+                    .forEach { (name, at) -> Chip(name, picked = false) { open(at) } }
+            }
+
+            extras?.let { Extras(it, open) }
+            Spacer(Modifier.height(Gap.xxl))
+        }
     }
 }
 

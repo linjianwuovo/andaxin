@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.shell.Refreshable
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -40,7 +41,7 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
     val open = state.open
     if (open != null) {
         Column(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Gap.screen),
@@ -82,38 +83,41 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
-    ) {
-        Spacer(Modifier.height(Gap.md))
-        Text("公告", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
-        Spacer(Modifier.height(Gap.md))
+    // 只有列表那一支能下拉刷新；正文那一屏没什么可刷的
+    Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Gap.screen),
+        ) {
+            Spacer(Modifier.height(Gap.md))
+            Text("公告", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+            Spacer(Modifier.height(Gap.md))
 
-        // 原来一条公告一张卡、卡里还自己画一道分隔线：三十条就是三十张卡。
-        // 现在一张卡里一行一条，来源跟在标题下面，时间放右栏。
-        if (state.items.isNotEmpty()) {
-            Sheet {
-                state.items.forEachIndexed { i, item ->
-                    RowLine(
-                        title = item.title,
-                        sub = item.source,
-                        right = item.publishedAt.removePrefix("20").replace('-', '.'),
-                        onClick = { model.open(item.id) },
-                    )
-                    if (i != state.items.lastIndex) {
-                        Spacer(Modifier.height(Gap.xs))
-                        Hairline()
-                        Spacer(Modifier.height(Gap.xs))
+            // 原来一条公告一张卡、卡里还自己画一道分隔线：三十条就是三十张卡。
+            // 现在一张卡里一行一条，来源跟在标题下面，时间放右栏。
+            if (state.items.isNotEmpty()) {
+                Sheet {
+                    state.items.forEachIndexed { i, item ->
+                        RowLine(
+                            title = item.title,
+                            sub = item.source,
+                            right = item.publishedAt.removePrefix("20").replace('-', '.'),
+                            onClick = { model.open(item.id) },
+                        )
+                        if (i != state.items.lastIndex) {
+                            Spacer(Modifier.height(Gap.xs))
+                            Hairline()
+                            Spacer(Modifier.height(Gap.xs))
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(Modifier.height(Gap.lg))
-        state.error?.let { ErrorLine(it) }
-        Spacer(Modifier.height(Gap.xxl))
+            Spacer(Modifier.height(Gap.lg))
+            state.error?.let { ErrorLine(it) }
+            Spacer(Modifier.height(Gap.xxl))
+        }
     }
 }

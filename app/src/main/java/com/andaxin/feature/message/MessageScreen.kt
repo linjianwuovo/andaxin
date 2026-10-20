@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.shell.Refreshable
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -47,62 +48,65 @@ fun MessageScreen(modifier: Modifier = Modifier) {
     val model = adxViewModel { MessageModel(it.messages) }
     val state by model.state.collectAsStateWithLifecycle()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
-    ) {
-        Spacer(Modifier.height(Gap.md))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            Text("消息", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
-            Text(
-                text = "${state.items.count { it.unread }} 未读",
-                fontSize = Type.meta,
-                color = LocalInk.current.faint,
-            )
-        }
-        Spacer(Modifier.height(Gap.md))
+    // 下拉一次重拉这一屏：新消息不用杀进程重开才看得见
+    Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Gap.screen),
+        ) {
+            Spacer(Modifier.height(Gap.md))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                Text("消息", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+                Text(
+                    text = "${state.items.count { it.unread }} 未读",
+                    fontSize = Type.meta,
+                    color = LocalInk.current.faint,
+                )
+            }
+            Spacer(Modifier.height(Gap.md))
 
-        // 一条一张卡 → 一张卡里一行一条。三十条消息原来就是三十张卡，
-        // 缝比字多，一屏数得过来的只有四五条。
-        if (state.items.isEmpty() && !state.firstLoad) {
-            Text("没有消息。", fontSize = Type.body, color = LocalInk.current.faint)
-        } else if (state.items.isNotEmpty()) {
-            Sheet {
-                state.items.forEachIndexed { i, item ->
-                    MessageRow(item) { model.markRead(item.id) }
-                    if (i != state.items.lastIndex) {
-                        Spacer(Modifier.height(Gap.xs))
-                        Hairline()
-                        Spacer(Modifier.height(Gap.xs))
+            // 一条一张卡 → 一张卡里一行一条。三十条消息原来就是三十张卡，
+            // 缝比字多，一屏数得过来的只有四五条。
+            if (state.items.isEmpty() && !state.firstLoad) {
+                Text("没有消息。", fontSize = Type.body, color = LocalInk.current.faint)
+            } else if (state.items.isNotEmpty()) {
+                Sheet {
+                    state.items.forEachIndexed { i, item ->
+                        MessageRow(item) { model.markRead(item.id) }
+                        if (i != state.items.lastIndex) {
+                            Spacer(Modifier.height(Gap.xs))
+                            Hairline()
+                            Spacer(Modifier.height(Gap.xs))
+                        }
                     }
                 }
             }
-        }
 
-        // 标已读没成，红点就还在那儿 —— 这时候必须说一句为什么，不然看着像点了没反应
-        state.readError?.let {
-            Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = Type.meta, lineHeight = Type.metaLine, color = MaterialTheme.colorScheme.error)
-        }
+            // 标已读没成，红点就还在那儿 —— 这时候必须说一句为什么，不然看着像点了没反应
+            state.readError?.let {
+                Spacer(Modifier.height(Gap.md))
+                Text(it, fontSize = Type.meta, lineHeight = Type.metaLine, color = MaterialTheme.colorScheme.error)
+            }
 
-        Spacer(Modifier.height(Gap.lg))
-        val lastRun by graph.poller.lastRunAt.collectAsStateWithLifecycle(0L)
-        val busy by graph.poller.busy.collectAsStateWithLifecycle(false)
-        Text(
-            text = when {
-                busy -> "正在拉新消息…"
-                lastRun == 0L -> "还没轮询过"
-                else -> "上次刷新：" + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
-                    .format(java.util.Date(lastRun)) + "，每 5 分钟一次"
-            },
-            fontSize = Type.micro,
-            color = LocalInk.current.faint,
-        )
-        Spacer(Modifier.height(Gap.sm))
-        state.error?.let { ErrorLine(it) }
-        Spacer(Modifier.height(Gap.xxl))
+            Spacer(Modifier.height(Gap.lg))
+            val lastRun by graph.poller.lastRunAt.collectAsStateWithLifecycle(0L)
+            val busy by graph.poller.busy.collectAsStateWithLifecycle(false)
+            Text(
+                text = when {
+                    busy -> "正在拉新消息…"
+                    lastRun == 0L -> "还没轮询过"
+                    else -> "上次刷新：" + java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                        .format(java.util.Date(lastRun)) + "，每 5 分钟一次"
+                },
+                fontSize = Type.micro,
+                color = LocalInk.current.faint,
+            )
+            Spacer(Modifier.height(Gap.sm))
+            state.error?.let { ErrorLine(it) }
+            Spacer(Modifier.height(Gap.xxl))
+        }
     }
 }
 
