@@ -360,13 +360,28 @@ private fun FieldRow(
                 singleLine = true,
             )
         }
+        // 只读的一条：说明文字、以及本机渲染不出来的控件。不给输入框 —— 摆个空框
+        // 等于告诉用户"这还没填"，而那一项根本没有可填的东西。
+        is Field.Note -> Column {
+            if (field.label.isNotBlank()) {
+                Text(field.label, fontSize = Type.meta, color = ink.muted)
+                Spacer(Modifier.height(Gap.xs))
+            }
+            if (field.text.isNotBlank()) {
+                Text(field.text, fontSize = Type.body, color = ink.body, lineHeight = Type.bodyLine)
+            }
+        }
         // 宿舍这种"本机设置里填的东西"：填了什么就显示什么，没填就明说去哪儿填，
         // 不拿一个假房间号顶着 —— 那会让报修单看着像已经填好了
         is Field.Person -> Labeled(
             label = field.label,
             value = dorm.ifBlank { "没填 · 去「我的 · 宿舍」填一下" },
         )
-        is Field.Number -> Labeled(label = field.label, value = "未填 · ${field.unit}")
+        // 单位是可选的：原来固定拼"未填 · 单位"，单位为空就留下一个孤零零的间隔号
+        is Field.Number -> Labeled(
+            label = field.label,
+            value = if (field.unit.isBlank()) "未填" else "未填 · ${field.unit}",
+        )
         // 日期终于能点了。以前这一行只写着"（日期控件批次三补）"，
         // 而 DatePicker 的 import 一直挂在这个文件里没人用 —— 表单里所有日期字段都填不上。
         is Field.Date -> {

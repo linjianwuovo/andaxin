@@ -50,6 +50,12 @@ sealed class Field {
     abstract val label: String
 
     data class Text(override val key: String, override val label: String, val hint: String = "") : Field()
+    /**
+     * 只读的一条：校方表单里那种"说明文字"，以及我们这台渲染不了的控件。
+     * 单独立一档是因为它们以前都借 [Text] 显示 —— 一个能输入的框摆在"说明1"下面，
+     * 里面还写着"（这一条是说明文字）"，看着像没填完，其实根本没有可填的东西。
+     */
+    data class Note(override val key: String, override val label: String, val text: String = "") : Field()
     data class Number(override val key: String, override val label: String, val unit: String = "") : Field()
     data class Choice(override val key: String, override val label: String, val options: List<String>) : Field()
     data class Date(override val key: String, override val label: String) : Field()
