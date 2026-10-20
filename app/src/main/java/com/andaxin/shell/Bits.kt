@@ -51,6 +51,8 @@ import com.andaxin.data.brief.Flag
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardColors
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -445,4 +447,57 @@ fun SampleTag(modifier: Modifier = Modifier) {
             .background(ink.hairline, Radius.tag)
             .padding(horizontal = Gap.xs, vertical = 2.dp),
     )
+}
+
+/**
+ * 一屏没拉到数据时那一句。
+ *
+ * 两种语气，别混着涂：
+ * ① **没登录是一种状态，不是故障** —— 以前这类屏把"还没登录，这一屏要校方数据"涂成红色，
+ *    红的是"出事了"，而这里什么都没坏，人要做的只是登一次。所以这句走灰（`ink.muted`），
+ *    并且顺手给一条往前走的路：这颗「去登录」不导航，只清掉"先不登录逛逛"那个标志，
+ *    外层 Gate 看见"没登录又不在逛"就把登录那一屏端上来（和「我的」里那颗同一条路）。
+ * ② 真失败（连不上、网关给 HTML、结构不对）才用红色那句。
+ *
+ * 判据不问协议层要新异常类型 —— 界面这一层本来就知道 `session.loggedIn`，
+ * 而"这条失败是不是因为没登录"在手机上没有第二种解释。
+ *
+ * [wide] 给整屏空着的那种用（一颗占满宽的主按钮）；行内、卡片里那种给 false，
+ * 只留一句灰字加一颗能按的字，不至于在一行说明底下横下一条大蓝杠。
+ */
+@Composable
+fun LoadWhy(why: String?, modifier: Modifier = Modifier, wide: Boolean = true) {
+    if (why.isNullOrBlank()) return
+    val graph = LocalAppGraph.current
+    val ink = LocalInk.current
+    val scope = rememberCoroutineScope()
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    val needsLogin = !session.loggedIn
+    Column(modifier) {
+        Text(
+            text = why,
+            fontSize = Type.meta,
+            lineHeight = Type.metaLine,
+            color = if (needsLogin) ink.muted else MaterialTheme.colorScheme.error,
+        )
+        if (needsLogin) {
+            Spacer(Modifier.height(if (wide) Gap.lg else Gap.sm))
+            if (wide) {
+                MiuixButton(
+                    onClick = { scope.launch { graph.session.leaveBrowsing() } },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) {
+                    Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
+                }
+            } else {
+                Text(
+                    text = "去登录",
+                    fontSize = Type.meta,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.pressClick { scope.launch { graph.session.leaveBrowsing() } },
+                )
+            }
+        }
+    }
 }

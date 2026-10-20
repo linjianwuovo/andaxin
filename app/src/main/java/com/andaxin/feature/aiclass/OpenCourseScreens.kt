@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -91,7 +92,7 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.lg))
 
         if (busy) Text("正在拉…", fontSize = Type.body, color = ink.faint)
-        why?.let { Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error) }
+        LoadWhy(why)
 
         modules.forEach { (name, list) ->
             if (name.isBlank() || list.isEmpty()) return@forEach
@@ -206,8 +207,8 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
     }
 
     ScaffoldPage(title = detail?.name ?: "公开课", onBack = onBack) {
-        why?.let {
-            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
+        if (why != null) {
+            LoadWhy(why)
             Spacer(Modifier.height(Gap.md))
         }
         val d = detail

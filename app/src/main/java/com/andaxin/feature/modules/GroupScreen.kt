@@ -26,6 +26,7 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.data.capture.ClassGroup
 import com.andaxin.data.capture.GroupKind
 import com.andaxin.feature.brief.ScaffoldPage
+import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
@@ -126,7 +127,8 @@ fun GroupScreen(onBack: () -> Unit) {
         } else if (busy) {
             Text("正在拉…", fontSize = Type.meta, color = ink.faint)
         } else {
-            Text(why ?: "没有名单。", fontSize = Type.meta, color = ink.faint)
+            // "没有名单。"是真问到了并且没有（灰），"为什么没问到"才交给 LoadWhy 分语气
+            if (why != null) LoadWhy(why) else Text("没有名单。", fontSize = Type.meta, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.md))

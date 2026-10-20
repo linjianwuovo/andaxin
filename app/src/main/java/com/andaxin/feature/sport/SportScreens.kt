@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -163,9 +164,9 @@ fun SportRunScreen(onBack: () -> Unit) {
             }
         }
 
-        state.error?.let {
+        if (state.error != null) {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
+            LoadWhy(state.error)
         }
 
         Spacer(Modifier.height(Gap.xl))
@@ -324,12 +325,7 @@ fun SportMaintainScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.sm))
         }
         if (log.isEmpty() && why != null) {
-            Text(
-                text = "这一屏暂时没数：" + why,
-                fontSize = Type.body,
-                lineHeight = Type.bodyLine,
-                color = MaterialTheme.colorScheme.error,
-            )
+            LoadWhy(why)
             Spacer(Modifier.height(Gap.md))
         }
         Spacer(Modifier.height(Gap.md))

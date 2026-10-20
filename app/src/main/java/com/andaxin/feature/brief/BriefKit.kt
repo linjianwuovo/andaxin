@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -218,7 +219,7 @@ fun BriefListPage(
                 }
             }
         }
-        state.error?.let { Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error) }
+        LoadWhy(state.error)
         Spacer(Modifier.height(Gap.sm))
     }
 }
@@ -368,9 +369,9 @@ fun BriefFormPage(
             Spacer(Modifier.height(Gap.md))
             Text("已提交：$it", fontSize = Type.body, color = Palette.Teal)
         }
-        state.error?.let {
+        if (state.error != null) {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
+            LoadWhy(state.error)
         }
         Spacer(Modifier.height(Gap.md))
     }
