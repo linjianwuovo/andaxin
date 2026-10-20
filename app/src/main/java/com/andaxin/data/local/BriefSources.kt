@@ -45,7 +45,7 @@ class PlaceholderDetail(
 }
 
 class PlaceholderForm(private val spec: FormSpec) : FormSource {
-    override suspend fun spec() = Result.success(spec)
+    override suspend fun spec() = Result.success(spec.copy(sample = true))
     override suspend fun submit(values: Map<String, String>) = notWired(spec.title)
 }
 
