@@ -33,7 +33,13 @@ class MessageSource(
     override suspend fun page(cursor: Int) =
         if (session.signedIn()) capture.page(cursor) else local.page(cursor)
 
-    override suspend fun markRead(id: String) = capture.markRead(id)
+    /**
+     * 标已读**也要过同一道闸**。10-21 凌晨装机扫出来的：没登录时列表是 `LocalMessages` 那几条，
+     * 可这颗红点还是发给了学校，于是点一下只换回底下一句红色的"还没登录，这一屏要校方数据" ——
+     * 看着像我们把哪一屏点坏了，而那几条消息本来就不是学校的东西。
+     */
+    override suspend fun markRead(id: String) =
+        if (session.signedIn()) capture.markRead(id) else local.markRead(id)
 }
 
 class NoticeSource(
