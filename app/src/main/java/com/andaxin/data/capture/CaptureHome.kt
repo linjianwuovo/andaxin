@@ -35,14 +35,6 @@ data class SchoolService(
     val online: Boolean,
 )
 
-/** banner / 开屏图共用这一形状：一张图 + 可选的标题 + 可选的去处。 */
-data class SchoolImage(
-    val id: String,
-    val title: String,
-    val imageUrl: String,
-    val targetUrl: String,
-)
-
 /** 「特殊服务」实测是四条联系方式：`description` 是人看的名字，`infoName` 装的却是电话号码。 */
 data class SpecialContact(
     val code: String,
@@ -66,7 +58,6 @@ data class OfficialVersion(
 /** 首页一次拉齐的那一坨。哪一路挂了都不该把整屏拖成错误态，所以各自带 why。 */
 data class HomeExtras(
     val services: List<SchoolService> = emptyList(),
-    val banners: List<SchoolImage> = emptyList(),
     val contacts: List<SpecialContact> = emptyList(),
     val calendar: String = "",
     val why: List<String> = emptyList(),
@@ -90,35 +81,6 @@ class CaptureHome(private val school: School, private val session: SessionStore)
                     online = o.optString("onlineFlag") == "1",
                 )
             }.filter { it.name.isNotBlank() }
-        }
-
-    /** 轮播图。真值：`data[]` **2 条**，6 键 —— `bt` 标题、`url` 图（fs.aiit.edu.cn 的 jpg）、`sjdfwdz` 去处（实测是微信文章）。 */
-    suspend fun banners(): Result<List<SchoolImage>> =
-        school.post("$SCPS/homePage/getBannerList.do").mapCatching { root ->
-            arrOf(root.opt("data")).map { o ->
-                SchoolImage(
-                    id = o.optString("id"),
-                    title = o.optString("bt"),
-                    imageUrl = o.optString("url"),
-                    targetUrl = o.optString("sjdfwdz").ifBlank { o.optString("tzlj") },
-                )
-            }.filter { it.imageUrl.startsWith("http") }
-        }
-
-    /**
-     * 开屏那一张。真值：`data{}` **3 键**，`tzlj` 是 null（这张不给去处），只有 `url` 一张图。
-     * 所以它在界面上只是一张图，不挂点击 —— 挂了不响的键比不挂更坏。
-     */
-    suspend fun advertisement(): Result<SchoolImage?> =
-        school.post("$SCPS/guide/getAdvertisment.do").mapCatching { root ->
-            (root.opt("data") as? JSONObject)?.let { o ->
-                SchoolImage(
-                    id = o.optString("id"),
-                    title = "",
-                    imageUrl = o.optString("url"),
-                    targetUrl = o.optString("tzlj"),
-                ).takeIf { it.imageUrl.startsWith("http") }
-            }
         }
 
     /** 联系方式四条。`infoCode` 是分档号（真值 "1"），`infoName` 里装的是电话号码。 */
@@ -188,21 +150,14 @@ class CaptureHome(private val school: School, private val session: SessionStore)
         if (!session.signedIn()) return Result.failure(Exception("还没登录，首页这些清单要校方数据"))
         return coroutineScope {
             val svc = async { services() }
-            val ban = async { banners() }
             val con = async { contacts() }
             val cal = async { calendar() }
-            val ad = async { advertisement() }
             val why = mutableListOf<String>()
             fun <T> take(r: Result<T>, what: String, fallback: T): T =
                 r.getOrElse { why += "${what}没拉到：" + (it.message ?: "不知道"); fallback }
-            val banners = buildList {
-                take(ban.await(), "轮播图", emptyList()).let { addAll(it) }
-                take(ad.await(), "开屏图", null)?.let { add(it) }
-            }
             Result.success(
                 HomeExtras(
                     services = take(svc.await(), "服务清单", emptyList()),
-                    banners = banners,
                     contacts = take(con.await(), "联系方式", emptyList()),
                     calendar = take(cal.await(), "校历", ""),
                     why = why,
