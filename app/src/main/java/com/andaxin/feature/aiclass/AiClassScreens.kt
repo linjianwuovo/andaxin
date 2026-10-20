@@ -67,6 +67,7 @@ private const val TAB_CLASS = 3
 private const val TAB_GROUP = 4
 private const val TAB_OTHER = 5
 private const val TAB_MEMBER = 6
+private const val TAB_NOTE = 7
 
 /**
  * 拉不到的原因写成一句人话。
@@ -102,6 +103,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             TAB_CLASS -> "这个学期这门课还没有开课记录。"
             TAB_OTHER -> "这一门没归到「其他资源」里的东西。"
             TAB_MEMBER -> "成员那一发没回数据。"
+            TAB_NOTE -> "笔记站通了，这个账号一条笔记都没有。"
             else -> "这门课还没建小组。"
         }
         loads[tab] = (
@@ -113,6 +115,13 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                 // 「其他资源」和「教学课件」是同一条口，只有 resourceType 不同（1 / 2）—— 现打定的
                 TAB_OTHER -> graph.fif.ensure().mapCatching { ids ->
                     graph.fifApi.courseware(c.courseId, c.teachClassId, ids.memberUserId, resourceType = "2")
+                }
+
+                TAB_NOTE -> graph.fif.ensure().mapCatching { ids ->
+                    // 笔记在**独立域名 + 独立信封**（status 是 int 1），所以单独一个 client
+                    graph.notes.notes(ids.memberUserId, ids.schoolId).getOrThrow().first.map {
+                        AiItem(it.id, it.title, it.sub, it.right)
+                    }
                 }
 
                 TAB_MEMBER -> graph.fif.ensure().mapCatching {
@@ -173,7 +182,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
             horizontalArrangement = Arrangement.spacedBy(Gap.sm),
             modifier = Modifier.horizontalScroll(rememberScrollState()),
         ) {
-            listOf("课件", "直录播", "考勤", "上课", "小组", "其他资源", "成员").forEachIndexed { i, name ->
+            listOf("课件", "直录播", "考勤", "上课", "小组", "其他资源", "成员", "笔记").forEachIndexed { i, name ->
                 val on = i == tab
                 Text(
                     text = name,
