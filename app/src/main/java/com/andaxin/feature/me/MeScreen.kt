@@ -25,7 +25,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,6 +40,8 @@ import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.SectionTitle
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import kotlinx.coroutines.launch
 
 /**
@@ -184,6 +189,51 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     },
                     fontSize = 11.sp,
                     color = if (armedToQuit && session.loggedIn) MaterialTheme.colorScheme.error else ink.faint,
+                )
+            }
+        }
+
+        /*
+         * 宿舍：以前这一格是全仓没人写的只读值 —— `Session.setDorm` 存在但一处都没调用，
+         * 于是报修表单里那个"宿舍"字段永远预填成空。这里补上能填能改的入口。
+         * 只在按「存」时才落盘：逐字符写 DataStore 会把磁盘打满，
+         * 而且报修要预填的是一个完整值，不是输入到一半的那串。
+         */
+        Spacer(Modifier.height(Gap.xl))
+        SectionTitle("宿舍")
+        Sheet {
+            var dorm by remember(session.dorm) { mutableStateOf(session.dorm) }
+            val changed = dorm.trim() != session.dorm
+            fun save() {
+                if (!changed) return
+                scope.launch { graph.session.setDorm(dorm.trim()) }
+            }
+            MiuixTextField(
+                value = dorm,
+                onValueChange = { dorm = it },
+                label = "几号楼几零几",
+                useLabelAsPlaceholder = true,
+                singleLine = true,
+                // 软键盘会盖住下面那行"存"，所以键盘上的「完成」也接同一个动作 ——
+                // 08:20 装机时就是被键盘挡住，点了三下"存"其实每下都在啃退格
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { save() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(Gap.md))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    text = if (session.dorm.isBlank()) "本机还没填过" else "现在存的是「${session.dorm}」",
+                    fontSize = 11.sp,
+                    color = ink.faint,
+                )
+                Text(
+                    text = if (changed) "存" else "没改动",
+                    fontSize = 14.sp,
+                    color = if (changed) MaterialTheme.colorScheme.primary else ink.ghost,
+                    modifier = Modifier
+                        .clickable(enabled = changed, onClick = ::save)
+                        .padding(horizontal = Gap.md, vertical = Gap.xs),
                 )
             }
         }

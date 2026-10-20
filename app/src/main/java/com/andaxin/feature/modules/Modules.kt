@@ -94,6 +94,7 @@ fun LaborDetailScreen(id: String, onBack: () -> Unit) =
 @Composable
 fun HolidayListScreen(open: (String) -> Unit, onBack: () -> Unit) = BriefListPage(
     title = "节假日离返校", source = Holiday.list, onBack = onBack, onRow = { open("holiday/detail/$it") },
+    newLabel = "＋ 离返校登记", onNew = { open("holiday/form") },
     note = "节假日：这一块连接口名都没抓到过，全是要补的。",
 )
 
@@ -110,7 +111,9 @@ fun HolidayFormScreen(onBack: () -> Unit) =
 @Composable
 fun RepairListScreen(open: (String) -> Unit, onBack: () -> Unit) = BriefListPage(
     title = "报修", source = Repair.list, onBack = onBack, onRow = { open("repair/detail/$it") },
-    note = "报修：证据最厚的一块，接上真报文应该最快。",
+    newLabel = "＋ 新建报修单", onNew = { open("repair/form") },
+    note = "报修：单据列表那 14 个 .do 是读到的接口名，提交那条（bxjlSjd）我们一条报文都没有 —— " +
+        "所以这一屏还是占位，新建按下去也只会告诉你没接。",
 )
 
 @Composable
@@ -128,6 +131,7 @@ fun AffairListScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     BriefListPage(
         title = "待办事务", source = graph.affairList, onBack = onBack, onRow = { open("affair/detail/$it") },
+        newLabel = "＋ 发起请假", onNew = { open("affair/form") },
         note = "待办来自 ywlz 的 getRunTaskByUserCode（待办那个 tab）。校方那个 total 只数流程类、" +
             "不数消息类，所以这里不按它翻页，一次拉完。",
         empty = "现在没有待办。",

@@ -32,6 +32,23 @@ object Periods {
             else -> 7
         }
 
+    /**
+     * 现在**是不是真的在一节课里**。是就给节次号（1 起），课间、还没上课、已经放学都回 null。
+     *
+     * `current()` 那个是"现在大概第几节"，前后都夹紧，拿它做高亮会出问题：
+     * 课间十分钟也被标成"正在上第二节"，看着像课表算错了。
+     * 每节的时长按 45 分钟算（校方没有一条接口给节次时长，这张表本来就是我们自己拍的，
+     * 界面上不许说成校方给的）。
+     */
+    fun periodNow(now: Calendar = Calendar.getInstance()): Int? {
+        val minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        START_MINUTES.forEachIndexed { i, start ->
+            val end = START_MINUTES.getOrNull(i + 1) ?: start + 45
+            if (minute in start until end) return i + 1
+        }
+        return null
+    }
+
     /** 现在第几节（1 起）。还没上到第一节算 1，过了最后一节就停在最后一节。 */
     fun current(now: Calendar = Calendar.getInstance()): Int {
         val minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
