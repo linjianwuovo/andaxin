@@ -5,6 +5,7 @@ import android.content.Context
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.andaxin.core.map.Geo
 import com.andaxin.core.map.LatLng
@@ -55,7 +56,21 @@ class GpsFeed(private val context: Context) {
         }
         providers.forEach { provider ->
             try {
-                lm.requestLocationUpdates(provider, 3_000L, 0f, listener)
+                /**
+                 * 必须显式给 Looper。
+                 *
+                 * 【取证 · ① 它自己抛出来给我们看的】10-20 09:40 装机点「开始运动」直接闪退：
+                 * `RuntimeException: Can't create handler inside thread
+                 * Thread[DefaultDispatcher-worker-2,...] that has not called Looper.prepare()`
+                 * 栈顶就是 `LocationManager.requestLocationUpdates`。
+                 * 那个不带 Looper 的重载**用调用线程的 Looper**，而这条 flow 是被
+                 * `AppGraph.engineScope`（`Dispatchers.Default`）收集的 —— 工作线程没有 Looper。
+                 * 跑步这条链以前只在虚拟路线上跑过（不注册真定位），所以一直没炸；
+                 * 一上真 GPS 就必炸，跟机型、ROM、权限都没关系。
+                 *
+                 * 给主线程 Looper 就够：回调里只是算两点距离 + trySend，占不了主线程。
+                 */
+                lm.requestLocationUpdates(provider, 3_000L, 0f, listener, Looper.getMainLooper())
             } catch (e: SecurityException) {
                 close(e)
             }
