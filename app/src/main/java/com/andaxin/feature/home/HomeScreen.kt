@@ -57,9 +57,16 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
      * 和上面那一叠数字不是一个来源，所以各存各的状态；
      * 但它们**作为一个整块一次出现** —— 没拉齐之前这一整块一个字节都不画，
      * 免得半屏东西先蹦出来、剩下的一路补。
+     *
+     * key 用的是 `session.generation`，不是 `Unit`。这一条是装机读屏撞出来的：
+     * 冷启动时首页这五发和"被顶号之后自动重登"撞在一起，三条拿着**旧票**先发了出去，
+     * 屏幕上就写着「轮播图没拉到：登录已在别处被顶掉」，而同一屏的校历（后发那条）是真数据 ——
+     * 看着像我们只接好了一半。换票之后重拉一次，才是这件事该有的样子。
      */
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     var extras by remember { mutableStateOf<com.andaxin.data.capture.HomeExtras?>(null) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(session.generation) {
+        extras = null
         graph.home.load().onSuccess { extras = it }
     }
 
