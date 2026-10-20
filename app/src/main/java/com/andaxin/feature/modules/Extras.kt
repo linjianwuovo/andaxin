@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -239,8 +240,39 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
     DisposableEffect(Unit) {
         onDispose { graph.keepAlive.consumeKicked() }
     }
+    // 本机留着学号时先把账号这一格填上：会话掉了只说明那把票不作数了，账号还是那个账号，
+    // 让人把十位数再敲一遍是白折腾。**口令一格永远不预填、也不写日志。**
+    LaunchedEffect(Unit) {
+        if (account.isBlank()) account = graph.session.accountNow().orEmpty()
+    }
 
     ScaffoldPage(title = "登录", onBack = onBack) {
+        // 本机还留着能登进去的口令时，先给这一颗：会话掉了（到期、被顶号、续期那一发没赶上）
+        // 却要人把口令再输一遍，那"记住密码"就只记住了个名字。
+        // 这一颗是给人按的，不在后台偷偷登 —— 校方一个账号只留一个活会话，
+        // 悄悄抢一下就把他手上那个客户端挤下线了。
+        val saved = graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+        // 键的条件是"口令和学号都还在"，不是只看密文在不在：只有密文学号没了，
+        // 那一份就是解不开的孤儿，给一颗注定失败的键只会换回一句看不懂的理由。
+        if (saved.value.remembered && saved.value.account.isNotBlank() && !busy) {
+            MiuixButton(
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        val r = graph.keepAlive.reloginNow()
+                        busy = false
+                        if (r.ok) onDone() else note = r.why
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColorsPrimary(),
+            ) {
+                Text("用这台机器记住的口令登进去", fontSize = Type.title, fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.height(Gap.lg))
+            Text("或者输一遍：", fontSize = Type.meta, color = ink.faint)
+            Spacer(Modifier.height(Gap.sm))
+        }
         Column(verticalArrangement = Arrangement.spacedBy(Gap.md)) {
             MiuixTextField(
                 value = account,

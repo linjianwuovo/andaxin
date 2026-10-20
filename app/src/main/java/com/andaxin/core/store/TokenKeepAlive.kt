@@ -1,6 +1,9 @@
 package com.andaxin.core.store
 
+import androidx.compose.runtime.Immutable
 import com.andaxin.data.capture.AuthFeed
+import com.andaxin.data.capture.AuthRejected
+import com.andaxin.data.capture.School
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,9 +58,8 @@ class TokenKeepAlive(
             kickedAck()
             // 被顶号是这一行最常撞到的事，而**校方一个账号只留一个活会话** ——
             // 记着口令的话就直接抢回来，别让人白跑一趟登录页。
-            if (reloginFromVault()) return@withLock true
-            session.signOut()
-            _kicked.value = com.andaxin.data.capture.School.KICKED
+            if (reloginFromVault().ok) return@withLock true
+            dropSession(School.KICKED)
             return@withLock false
         }
         if (!session.tokenExpired()) return@withLock true
@@ -75,50 +77,92 @@ class TokenKeepAlive(
         }
         // 续期那条路（`refresh.do`）服务端是死的，所以到期之后能不能自己活过来，
         // 全看本机有没有记住口令。有就重登一次，没有才请回登录页。
-        if (reloginFromVault()) return@withLock true
-        session.signOut()
-        _kicked.value = "登录到期了，重新登一次。（${outcome.exceptionOrNull()?.message ?: "续期接口没给原因"}）"
+        val why = reloginFromVault()
+        if (why.ok) return@withLock true
+        dropSession(
+            "登录到期了，重新登一次。（${outcome.exceptionOrNull()?.message ?: "续期接口没给原因"}）"
+        )
         false
     }
 
     /**
      * 用本机记住的口令重新登一次。
      *
-     * 这条路是**唯一**能自动续期的路：`mobile/refresh.do` 服务端回 404（现打验过，见 `AuthFeed`），
+     * 这条路是**唯一**能自动续期的路：`mobile/refresh.do` 服务端是死的（现打验过，见 `AuthFeed`），
      * `refresh_token` 换不出东西。所以"记住密码"这件事的价值不在少打六个字，
      * 而在被顶号 / 到期之后 App 能自己活过来。
      *
-     * 三条边界：① 没记口令、或者这版没接 Keystore → 直接 false，走原来的请回登录页；
-     * ② 解不开（那把密钥被系统清了、或者密文坏了）→ 把废密文删掉再 false，别每次进来白试一遍；
-     * ③ 重登本身失败（他在别处改了口令）→ 清登录态 + 把服务端原话带到登录页，**并且把口令忘掉**，
-     *    免得每次过闸门都去撞一遍服务器。
+     * 四条边界，每条都回一句自己的 [Relogin.why]：
+     * ① 没记口令 / 没接 Keystore / 学号不在了 → 什么都不动，直接失败，走原来的请回登录页；
+     * ② 解不开（那把密钥被系统清了、或者密文坏了）→ 把废密文删掉，别每次进来白试一遍；
+     * ③ 学校**答了、并且说不行**（[AuthRejected]：他自己改了口令、账号被锁）→ 清登录态 +
+     *    **把口令忘掉**，免得每次过闸门都去撞一遍服务器；
+     * ④ 学校**没答上**（断网、网关给一坨 HTML）→ 什么都不清。那一次失败不说明口令错了，
+     *    顺手擦掉就等于一次抖动永久废掉自动重登 —— 而这一层跑在手机上、没有日志，
+     *    人第二天看到的只是"口令没了"。
+     *
+     * `why` 只写卡在哪一步，不含口令、不含密文、不含任何能拿去登录的东西。
      */
-    private suspend fun reloginFromVault(): Boolean {
-        val v = vault ?: return false
-        val blob = session.passwordBlob() ?: return false
-        val userCode = session.accountNow() ?: return false
+    private suspend fun reloginFromVault(): Relogin {
+        val v = vault ?: return Relogin(false, "这版没接上系统密钥，记下的口令用不了。")
+        val blob = session.passwordBlob() ?: return Relogin(false, "本机没留下口令。")
+        val userCode = session.accountNow()
+            ?: return Relogin(false, "口令还在，学号却不在了 —— 这一份救不回来，得重输一遍。")
         val password = v.open(blob) ?: run {
             session.forgetPassword()
-            return false
+            return Relogin(false, "系统那把密钥不在了（改过锁屏或指纹就会这样），记下的口令解不开。")
         }
         // `kotlin.Result` 的 Success/Failure 两个子类是 internal，when 匹配不了，只能 getOrNull
-        val fresh = auth.login(userCode, password).getOrNull()
+        val attempt = auth.login(userCode, password)
+        val fresh = attempt.getOrNull()
         if (fresh != null) {
             // 先清后写：被顶掉那把旧 token 别在文件里过夜
             session.signOut(keepPassword = true)
             session.save(fresh)
             _kicked.value = null
-            return true
+            return Relogin(true, "")
         }
-        // 登不进去＝口令在学校那边已经不作数了（他自己改过口令、或者账号被锁）。
-        // 这时候必须把记的那份忘掉：留着它，每次过闸门都会去撞一遍服务器。
-        session.forgetPassword()
-        session.signOut()
-        _kicked.value = "本机记的口令登不进去了，重新输一次。"
-        return false
+        val err = attempt.exceptionOrNull()
+        if (err is AuthRejected) {
+            session.forgetPassword()
+            session.signOut()
+            return Relogin(false, "学校不认这份口令了：${err.message ?: "没给原因"}")
+        }
+        return Relogin(false, "这一发没问到学校，口令本机还留着，可以再按一次：${err?.message ?: "没给原因"}")
+    }
+
+    /**
+     * 登录页上那颗「用这台机器记住的口令登进去」走的入口。
+     *
+     * 为什么要有这一颗：会话掉了（到期、被顶号、或者续期那一发没赶上）之后，
+     * 本机明明还留着能登进去的口令，人却得重新输一遍 —— 那"记住密码"就只记住了个名。
+     * 这里不判断"该不该自动登"：这是人按的一下，他自己选的，
+     * 比在后台悄悄抢回会话稳妥（校方一个账号只留一个活会话，抢一下就把别的客户端挤下线）。
+     */
+    suspend fun reloginNow(): Relogin = mutex.withLock { reloginFromVault() }
+
+    /**
+     * 会话救不回来了：清登录态、把人请回登录页，并带上原因。
+     *
+     * `keepPassword` 给 true 是这一层的规矩 —— 掉线不等于口令错了，把口令连着会话一起擦掉，
+     * 登录页上那颗一键重登的键就跟着没了。**只有他自己按「退出登录」才该清口令**（那一路走
+     * `SessionStore.signOut()` 默认值）。已经确认被学校否掉的口令，`reloginFromVault()` 自己会忘。
+     */
+    private suspend fun dropSession(reason: String) {
+        session.signOut(keepPassword = true)
+        _kicked.value = reason
     }
 
     fun consumeKicked() {
         _kicked.value = null
     }
 }
+
+/**
+ * 「用记住的口令重登一次」的结局。
+ *
+ * 单独一个类型而不是 `Boolean`，是因为这一句要在登录页上给人看：光说"失败了"没用于是
+ * 每次都只能瞎猜。[why] 只在失败时有内容，成功时空着。
+ */
+@Immutable
+data class Relogin(val ok: Boolean, val why: String)
