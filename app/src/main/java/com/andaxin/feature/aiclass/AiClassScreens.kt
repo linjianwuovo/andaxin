@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -443,8 +444,8 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Hairline()
         Spacer(Modifier.height(Gap.lg))
 
-        why?.let {
-            Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error)
+        if (why != null) {
+            LoadWhy(why)
             Spacer(Modifier.height(Gap.sm))
         }
         // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
