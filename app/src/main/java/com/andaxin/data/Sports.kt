@@ -17,13 +17,6 @@ data class RunPoint(
 )
 
 @Immutable
-data class RouteTemplate(
-    val id: String,
-    val name: String,
-    val points: List<LatLng>,
-)
-
-@Immutable
 data class RunRecord(
     val id: String,
     val date: String,
@@ -73,8 +66,4 @@ interface SportsFeed {
 
     /** 写操作：界面停在确认页，按下那一下由用户完成，失败绝不自动重试。 */
     suspend fun submit(draft: RunDraft): Result<String>
-
-    suspend fun routes(): List<RouteTemplate>
-    suspend fun saveRoute(route: RouteTemplate)
-    suspend fun deleteRoute(id: String)
 }

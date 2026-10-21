@@ -20,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -40,11 +39,9 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.map.LatLng
 import com.andaxin.core.map.TileMap
 import com.andaxin.core.run.RunMode
-import com.andaxin.data.RouteTemplate
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.Sheet
-import java.util.UUID
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
@@ -59,7 +56,6 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     var summary by remember { mutableStateOf<com.andaxin.data.SportSummary?>(null) }
-    var routes by remember { mutableStateOf<List<RouteTemplate>>(emptyList()) }
     var denied by remember { mutableStateOf<String?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val ask = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -78,7 +74,6 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
     LaunchedLoad {
         summary = graph.sports.summary().getOrNull()
-        routes = graph.sports.routes()
     }
 
     Page("开始运动", onBack) {
@@ -88,28 +83,6 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Stat("次数", summary?.let { "${it.weekCount} 次" } ?: "—")
                 Stat("最长", summary?.let { "%.2f km".format(it.bestKm) } ?: "—")
             }
-        }
-
-        Spacer(Modifier.height(Gap.xl))
-        Section("路线")
-        Sheet {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("画过的线", fontSize = Type.body, color = ink.muted)
-                Text("${routes.size} 条", fontSize = Type.body, color = ink.faint)
-            }
-            Spacer(Modifier.height(Gap.sm))
-            Text(
-                "路线在地图上画、存在本机，用来对照着跑。",
-                fontSize = Type.micro,
-                color = ink.faint,
-            )
-            Spacer(Modifier.height(Gap.md))
-            Text(
-                text = "＋ 画一条 / 看地图",
-                fontSize = Type.body,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.pressClick(shrink = false) { open("sport/planner") }.padding(vertical = Gap.sm),
-            )
         }
 
         Spacer(Modifier.height(Gap.xl))
@@ -334,64 +307,6 @@ fun SportMaintainScreen(onBack: () -> Unit) {
     }
 }
 
-/* ─────────────────── ⑥ 路线规划（真能用） ─────────────────── */
-
-@Composable
-fun RoutePlannerScreen(onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    val ink = LocalInk.current
-    var points by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-    var center by remember { mutableStateOf(CAMPUS) }
-    var name by remember { mutableStateOf("我的路线") }
-    var saved by remember { mutableStateOf(false) }
-
-    Page("规划路线", onBack) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.82f)
-                .background(Palette.Sand, Radius.card)
-        ) {
-            TileMap(
-                centerWgs = center,
-                pathWgs = points,
-                markersWgs = points.takeIf { it.isNotEmpty() }?.let { listOf(it.last()) } ?: emptyList(),
-                zoomStart = 18,
-                modifier = Modifier.fillMaxSize().clip(Radius.card),
-                onPickWgs = { points = points + it },
-                onCenterMoved = { center = it },
-            )
-        }
-        Spacer(Modifier.height(Gap.md))
-        Text(
-            text = "点图加一个拐点，连起来就是路线；拖动地图挪视野，两指缩放。",
-            fontSize = Type.meta,
-            color = ink.faint,
-        )
-        Spacer(Modifier.height(Gap.lg))
-        Sheet {
-            Labeled(label = "点数", value = "${points.size}")
-            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "长度", value = "%.0f 米".format(lengthOf(points)))
-            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "圈数", value = "%.2f".format(lengthOf(points) / 400.0))
-        }
-        Spacer(Modifier.height(Gap.lg))
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            HalfButton("撤销最后一点") { if (points.isNotEmpty()) points = points.dropLast(1) }
-            HalfButton(if (saved) "已存" else "保存这条") {
-                if (points.size < 2) return@HalfButton
-                scope.launch {
-                    graph.sports.saveRoute(RouteTemplate(UUID.randomUUID().toString(), name, points))
-                    saved = true
-                }
-            }
-        }
-        Spacer(Modifier.height(Gap.xxl))
-    }
-}
-
 /* ───────────────────────── 公共小块 ───────────────────────── */
 
 @Composable
@@ -417,17 +332,6 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnS
 }
 
 private typealias ColumnScope = androidx.compose.foundation.layout.ColumnScope
-
-@Composable
-private fun Section(text: String) {
-    Text(
-        text = text,
-        fontSize = Type.body,
-        fontWeight = FontWeight.Medium,
-        color = LocalInk.current.muted,
-        modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
-    )
-}
 
 @Composable
 private fun Stat(label: String, value: String) {
@@ -469,10 +373,4 @@ private fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String,
 @Composable
 private fun LaunchedLoad(block: suspend () -> Unit) {
     androidx.compose.runtime.LaunchedEffect(Unit) { block() }
-}
-
-private fun lengthOf(points: List<LatLng>): Double {
-    var t = 0.0
-    for (i in 1 until points.size) t += com.andaxin.core.map.Geo.metersBetween(points[i - 1], points[i])
-    return t
 }

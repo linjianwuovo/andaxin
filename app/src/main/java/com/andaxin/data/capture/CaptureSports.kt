@@ -3,7 +3,6 @@ package com.andaxin.data.capture
 import com.andaxin.data.RunDetail
 import com.andaxin.data.RunDraft
 import com.andaxin.data.RunRecord
-import com.andaxin.data.RouteTemplate
 import com.andaxin.data.SportSummary
 import com.andaxin.data.SportsFeed
 import java.io.IOException
@@ -129,12 +128,6 @@ class CaptureSports(
         Result.failure(IOException("单次轨迹明细那一条报文还没抓到（lr.flow 里只有读链），不拿猜的字段拼轨迹"))
 
     override suspend fun submit(draft: RunDraft): Result<String> = local.submit(draft)
-
-    override suspend fun routes(): List<RouteTemplate> = local.routes()
-
-    override suspend fun saveRoute(route: RouteTemplate) = local.saveRoute(route)
-
-    override suspend fun deleteRoute(id: String) = local.deleteRoute(id)
 
     /**
      * 三键身份 + 分页/日期等业务参数。见文件注释那段"身份其实只要三个键"。
