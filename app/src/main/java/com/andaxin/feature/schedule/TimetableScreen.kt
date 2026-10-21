@@ -69,7 +69,7 @@ private const val ROW_HEIGHT = 44
 private const val GUTTER = 28
 
 /** 星期头那一行的高度：左列也要垫同样高，不然时间轴和格子对不齐。 */
-private const val HEADER_HEIGHT = 24
+private const val HEADER_HEIGHT = 36
 
 /**
  * 一格多高：**放得下就把行拉开，放不下就还是 44dp 让它滚**。
@@ -77,21 +77,20 @@ private const val HEADER_HEIGHT = 24
  * 原来写死 44dp，12 节一共 528dp；在 411×914dp 这块屏上第 12 节底下会空出 100dp 出头一条白，
  * 而他一眼看见的就是那条白（10-21 早上他说的就是这句"底下留了一大块白"）。
  *
- * 减数 163dp 是**在这台机器上量出来的**（1440×3200 / density 3.5，App 内容区 783dp 高）：
- * 44dp 时网格底落在内容区 y=683dp（屏幕 y=716dp）。
- * 于是 `(783 − 8 − 683) / 12 = +7.7dp` 一行 → 51.7dp，网格底回到 775dp，离内容区底 8dp。
- * 换成 `视口 − 163` 是因为 683 + 8 里那块"网格以上的固定高度"（标题 + 周次芯片 + 表头 + 几处行距）
- * 一共 155dp，这个数和行高无关，所以只需要从视口里减掉一次。
- * **底栏那条玻璃画在内容区之外**（它的上沿在屏幕 818dp，内容区到 816dp 就完了），
- * 所以肉眼上看是网格离底栏约 43dp 的一段呼吸 —— 再往上拉就会觉得格子糊在栏上。
+ * 减数 138dp 是**在这台机器上量出来的**（1440×3200 / density 3.5，App 内容区 783dp 高）：
+ * 节次区从内容区 y=130dp 起，目标是让最后一行收在 775dp（离内容区底 8dp）。
+ * 于是 `(783 − 138) / 10 = 64.5dp` 一行；这 138 就是"网格以上的固定高度"（标题 + 周次芯片 +
+ * 表头 + 几处行距），和行高无关，所以只从视口里减一次。
+ * **底栏那条玻璃画在内容区之外**（上沿在屏幕 818dp，内容区到 816dp 就完了），
+ * 肉眼上看是网格离底栏约 43dp 的一段呼吸。
  *
- * 上限 58dp 是给更高屏幕留的余量：再往上拉，一格空格子会显得比课本身还重。
- * 换了字号或改了标题区，这 155dp 会跟着变，偏了的表现是"底下多一条窄白"或"贴住底栏"，
+ * 上限 66dp：再往上拉，一格空格子会显得比课本身还重。
+ * 换了字号或改了标题区，这 138dp 会跟着变，偏了的表现是"底下多一条窄白"或"贴住底栏"，
  * 都不是错位；真要跟着变，量一次这个数就行。
  */
 private fun rowHeightFor(viewport: Dp): Dp {
-    val gridRoom = viewport - 163.dp
-    return (gridRoom / PERIOD_TIMES.size.toFloat()).coerceIn(ROW_HEIGHT.dp, 58.dp)
+    val gridRoom = viewport - 138.dp
+    return (gridRoom / PERIOD_TIMES.size.toFloat()).coerceIn(ROW_HEIGHT.dp, 66.dp)
 }
 
 @Composable
@@ -155,7 +154,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             if (showDayMode) {
                 DayList(state.slots.filter { it.day == today }.ifEmpty { state.slots }, today)
             } else {
-                Grid(state.slots, today, periodNow, rowHeightFor(viewport))
+                Grid(state.slots, today, periodNow, rowHeightFor(viewport), state.weekOffset)
             }
 
             if (state.slots.isEmpty() && !state.firstLoad && state.error == null) {
@@ -189,9 +188,13 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
  * 而不是 09:55，整张表看着就是"区块没对准"。
  */
 @Composable
-private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: Dp) {
+private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: Dp, weekOffset: Int) {
     val ink = LocalInk.current
     val accent = MaterialTheme.colorScheme.primary
+    // 表头第二行那个日期：这一周的周一 + (day-1)。官方那一版就是"周一 / 10-19"两行。
+    val monday = remember(weekOffset) { Periods.weekMonday(offset = weekOffset).timeInMillis }
+    val dayFmt = remember { java.text.SimpleDateFormat("M/d", java.util.Locale.US) }
+    val colors = remember(slots) { coursePalette(slots) }
 
     val byDay = remember(slots) {
         slots.groupBy { it.day }.mapValues { (_, v) -> v.sortedBy { it.startPeriod } }
@@ -235,12 +238,22 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: 
                     .weight(1f)
                     .padding(horizontal = 1.dp),
             ) {
-                Box(Modifier.fillMaxWidth().height(HEADER_HEIGHT.dp), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier.fillMaxWidth().height(HEADER_HEIGHT.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
                     Text(
                         text = DAYS.getOrElse(day - 1) { "周" },
                         fontSize = Type.micro,
                         fontWeight = if (isToday) FontWeight.Medium else FontWeight.Normal,
                         color = if (isToday) accent else ink.muted,
+                    )
+                    // 日期是这一周的，不是今天的 —— 翻到下周时它会跟着走
+                    Text(
+                        text = dayFmt.format(java.util.Date(monday + (day - 1) * 86_400_000L)),
+                        fontSize = Type.tinier,
+                        color = if (isToday) accent.copy(alpha = 0.8f) else ink.faint,
                     )
                 }
                 // 今天这一列：只在课表格子那一段铺一层淡底，圆角收住，别连星期头一起糊。
@@ -272,6 +285,7 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: 
                             isToday && periodNow != null &&
                                 periodNow in slot.startPeriod until (slot.startPeriod + span),
                             rowH,
+                            colors[slot.course] ?: COURSE_COLORS[0],
                         )
                         cursor = slot.startPeriod + span
                     }
@@ -287,27 +301,26 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: 
 
 /** 一门课一格。[span] 是连排几节，就占几行高。 */
 @Composable
-private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean, rowH: Dp) {
-    val ink = LocalInk.current
-    val (tint, bar) = courseInk(slot.course)
+private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean, rowH: Dp, solid: Color) {
     Column(
         Modifier
             .fillMaxWidth()
             .height(rowH * span - 3.dp)
             .padding(horizontal = 1.5.dp, vertical = 1.5.dp)
-            .background(tint, Radius.tag)
+            .background(solid, Radius.tag)
+            // 正在上的那一节：实心块上用一圈白环点出来（蓝环压在蓝块上看不见）
             .border(
-                width = if (now) 2.dp else 1.dp,
-                color = if (now) MaterialTheme.colorScheme.primary else bar.copy(alpha = 0.5f),
+                width = if (now) 2.dp else 0.dp,
+                color = if (now) Color.White.copy(alpha = 0.92f) else Color.Transparent,
                 Radius.tag,
             )
-            .padding(start = 4.dp, end = 3.dp, top = 2.dp, bottom = 1.dp),
+            .padding(start = 4.dp, end = 3.dp, top = 3.dp, bottom = 2.dp),
     ) {
         Text(
             text = slot.course,
             fontSize = Type.tiny,
             fontWeight = FontWeight.Medium,
-            color = ink.strong,
+            color = Color.White,
             maxLines = if (span >= 2) 3 else 2,
             lineHeight = Type.tinyLine,
             overflow = TextOverflow.Ellipsis,
@@ -317,7 +330,7 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean, rowH: Dp) {
             Text(
                 text = shortRoom(slot.room),
                 fontSize = Type.tinier,
-                color = ink.muted,
+                color = Color.White.copy(alpha = 0.86f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -327,32 +340,22 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean, rowH: Dp) {
     }
 }
 
+/** 课表那五颗实心色，顺序就是分配顺序。 */
+private val COURSE_COLORS = listOf(
+    Palette.CourseTeal, Palette.CourseViolet, Palette.CourseBlue, Palette.CourseAmber, Palette.CourseSlate,
+)
+
 /**
- * 课程名 → 一对（淡底、主色）。同一门课每次算出来都一样，所以整周颜色是稳的。
- * 深色主题下换 Night 那一档，不然低透明的淡底在黑底上根本看不出来。
+ * 这一周里"课名 → 色"的对照表。**按课名排序后依次发色**，不用哈希。
+ *
+ * 之前用 `hashCode % n`：七门课里三门撞到同一个灰蓝，整张表看着像阴天 ——
+ * 哈希对中文课名本来就容易扎堆。按排序发色能保证"这一周有几门课就尽量用几种颜色"，
+ * 而且同一周里稳定；换周以后课表变了，颜色会跟着重排，这一点认了。
  */
-@Composable
-private fun courseInk(course: String): Pair<Color, Color> {
-    val dark = LocalInk.current.dark
-    val i = (course.hashCode() % 5 + 5) % 5
-    return if (!dark) {
-        listOf(
-            Palette.BlueSoft to Palette.Blue,
-            Palette.TealSoft to Palette.Teal,
-            Palette.AmberSoft to Palette.Amber,
-            Palette.VioletSoft to Palette.Violet,
-            Palette.SlateSoft to Palette.Slate,
-        )[i]
-    } else {
-        listOf(
-            Palette.NightBlueSoft to Palette.NightBlue,
-            Palette.NightTealSoft to Palette.NightTeal,
-            Palette.NightAmberSoft to Palette.NightAmber,
-            Palette.NightVioletSoft to Palette.NightViolet,
-            Palette.NightSlateSoft to Palette.NightSlate,
-        )[i]
-    }
-}
+private fun coursePalette(slots: List<TimetableSlot>): Map<String, Color> =
+    slots.map { it.course }.distinct().sorted()
+        .mapIndexed { i, name -> name to COURSE_COLORS[i % COURSE_COLORS.size] }
+        .toMap()
 
 /** 「只看今天」那一档：一张卡里一行一节、中间分隔线，不再一门课一张卡。 */
 @Composable
