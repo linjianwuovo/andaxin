@@ -6,6 +6,7 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
 import androidx.core.content.ContextCompat
+import com.andaxin.core.debug.MockGps
 import com.andaxin.core.map.Geo
 import com.andaxin.core.map.LatLng
 import kotlinx.coroutines.channels.awaitClose
@@ -19,10 +20,10 @@ import kotlinx.coroutines.isActive
  *
  * 1. 真 GPS：只问系统的 `GPS_PROVIDER`，三秒一次；相邻两点超过 120 米当跳点丢掉，
  *    其余点照旧进轨迹。**不做额外"速度上限"筛选** —— 他旧项目里定的是这条逻辑。
- * 2. 端内假 GPS（[InternalGpsFeed]）：调试模式里挑一条线，三秒一个点带随机游走，
+ * 2. 端内假 GPS（只有 beta 那份有实现，见 [MockGps]）：调试模式里挑一条线，三秒一个点带随机游走，
  *    从同一入口喂给跑步引擎；不注册系统 test provider，不影响别的 App。
  */
-class GpsFeed(private val context: Context, private val mock: InternalGpsFeed) {
+class GpsFeed(private val context: Context, private val mock: MockGps?) {
 
     val available: Boolean
         get() = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -35,13 +36,14 @@ class GpsFeed(private val context: Context, private val mock: InternalGpsFeed) {
     private val jumpGuardMeters = 120.0
 
     fun fixes(): Flow<Fix> = callbackFlow {
-        if (mock.isOn.value) {
+        val m = mock
+        if (m != null && m.isOn.value) {
             // 端内回放：轮询它的最新点，按时间戳去重（不是按订阅那一刻决定，开晚了也能收到）
             var last: LatLng? = null
             var lastAt = 0L
             while (isActive) {
-                val p = mock.snapshot()
-                val at = mock.atMillis.value
+                val p = m.snapshot()
+                val at = m.atMillis.value
                 if (p != null && at > lastAt) {
                     lastAt = at
                     val segment = last?.let { Geo.metersBetween(it, p) } ?: 0.0
@@ -50,7 +52,7 @@ class GpsFeed(private val context: Context, private val mock: InternalGpsFeed) {
                             Fix(
                                 where = p,
                                 meters = if (segment >= jitterFloorMeters) segment else 0.0,
-                                accuracyMeters = mock.accuracy.value,
+                                accuracyMeters = m.accuracy.value,
                                 usable = true,
                             ),
                         )
@@ -114,7 +116,7 @@ class GpsFeed(private val context: Context, private val mock: InternalGpsFeed) {
      * 端内回放开着时以回放点为准。
      */
     fun lastKnown(): LatLng? {
-        mock.snapshot()?.let { return it }
+        mock?.snapshot()?.let { return it }
         if (!available) return null
         val lm = context.getSystemService(LocationManager::class.java) ?: return null
         return listOf(

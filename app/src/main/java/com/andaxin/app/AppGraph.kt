@@ -88,9 +88,12 @@ class AppGraph(val context: Context) {
     /** 明暗、底栏材质、四根玻璃滑杆 */
     val appearance: AppearanceStore by lazy { AppearanceStore(store) }
 
-    /** 关于页连点十下才打开的那一档；只控制运动里的模拟跑入口 */
-    val advanced: com.andaxin.core.settings.AdvancedPrefs by lazy {
-        com.andaxin.core.settings.AdvancedPrefs(store)
+    /**
+     * 调试面板。beta 那份给实现（假 GPS、模拟路线、关于页那一格），
+     * 正式版那份是 null —— 实现类根本不在它的源集里，见 `core/debug/DebugKit.kt`。
+     */
+    val debug: com.andaxin.core.debug.DebugPanel? by lazy {
+        com.andaxin.core.debug.DebugProviderFactory.create(store)
     }
 
     /** 登录与 token 刷新：这是全仓第一块接上真实报文的功能 */
@@ -287,11 +290,8 @@ class AppGraph(val context: Context) {
     /** 消息轮询：应用活着的时候每五分钟拉一次 */
     val poller: Poller by lazy { Poller(messages, engineScope) }
 
-    /** 真 GPS：只有跑步那一屏会订阅 */
-    /** 端内假 GPS（他自己写的那套），只在调试模式里由「模拟路线」启动 */
-    val mockGps by lazy { com.andaxin.core.location.InternalGpsFeed() }
-
-    val gps: GpsFeed by lazy { GpsFeed(context, mockGps) }
+    /** 真 GPS。beta 那份还接一路端内假 GPS（他自己写的那套），正式版这份 mock 是 null。 */
+    val gps: GpsFeed by lazy { GpsFeed(context, debug?.mock) }
 
     /** 跑步引擎跟着进程活：界面切来切去不该打断采集 */
     val engine: RunEngine by lazy { RunEngine(engineScope) }

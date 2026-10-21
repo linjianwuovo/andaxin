@@ -42,7 +42,6 @@ import com.andaxin.feature.modules.OnboardingScreen
 import com.andaxin.feature.message.MessageScreen
 import com.andaxin.feature.notice.NoticeScreen
 import com.andaxin.feature.schedule.TimetableScreen
-import com.andaxin.feature.sport.RoutePlannerScreen
 import com.andaxin.feature.sport.SportDetailScreen
 import com.andaxin.feature.sport.SportMaintainScreen
 import com.andaxin.feature.sport.SportRecordsScreen
@@ -212,7 +211,10 @@ fun RootShell() {
         }
         page(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
         // 只有高级模式里的「新建路线」会导航到这里；普通界面没有入口
-        page(Route.SPORT_PLANNER) { RoutePlannerScreen(onBack = { nav.popBackStack() }) }
+        // 画模拟线那一屏只有 beta 那份注册得进来：正式版 debug 是 null，这条路由压根没挂
+        graph.debug?.let { panel ->
+            page(Route.SPORT_PLANNER) { panel.planner.invoke { nav.popBackStack() } }
+        }
         page(
             Route.SPORT_DETAIL,
             arguments = listOf(idPattern()),

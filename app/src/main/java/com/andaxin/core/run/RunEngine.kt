@@ -41,7 +41,7 @@ data class RunState(
  * 跑步引擎只负责"收点 → 算距离/读秒 → 结束时交出 RunDraft"。
  *
  * 点源在 [com.andaxin.core.location.GpsFeed]：真 GPS，或他旧项目里那套端内回放
- * （[com.andaxin.core.location.InternalGpsFeed]）。这里不再自己沿路线造点。
+ * （beta 那份的端内假 GPS，见 core/debug/DebugKit.kt）。这里不再自己沿路线造点。
  *
  * 采集到的点一律 WGS-84；交给学校前才在编码那一层转 BD-09。
  */
