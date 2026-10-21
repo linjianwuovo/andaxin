@@ -259,15 +259,15 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
              */
             val ex = extras
             when {
-                ex != null -> Extras(ex, open)
+                ex != null -> Extras(ex)
                 extrasWhy != null -> {
-                    SectionBlock("校方服务清单")
+                    SectionBlock("求助电话")
                     LoadWhy(extrasWhy, wide = false)
                     Spacer(Modifier.height(Gap.sm))
                     Chip("重试", picked = false) { extrasTry++ }
                 }
                 extrasSlow -> {
-                    SectionBlock("校方服务清单")
+                    SectionBlock("求助电话")
                     Text("正在拉…", fontSize = Type.meta, color = ink.faint)
                 }
             }
@@ -289,31 +289,14 @@ private fun SectionBlock(text: String) {
 }
 
 /**
- * 首页下半屏：轮播图 + 校方服务清单 + 求助电话。
+ * 首页下半屏：只剩求助电话。
  *
- * 这四块全是 `in.aiit.edu.cn` 直接给的（字段选择与取证见 `data/capture/CaptureHome.kt`）。
- * 服务清单点开了走自带 WebView —— 不做"跳系统浏览器"那一种。
+ * 原来还有一条「校方服务清单」—— 把学校给的 emoji 图标原样排成四列，
+ * 他 10-21 11:3x 一句「删了，我自己明明可以做漂亮的界面」把它去掉了。
+ * 常去的那几个入口在上一排我们自己的胶囊里，这一格不再复述一遍。
  */
 @Composable
-private fun Extras(e: HomeExtras, open: (String) -> Unit) {
-    val graph = LocalAppGraph.current
-    val ink = LocalInk.current
-
-    if (e.services.isNotEmpty()) {
-        SectionBlock("校方服务清单")
-        // 四列图标网格：一行一个拉七行、右边还挂个域名，是这一屏最肿的一段
-        Sheet(modifier = Modifier.enterFade(e.services.size)) {
-            e.services.chunked(4).forEachIndexed { rowIdx, row ->
-                Row(Modifier.fillMaxWidth()) {
-                    row.forEach { s -> ServiceTile(s, graph, ink, Modifier.weight(1f)) { url -> open(url) } }
-                    // 不满四格时把剩下的宽度占住，否则最后一格会被拉宽
-                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-                if (rowIdx != e.services.chunked(4).lastIndex) Spacer(Modifier.height(Gap.md))
-            }
-        }
-    }
-
+private fun Extras(e: HomeExtras) {
     if (e.contacts.isNotEmpty()) {
         SectionBlock("求助电话")
         Sheet(modifier = Modifier.enterFade(e.contacts.size)) {
@@ -323,51 +306,6 @@ private fun Extras(e: HomeExtras, open: (String) -> Unit) {
                 if (i != e.contacts.lastIndex) Hairline()
             }
         }
-    }
-
-    if (e.why.isNotEmpty()) {
-        Spacer(Modifier.height(Gap.md))
-    }
-}
-
-@Composable
-private fun ServiceTile(
-    s: SchoolService,
-    graph: com.andaxin.app.AppGraph,
-    ink: com.andaxin.core.design.InkSet,
-    modifier: Modifier = Modifier,
-    go: (String) -> Unit,
-) {
-    val target = "web/${com.andaxin.feature.web.encodeUrl(s.targetUrl)}"
-    val clickable = s.targetUrl.startsWith("http")
-    Column(
-        modifier
-            .then(if (clickable) Modifier.pressClick { go(target) } else Modifier)
-            .padding(vertical = Gap.xs),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-            if (s.iconUrl.startsWith("http")) {
-                RemoteImage(
-                    url = s.iconUrl,
-                    contentDescription = s.name,
-                    cacheDir = graph.context.cacheDir,
-                    modifier = Modifier.size(30.dp),
-                )
-            } else {
-                Text(s.name.take(1), fontSize = Type.title, color = Palette.Blue)
-            }
-        }
-        Spacer(Modifier.height(Gap.xs))
-        Text(
-            text = s.name,
-            fontSize = Type.micro,
-            color = if (s.online) ink.body else ink.ghost,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        // 域名那行整个去掉：四列网格里放不下，而且它不是"要看的东西"，点进去自然知道是哪个页面
     }
 }
 
