@@ -42,7 +42,6 @@ import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.map.LatLng
 import com.andaxin.core.map.TileMap
-import com.andaxin.core.run.RunMode
 import com.andaxin.data.RouteTemplate
 import com.andaxin.data.RunDraft
 import com.andaxin.data.SportPlan
@@ -85,6 +84,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         if (!advanced) {
             armed = null
             showPicker = false
+            graph.mockGps.stop()
         }
     }
 
@@ -102,8 +102,12 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             r.onSuccess { session ->
                 val mock = armed
                 if (mock != null) {
-                    graph.engine.start(mock.points, pace, RunMode.AlongRoute, session)
+                    // 他旧项目里写的那套端内假 GPS：沿这条线三秒喂一个点，
+                    // 跑步页照常走真 GPS 的那条链
+                    graph.mockGps.startRoute(mock.points, pace)
+                    graph.engine.startReal(graph.gps, session)
                 } else {
+                    graph.mockGps.stop()
                     graph.engine.startReal(graph.gps, session)
                 }
                 com.andaxin.core.run.RunService.start(ctx)
@@ -171,49 +175,20 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Text(it, fontSize = Type.meta, lineHeight = Type.metaLine, color = MaterialTheme.colorScheme.error)
         }
 
-        // 官方这一屏右上角那颗「运动记录」和记录页里的维护入口，收进这一排。
-        Spacer(Modifier.height(Gap.md))
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            HalfButton("运动记录") { open("sport/records") }
-            HalfButton("考勤维护记录") { open("sport/maintain") }
-        }
-
-        Spacer(Modifier.height(Gap.xl))
-        TipsCard(ink)
-
+        /*
+         * 调试模式下的「模拟路线」：就按他定的位置和名字 —— 开始键下面一颗次按钮，
+         * 点开挑一条自己画的线/配速，再点开始。普通模式完全看不到。
+         */
         if (advanced) {
-            Spacer(Modifier.height(Gap.xl))
-            Text("高级", fontSize = Type.meta, fontWeight = FontWeight.Medium, color = ink.muted)
-            Spacer(Modifier.height(Gap.xs))
-            Sheet {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("模拟跑步", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
-                    Text(
-                        armed?.name ?: "未选路线",
-                        fontSize = Type.meta,
-                        color = if (armed == null) ink.faint else MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Spacer(Modifier.height(Gap.xs))
-                Text(
-                    "只在本机沿选中的线生成轨迹，不碰系统定位；结束页仍要你按提交。",
-                    fontSize = Type.micro,
-                    lineHeight = Type.metaLine,
-                    color = ink.faint,
-                )
-                Spacer(Modifier.height(Gap.md))
-                Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                    listOf(6.0, 8.0, 10.0).forEach { p ->
-                        Chip("${p.toInt()} km/h", pace == p) { pace = p }
-                    }
-                }
-                Spacer(Modifier.height(Gap.md))
-                if (!showPicker) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                        HalfButton("选择路线") { showPicker = true }
-                        HalfButton("新建路线") { open("sport/planner") }
-                    }
-                } else {
+            Spacer(Modifier.height(Gap.sm))
+            Row {
+                HalfButton(
+                    if (armed != null) "模拟路线 · ${armed!!.name}" else "模拟路线",
+                ) { showPicker = !showPicker }
+            }
+            if (showPicker) {
+                Spacer(Modifier.height(Gap.sm))
+                Sheet {
                     if (routes.isEmpty()) {
                         Text("还没有画过线，先新建一条。", fontSize = Type.meta, color = ink.faint)
                         Spacer(Modifier.height(Gap.sm))
@@ -231,6 +206,14 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
                         if (i != routes.lastIndex) Hairline()
                     }
                     Spacer(Modifier.height(Gap.sm))
+                    Text("配速", fontSize = Type.micro, color = ink.faint)
+                    Spacer(Modifier.height(Gap.xs))
+                    Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                        listOf(6.0, 8.0, 10.0).forEach { p ->
+                            Chip("${p.toInt()} km/h", pace == p) { pace = p }
+                        }
+                    }
+                    Spacer(Modifier.height(Gap.md))
                     Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
                         HalfButton("新建路线") {
                             showPicker = false
@@ -241,6 +224,16 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 }
             }
         }
+
+        // 官方这一屏右上角那颗「运动记录」和记录页里的维护入口，收进这一排。
+        Spacer(Modifier.height(Gap.md))
+        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            HalfButton("运动记录") { open("sport/records") }
+            HalfButton("考勤维护记录") { open("sport/maintain") }
+        }
+
+        Spacer(Modifier.height(Gap.xl))
+        TipsCard(ink)
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -456,16 +449,34 @@ fun SportRunScreen(onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     val state by graph.engine.state.collectAsStateWithLifecycle()
+    val mockOn by graph.mockGps.isOn.collectAsStateWithLifecycle()
     var confirmStop by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf<RunDraft?>(null) }
     var submitting by remember { mutableStateOf(false) }
     var submitWhy by remember { mutableStateOf<String?>(null) }
     var submittedId by remember { mutableStateOf<String?>(null) }
+    var confirmLeave by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // 进屏先把"上次已知位置"拿出来垫地图，别拿写死的 CAMPUS 冒充他的位置
     val lastKnown = remember { graph.gps.lastKnown() }
 
-    Page(if (draft == null) "运动中" else "这一趟", onBack) {
+    // 系统返回也走二次确认；普通点击右下返回在同一处
+    androidx.activity.compose.BackHandler(enabled = state.active && draft == null) {
+        confirmLeave = true
+    }
+
+    fun abandon() {
+        graph.engine.abandon()
+        graph.mockGps.stop()
+        onBack()
+    }
+
+    Page(
+        if (draft == null) "运动中" else "这一趟",
+        onBack = {
+            if (state.active && draft == null) confirmLeave = true else onBack()
+        },
+    ) {
         val done = draft
         if (done != null) {
             // 结束页：地图 + 三个数 + 一颗明确写着"提交到学校"的键。不自动交。
@@ -607,8 +618,12 @@ fun SportRunScreen(onBack: () -> Unit) {
             Text(
                 text = buildString {
                     val acc = state.accuracy
-                    if (acc != null) append("GPS 精度 ±${acc.toInt()} 米 · ")
-                    append("只认真实位移，踏步/原地不动距离不会涨。")
+                    if (mockOn) {
+                        append("端内模拟 · 精度 ±${acc?.toInt() ?: 3} 米 · 步速由配速决定。")
+                    } else {
+                        if (acc != null) append("GPS 精度 ±${acc.toInt()} 米 · ")
+                        append("只认真实位移，踏步/原地不动距离不会涨。")
+                    }
                 },
                 fontSize = Type.tinier,
                 color = ink.faint,
@@ -623,28 +638,62 @@ fun SportRunScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.xl))
         Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
             HalfButton(if (state.paused) "继续" else "暂停") {
-                if (state.paused) graph.engine.resume() else graph.engine.pause()
+                if (state.paused) {
+                    graph.engine.resume()
+                    graph.mockGps.paused = false
+                } else {
+                    graph.engine.pause()
+                    graph.mockGps.paused = true
+                }
             }
             HalfButton(if (confirmStop) "再点一次确认结束" else "结束") {
                 if (!confirmStop) {
                     confirmStop = true
                 } else {
                     draft = graph.engine.finish()
+                    graph.mockGps.stop()
                     confirmStop = false
                 }
             }
         }
         Spacer(Modifier.height(Gap.md))
         Text(
+            "取消这一场",
+            fontSize = Type.meta,
+            color = ink.muted,
+            modifier = Modifier
+                .pressClick(shrink = false) { confirmLeave = true }
+                .padding(vertical = Gap.xs),
+        )
+        Spacer(Modifier.height(Gap.md))
+        Text(
             // 运动开始只有一条路：手机 GPS。以前这句在 Free 档写"沿演示圈走"，
             // 而 startReal() 给的正是 Free —— 真跑反而被标成假轨迹，读着正好反了。
-            text = when (state.mode) {
-                RunMode.AlongRoute -> "沿「${state.points.size} 个点采集」这条线走。"
-                else -> "采的是手机 GPS 的真实位置。楼边、室内会飘，飘出来的那几段学校那边也可能判无效。"
+            text = if (mockOn) {
+                "端内模拟：沿选中的线三秒一个点，带随机游走；不碰系统定位。"
+            } else {
+                "采的是手机 GPS 的真实位置。楼边、室内会飘，飘出来的那几段学校那边也可能判无效。"
             },
             fontSize = Type.micro,
             color = ink.faint,
         )
+        if (confirmLeave) {
+            Spacer(Modifier.height(Gap.md))
+            Sheet {
+                Text("放弃这一场？", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+                Spacer(Modifier.height(Gap.xs))
+                Text(
+                    "这一趟不会提交，也不会留在本机。",
+                    fontSize = Type.meta,
+                    color = ink.muted,
+                )
+                Spacer(Modifier.height(Gap.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                    HalfButton("继续跑") { confirmLeave = false }
+                    HalfButton("放弃并返回") { abandon() }
+                }
+            }
+        }
         Spacer(Modifier.height(Gap.xxl))
     }
 }

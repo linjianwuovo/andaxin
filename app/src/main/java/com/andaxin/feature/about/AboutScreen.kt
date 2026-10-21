@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andaxin.shell.pressClick
 import com.andaxin.BuildConfig
@@ -98,22 +100,29 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         if (advanced) {
             Spacer(Modifier.height(Gap.xl))
             Sheet {
-                Labeled(label = "高级模式", value = "已开启")
-                Spacer(Modifier.height(Gap.xs))
-                Text(
-                    "开始运动页会多出模拟跑入口；不需要真 GPS，提交仍要你按。",
-                    fontSize = Type.micro,
-                    lineHeight = Type.metaLine,
-                    color = ink.faint,
-                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("调试模式", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "开始运动页会多出「模拟路线」",
+                            fontSize = Type.micro,
+                            color = ink.faint,
+                        )
+                    }
+                    Switch(
+                        checked = true,
+                        onCheckedChange = { on ->
+                            if (!on) scope.launch { graph.advanced.set(false) }
+                        },
+                    )
+                }
                 Spacer(Modifier.height(Gap.sm))
                 Text(
-                    "关掉",
-                    fontSize = Type.meta,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .pressClick(shrink = false) { scope.launch { graph.advanced.set(false) } }
-                        .padding(vertical = Gap.xs),
+                    "调试功能内的所有功能仅供开发者调试，不允许通过其中任何功能进行滥用行为，所有责任由使用者自己承担。",
+                    fontSize = Type.tinier,
+                    lineHeight = Type.metaLine,
+                    color = ink.faint,
                 )
             }
         }
