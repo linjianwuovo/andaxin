@@ -149,6 +149,21 @@ fun TileMap(
         Tiles.latToPixelY(g.latitude, z, dd).toFloat(),
     )
 
+    /*
+     * 手指挪多少像素，中心就当场上挪多少 —— 攒到松手再一次性挪，看上去就是"地图不跟手"：
+     * 10-21 夜他把这一屏拖来拖去，地图全程钉在原地、抬指才跳过去，说的就是这个。
+     */
+    fun panBy(delta: Offset) {
+        if (delta == Offset.Zero) return
+        val sz = sourceZoomOf(zoom)
+        val sc = tileScaleOf(zoom)
+        val moved = pxOf(centerGcj, sz) - delta / sc
+        centerGcj = LatLng(
+            latitude = Tiles.pixelYToLat(moved.y.toDouble(), sz, dd),
+            longitude = Tiles.pixelXToLng(moved.x.toDouble(), sz, dd),
+        )
+    }
+
     val desiredSrc = sourceZoomOf(zoom)
     val desiredScale = tileScaleOf(zoom)
     /*
@@ -261,6 +276,7 @@ fun TileMap(
                         last = p
                         travelled += hypot(delta.x, delta.y)
                         shift += delta
+                        panBy(delta)
                     }
                     held.forEach { it.consume() }
                 }
@@ -279,11 +295,7 @@ fun TileMap(
                         )
                     )
                 } else if (shift != Offset.Zero) {
-                    val moved = pxOf(centerGcj, srcZoom) - shift / scale
-                    centerGcj = LatLng(
-                        latitude = Tiles.pixelYToLat(moved.y.toDouble(), srcZoom, dd),
-                        longitude = Tiles.pixelXToLng(moved.x.toDouble(), srcZoom, dd),
-                    )
+                    // 中心在 panBy 里已经当场挪过了，这里只把"拖完了"告诉外面（规划线那一屏要用）
                     onCenterMoved?.invoke(Geo.gcjToWgs(centerGcj.latitude, centerGcj.longitude))
                 }
             }
