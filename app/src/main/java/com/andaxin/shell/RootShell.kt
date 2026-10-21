@@ -82,6 +82,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.feature.modules.DormBoardScreen
 import com.andaxin.feature.modules.DormTaskScreen
@@ -162,13 +164,23 @@ private const val ID_ARG = "id"
 private fun idPattern() = androidx.navigation.navArgument(ID_ARG) { defaultValue = "" }
 
 /**
- * 每一条路由都从这儿注册，因为转场只有一种：**整页推进、整页推出**。
+ * 每一条路由都从这儿注册，因为转场只有一种：**新一屏整页盖进来，底下那一屏让位并压暗**。
  *
- * 不做"半程位移 + 淡入"那种两张卡叠着飘的效果 —— 上一版试过，页面上下的内容糊在一起，
- * 看着像没渲染完。往前 [Motion.pageEnter]（280ms，ease-out：冲到位再收），
- * 往回 [Motion.pageExit]（220ms）—— 返回这一下用户早知道自己要看什么，快一格才贴手。
- * 被盖住的那一半走 ease-in-out，它不该比进场的那一半抢眼。
+ * 往前 [Motion.pageEnter]（280ms，ease-out：冲到位再收），往回 [Motion.pageExit]（220ms）——
+ * 返回这一下用户早知道自己要看什么，快一格才贴手。被盖住的那一半走 ease-in-out，
+ * 它不该比进场的那一半抢眼。
+ *
+ * 10-22 改的：以前两页各走满一屏（进 {it} / 出 {-it}），那是"平移"，看着像两张纸对换，
+ * 不是"这一屏把上一屏推开"。现在出去的只后退 [PAGE_PARALLAX] 并压暗到 [PAGE_DIM]，
+ * 进来的从右边整页盖过去 —— 他要的"二级覆盖一级推入"。
+ * 后退不是位移为零：留一点视差，盖住的那一屏才在动、才有前后两层。
+ *
+ * 正因为两层会**同时露在屏幕上**，每一屏自己必须是不透明的：底下那层 NavHost 的底色
+ * 在所有页之后，挡不住重叠区的穿帮。所以内容统一包一层同色底。
  */
+private const val PAGE_PARALLAX = 0.25f
+private const val PAGE_DIM = 0.72f
+
 private fun NavGraphBuilder.page(
     name: String,
     arguments: List<androidx.navigation.NamedNavArgument> = emptyList(),
@@ -178,10 +190,23 @@ private fun NavGraphBuilder.page(
         route = name,
         arguments = arguments,
         enterTransition = { slideInHorizontally(tween(Motion.pageEnter, easing = Motion.EaseOut)) { it } },
-        exitTransition = { slideOutHorizontally(tween(Motion.pageEnter, easing = Motion.EaseInOut)) { -it } },
-        popEnterTransition = { slideInHorizontally(tween(Motion.pageExit, easing = Motion.EaseOut)) { -it } },
+        exitTransition = {
+            slideOutHorizontally(tween(Motion.pageEnter, easing = Motion.EaseInOut)) {
+                (-it * PAGE_PARALLAX).toInt()
+            } + fadeOut(tween(Motion.pageEnter), targetAlpha = PAGE_DIM)
+        },
+        popEnterTransition = {
+            slideInHorizontally(tween(Motion.pageExit, easing = Motion.EaseOut)) {
+                (-it * PAGE_PARALLAX).toInt()
+            } + fadeIn(tween(Motion.pageExit))
+        },
         popExitTransition = { slideOutHorizontally(tween(Motion.pageExit, easing = Motion.EaseInOut)) { it } },
-        content = content,
+        content = { entry ->
+            val scope = this
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                with(scope) { content(entry) }
+            }
+        },
     )
 }
 
