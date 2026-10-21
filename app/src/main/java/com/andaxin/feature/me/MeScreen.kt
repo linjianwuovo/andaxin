@@ -168,35 +168,40 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 
         SectionTitle("本机")
         Sheet {
-            DormRow()
-            Hairline()
+            // 宿舍那一栏撤了（他 10-21 09:2x："宿舍这栏删了"）。
+            // 报修表单里那格"宿舍"本来靠它预填，现在就是空着、自己填 ——
+            // 比在设置里多养一格只有一张表吃得上的数据干净。
             ReminderRow()
             Hairline()
             PasswordRow()
         }
 
-        Spacer(Modifier.height(Gap.md))
-        Sheet {
-            RowLine(
-                title = if (session.loggedIn) "退出登录" else "退出登录（当前没登录）",
-                sub = when {
-                    !session.loggedIn -> "本机没有 token"
-                    armedToQuit -> "再点一次就退出"
-                    else -> "只清本机这把 token"
-                },
-                right = if (armedToQuit && session.loggedIn) "确认?" else "",
-                flag = if (armedToQuit) Flag.Warn else Flag.None,
-                onClick = if (!session.loggedIn) null else {
-                    {
+        /*
+         * 退出登录：**只有登录着才画**。
+         *
+         * 没登录时原来写的是"退出登录（当前没登录）/ 本机没有 token" —— 一句话里
+         * 两个"没有"，还在讲 token。他要的是"退出登录就退出登录"（10-21 09:2x），
+         * 那没登录的时候这一块本来也没意义，干脆不画。
+         * 登录时平时不带副标题，只有按了第一下才说"再点一次就退出"。
+         */
+        if (session.loggedIn) {
+            Spacer(Modifier.height(Gap.md))
+            Sheet {
+                RowLine(
+                    title = "退出登录",
+                    sub = if (armedToQuit) "再点一次就退出" else "",
+                    right = if (armedToQuit) "确认?" else "",
+                    flag = if (armedToQuit) Flag.Warn else Flag.None,
+                    onClick = {
                         if (armedToQuit) {
                             scope.launch { graph.session.signOut() }
                             armedToQuit = false
                         } else {
                             armedToQuit = true
                         }
-                    }
-                },
-            )
+                    },
+                )
+            }
         }
         Spacer(Modifier.height(Gap.xxl))
     }
@@ -245,72 +250,6 @@ private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
                 repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
             if (rowIdx != entries.chunked(3).lastIndex) Hairline()
-        }
-    }
-}
-
-/** 宿舍：填了就直接显示值，没填显示"没填"，点整行开始改。 */
-@Composable
-private fun DormRow() {
-    val graph = LocalAppGraph.current
-    val ink = LocalInk.current
-    val scope = rememberCoroutineScope()
-    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
-    var editing by remember { mutableStateOf(false) }
-    var draft by remember(session.dorm) { mutableStateOf(session.dorm) }
-
-    if (!editing) {
-        RowLine(
-            title = "宿舍",
-            sub = if (session.dorm.isBlank()) "报修那张单要预填这个" else "报修预填「${session.dorm}」",
-            right = session.dorm.ifBlank { "去填" },
-            onClick = { editing = true },
-        )
-    } else {
-        Column {
-            RowLine(title = "宿舍", sub = "几号楼几零几，按完键盘上的「完成」就存")
-            MiuixTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                label = "几号楼几零几",
-                useLabelAsPlaceholder = true,
-                singleLine = true,
-                // 软键盘会盖住下面的按钮，所以键盘上的「完成」也接同一个动作 ——
-                // 08:20 装机时就是被键盘挡住，点了三下"存"其实每下都在啃退格
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        scope.launch { graph.session.setDorm(draft.trim()) }
-                        editing = false
-                    },
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(Gap.sm))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
-                Text(
-                    "存",
-                    fontSize = Type.body,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .pressClick(shrink = false) {
-                            scope.launch { graph.session.setDorm(draft.trim()) }
-                            editing = false
-                        }
-                        .padding(vertical = Gap.xs),
-                )
-                Text(
-                    "取消",
-                    fontSize = Type.body,
-                    color = ink.muted,
-                    modifier = Modifier
-                        .pressClick(shrink = false) {
-                            draft = session.dorm
-                            editing = false
-                        }
-                        .padding(vertical = Gap.xs),
-                )
-            }
         }
     }
 }
