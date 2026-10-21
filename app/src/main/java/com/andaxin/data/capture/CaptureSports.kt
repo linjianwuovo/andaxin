@@ -307,18 +307,18 @@ class CaptureSports(
     override suspend fun deleteRoute(id: String) = local.deleteRoute(id)
 
     override suspend fun submit(draft: RunDraft): Result<String> {
-        if (draft.km <= 0.0 || draft.seconds <= 0) {
-            return Result.failure(IOException("这一场是 0 公里或 0 秒，不交"))
-        }
-        if (draft.points.size < 2) {
-            return Result.failure(IOException("这一场没采到轨迹点（室内/没给定位），交上去也会判无效，先不交"))
-        }
+        /*
+         * 这里不按公里数、时长、点数拦人（10-21 夜他明说：不要限制公里数提交）。
+         * "单次不少于 1 公里、速率 3–12 km/h" 是学校自己判的口径，写在开始那一屏；
+         * 我们照原样把这一场交上去，判不判有效由服务端说，不替它先扣着不交。
+         * 只留一条：`memberId` 空了这包根本挂不到俱乐部上，那是拼包缺件，不是"跑太少"。
+         */
         if (draft.memberId.isBlank()) {
             return Result.failure(IOException("这一场没有 memberId，交不上去 —— 开始的时候没拿到"))
         }
         val endText = serverTimeText() ?: fmtTime(draft.endedAtMillis)
         val startText = fmtTime(draft.startedAtMillis)
-        val speed = draft.km / (draft.seconds / 3600.0)
+        val speed = if (draft.seconds > 0) draft.km / (draft.seconds / 3600.0) else 0.0
         val list = SportsUploadCodec.buildListField(
             SportsUploadCodec.Run(
                 // 官方那四条上传报文（10-14 17:57，全 200、data.id 是真 id）里
