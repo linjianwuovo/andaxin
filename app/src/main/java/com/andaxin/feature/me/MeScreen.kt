@@ -44,6 +44,7 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Type
+import com.andaxin.core.store.forAccount
 import com.andaxin.data.brief.Flag
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
@@ -94,17 +95,24 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     val ink = LocalInk.current
-    // 学院/专业/班级/辅导员从校方拉，只读两条接口；拉不到就退回"校园账号 xxx"那行
-    var profile by remember { mutableStateOf<com.andaxin.data.capture.Profile?>(null) }
+    // 学院/专业/班级/辅导员从校方拉，只读两条接口；拉不到就退回"校园账号 xxx"那行。
+    // 值存在 `graph.who`（进程上）而不是这一屏的 remember 里：去一趟二级页回来这一屏
+    // 会整个重建，本地那份归零，那行就先画成兜底文案、等接口回来再跳回真值 ——
+    // 他 10-22 那句「学院哪个班会闪」就是这个跳。
+    val cachedProfile by graph.who.profile.collectAsStateWithLifecycle()
     // 校方那条 checkIsInternStu 只回一个布尔（真值 `data{isInternStu:false}`），
     // 所以这一行就照它说"是/不是"，不推断它背后的含义。
-    var intern by remember { mutableStateOf<Boolean?>(null) }
+    val cachedIntern by graph.who.intern.collectAsStateWithLifecycle()
+    // 账号对不上等于没拉到过：换账号（退出、被顶号后登成别人）不能拿上一位的资料先画一帧
+    val profile = cachedProfile?.forAccount(session.account)
+    val intern = cachedIntern?.forAccount(session.account)
     LaunchedEffect(session.loggedIn, session.generation) {
         // 跟着 generation 再来一遍：被顶号后自动重登时 loggedIn 没变，光 key 它的话
         // 这一屏会一直挂着上一次失败的结果
         if (session.loggedIn) {
-            graph.profile.load().onSuccess { profile = it }
-            graph.home.intern().onSuccess { intern = it }
+            val at = session.account
+            graph.profile.load().onSuccess { graph.who.putProfile(at, it) }
+            graph.home.intern().onSuccess { graph.who.putIntern(at, it) }
         }
     }
 

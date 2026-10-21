@@ -274,6 +274,12 @@ class AppGraph(val context: Context) {
     val profile by lazy { CaptureProfile(school) }
 
     /**
+     * 上面那两条口的结果缓存（学院/专业/班级 + 实习生标记）。
+     * 挂在进程上而不是屏幕上，从二级页退回来时那一行才不会先跳回兜底文案。
+     */
+    val who by lazy { com.andaxin.core.store.WhoIs() }
+
+    /**
      * 运动这一路：读侧走校方那台 sports:8082（总量/记录/维护申请三条已现打验过），
      * 上传那两条口没抓到实样，所以仍由 Local 那侧明确回失败。
      * 见 `CaptureSports` 顶上那段取证。

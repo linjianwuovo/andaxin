@@ -75,7 +75,12 @@ fun ProfileScreen(onBack: () -> Unit) {
         why = null
         if (session.loggedIn) {
             graph.profile.load()
-                .onSuccess { profile = it }
+                .onSuccess {
+                    profile = it
+                    // 顺手回填「我是谁」那份缓存：从这一屏退回「我的」，名字下面那行
+                    // 用的就是刚刷新过的值，不会再各拉各的
+                    graph.who.putProfile(session.account, it)
+                }
                 .onFailure { why = it.message ?: "资料没拉到" }
         }
         loading = false
@@ -203,6 +208,8 @@ fun ProfileScreen(onBack: () -> Unit) {
                                  */
                                 scope.launch {
                                     graph.session.signOut(keepPassword = true)
+                                    // 学院/班级那两份是内存里的，人退了就把上一位的资料一起放掉
+                                    graph.who.clear()
                                     armedToQuit = false
                                     // 退完要回到根：留在这一屏只会看见"未登录"和一颗没反应的「去登录」
                                     // （Gate 在 SHELF 那一层，这一屏是它上面的独立路由）。
