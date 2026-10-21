@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -210,17 +211,23 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: 
         Column(Modifier.width(GUTTER.dp)) {
             Spacer(Modifier.height(HEADER_HEIGHT.dp))
             PERIOD_TIMES.forEachIndexed { i, start ->
-                Box(
-                    Modifier.height(rowH).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        // 现在正在上的那一节标主色
+                /*
+                 * 左边这格：**节次 + 开始 + 结束三行，全部贴这一格的上沿**。
+                 *
+                 * 他 08:50 那句"时间和色块没对齐、乍一看容易看错位"：原来三行是居中的，
+                 * 64.5dp 一格下 08:30 落在课块的腰部 —— 眼睛对不上"这一块从几点开始"。
+                 * 上沿对齐以后，课块的顶边和"1 / 08:30"是同一条线，跟官方那版一样。
+                 * 也别把结束时刻挪到下沿：那样它会和下一行的节次、开始挤成一小坨，
+                 * 反而更像错位（这一版中间试过，截图里 09:15 / 2 / 09:20 三行挨在一起）。
+                 */
+                Box(Modifier.height(rowH).fillMaxWidth()) {
+                    Column(
+                        Modifier.fillMaxHeight().padding(top = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Top,
+                    ) {
                         val on = periodNow == i + 1
                         Text("${i + 1}", fontSize = Type.micro, color = if (on) accent else ink.faint)
-                        // 左边那格把**开始和结束**都标上（他 10-21 早上要的就是这个）：
-                        // 只给一个 08:00，人还得自己知道这节课上到几点。结束时刻是按 45 分钟推的，
-                        // 接口没给过 —— 见 `Periods` 顶上那段。
                         Text(start, fontSize = Type.tinier, color = ink.ghost)
                         Periods.endAt(i + 1)?.let { end ->
                             Text(end, fontSize = Type.tinier, color = ink.ghost)
