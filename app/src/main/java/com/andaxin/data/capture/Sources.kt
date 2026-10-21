@@ -91,6 +91,13 @@ class DashboardSource(
     override fun cached(): Dashboard? = readSnap()?.let { text ->
         runCatching {
             val o = org.json.JSONObject(text)
+            /*
+             * 快照里必须带"是哪一天"。10-21 13:3x 他打开首页，顶卡写着"下一节 高等数学 10:25–11:10"，
+             * 而那节课 12:00 就上完了 —— 垫屏的是**昨天/上一趟**留下的那份，里面没有时间戳，
+             * 夜里存下的"下一节"第二天早上照样上屏。日期对不上就整份作废，
+             * 宁可先显示"—"等这一发回来（1 秒上下），也不把昨天的课冒充成今天的。
+             */
+            if (o.optString("day") != todayKey()) return@runCatching null
             Dashboard(
                 greeting = o.optString("greeting"),
                 todayLessons = if (o.isNull("todayLessons")) null else o.optInt("todayLessons"),
@@ -126,9 +133,27 @@ class DashboardSource(
             val unread = msgs.await()?.count { it.unread } ?: 0
             // 全周接口一次给七天，首页那一格只要今天
             val allWeek = week.await() ?: emptyList()
-            val slots = allWeek.filter { it.day == com.andaxin.core.schedule.Periods.today() }
-            val next = slots.firstOrNull { it.startPeriod >= com.andaxin.core.schedule.Periods.current() }
-                ?: slots.lastOrNull()
+            /*
+             * `ksjc=0` 的那几条不是课：校方用一条「阳光晨跑 / 体育场」占位表示"这天早上有晨跑"，
+             * 前后节次都是 0（10-21 13:5x 拿活 token 现打第 8 周确认，`阳光晨跑 ksjc=0 jsjc=0 jsmc=体育场`）。
+             * 以前它被当成"第 1 节"，于是周二周四的 08:30 多出一块课，还会进"今天几节/下一节"。
+             * 这里开始，所有"是不是一节课"的判断都先过 `startPeriod >= 1`。
+             */
+            val lessons = allWeek.filter { it.startPeriod >= 1 }
+            val slots = lessons.filter { it.day == com.andaxin.core.schedule.Periods.today() }
+            /*
+             * 只报"还没结束的那一节"。以前这里兜底 `slots.lastOrNull()`，
+             * 于是 13:37 打开首页，顶卡还在写"下一节 高等数学 10:25–11:10" —— 那是一节早就上完的课。
+             * 现在按作息表的真实下课时刻筛；今天一节不剩就回 null，首页改摆壁纸。
+             */
+            val nowMin = com.andaxin.core.schedule.Periods.minuteOfDay()
+            val next = slots
+                .filter { slot ->
+                    val end = com.andaxin.core.schedule.Periods
+                        .endMinute(slot.startPeriod + slot.periodCount - 1) ?: return@filter false
+                    end > nowMin
+                }
+                .minByOrNull { it.startPeriod }
             // 这一格要的是"下一次查寝几点"。原来读的是 ywlz 待办里第一条晚点名消息的收到时间，
             // 那条口只在采集窗口打开时才来消息 —— 10-21 凌晨装机时它显示 10-20 21:00（昨晚那次），
             // 而 fdygl 列表里今天 21:00 那条明明挂着"未开始"。所以先问 fdygl，它没排任务才退回原来那个来源。
@@ -145,8 +170,15 @@ class DashboardSource(
                     greeting = greeting,
                     // 整周一条都没有 = 这份数据没拿到，别报成"今天 0 节" ——
                     // 10-21 凌晨装机就撞上这一条：课表那一屏还有课，首页已经写"今天有课 0 节"
+                    // （晨跑那条不算课，上面 `lessons` 已经滤掉）
                     todayLessons = if (allWeek.isEmpty()) null else slots.size,
-                    nextLesson = next?.let { "第${it.startPeriod}节 · ${it.course} · ${it.room}" },
+                    // 连堂要写成"第 3-4 节"：只给起始节次，首页那颗药丸会把 10:25–12:00 的课
+                    // 算成 10:25–11:10（10-21 13:3x 顶卡上真发生过）。
+                    nextLesson = next?.let {
+                        val last = it.startPeriod + it.periodCount - 1
+                        val span = if (last > it.startPeriod) "${it.startPeriod}-$last" else "${it.startPeriod}"
+                        "第${span}节 · ${it.course} · ${it.room}"
+                    },
                     unreadMessages = unread,
                     dormCheckState = bedAt.ifBlank { "—" },
                     runSemesterKm = sports0?.semesterKm,
@@ -157,6 +189,7 @@ class DashboardSource(
             runCatching {
                 writeSnap(
                     org.json.JSONObject()
+                        .put("day", todayKey())
                         .put("greeting", dash.greeting)
                         .put("todayLessons", dash.todayLessons ?: org.json.JSONObject.NULL)
                         .put("nextLesson", dash.nextLesson ?: org.json.JSONObject.NULL)
@@ -175,6 +208,10 @@ class DashboardSource(
     /** 现在第几节由 `core/schedule/Periods` 说，那张表周网格也在用，不留第二份。 */
     private companion object {
         const val SCPS = School.SCPS
+
+        /** 快照的"哪一天"，用设备本地时区；和界面上的日期是同一块表。 */
+        fun todayKey(): String =
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
     }
 }
 

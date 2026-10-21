@@ -280,6 +280,14 @@ internal fun htmlParagraphs(html: String): List<String> {
  * 还有：**校方这份数据里没有教师**。`jsmc` 是教室名称不是老师（我一开始以为是老师），
  * 课名后面那个 `mc` 是课程类别（通识课/学科基础课）。所以真数据下教师那一行是空的，
  * 界面得自己让开，别拿课程类别冒充老师名字填进去。
+ *
+ * ⑤ **`ksjc=0, jsjc=0` 的条目不是课**：10-21 13:5x 他问"为什么课表里多了阳光晨跑"，
+ * 我拿设备上那把活 token 现打第 8 周，周二/周四各有一条
+ * `{kcmc:"阳光晨跑", ksjc:"0", jsjc:"0", jsmc:"体育场", sort:"0", kclbdm:""}` ——
+ * 校方自己发的，不是我们编的。它是"这天早上有晨跑"的占位：没有节次、没有时间。
+ * 以前 `periodCount` 按 `end-start+1` 兜到 1 节，界面上就变成周二周四 08:30 各多一块课，
+ * 还进了首页"今天几节"和上课提醒。现在守住 0 节，周网格/首页/提醒都按 `startPeriod >= 1`
+ * 判断"这是不是一节课"，课表顶上单独用一行"晨跑活动"标出它。
  */
 class CaptureTimetable(private val school: School) : TimetableFeed {
 
@@ -331,7 +339,9 @@ class CaptureTimetable(private val school: School) : TimetableFeed {
                                     room = room,
                                     day = weekday,
                                     startPeriod = start,
-                                    periodCount = (end - start + 1).coerceAtLeast(1),
+                                    // `ksjc=jsjc=0` 是"这天有晨跑"的活动占位，不是一节课（见类注释第 ⑤ 条），
+                                    // 记成 0 节；周网格/首页/上课提醒都按 `startPeriod >= 1` 当课。
+                                    periodCount = if (start == 0 && end == 0) 0 else (end - start + 1).coerceAtLeast(1),
                                 )
                             )
                         }
