@@ -123,17 +123,12 @@ fun ProfileScreen(onBack: () -> Unit) {
                     )
                 }
             }
-            Spacer(Modifier.height(Gap.sm))
-            Text(
-                text = "点一下换头像",
-                fontSize = Type.micro,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.pressClick {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-            )
+            /*
+             * 头像下面原来挂着一行蓝字「点一下换头像」，他 10-2x 说太碍眼，去掉。
+             * 头像本身还是可点的（点开相册），只是不再拿一行字教人点它。
+             */
             avatarNote?.let {
-                Spacer(Modifier.height(Gap.xxs))
+                Spacer(Modifier.height(Gap.xs))
                 Text(it, fontSize = Type.micro, color = ink.faint)
             }
 
