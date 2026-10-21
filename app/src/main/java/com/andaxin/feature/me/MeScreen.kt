@@ -28,6 +28,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -91,9 +93,6 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     val ink = LocalInk.current
-    // 退出是"抹掉本机这把 token"，不是删账号数据，但一旦点了就得重新输口令，
-    // 所以不给二次确认就太随手了：第一下只把这一行变成"再点一次"，第二下才真退。
-    var armedToQuit by remember { mutableStateOf(false) }
     // 学院/专业/班级/辅导员从校方拉，只读两条接口；拉不到就退回"校园账号 xxx"那行
     var profile by remember { mutableStateOf<com.andaxin.data.capture.Profile?>(null) }
     // 校方那条 checkIsInternStu 只回一个布尔（真值 `data{isInternStu:false}`），
@@ -115,21 +114,41 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             .padding(horizontal = Gap.screen),
     ) {
         Spacer(Modifier.height(Gap.md))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // 头像这一整行点进「个人信息」：资料、换头像、退出登录都在那一屏（他 10-21 09:3x）
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (session.loggedIn) Modifier.pressClick(shrink = false) { open("profile") } else Modifier)
+                .padding(vertical = Gap.xs),
+        ) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val avatarVersion by com.andaxin.core.store.AvatarStore.version.collectAsStateWithLifecycle()
+            val avatarBmp = remember(avatarVersion) { com.andaxin.core.store.AvatarStore.load(ctx) }
             Box(
                 Modifier
                     .size(40.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
                     .background(Palette.Sand, Radius.pill),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = session.userName.firstOrNull()?.toString() ?: "安",
-                    fontSize = Type.title,
-                    color = if (session.loggedIn) ink.strong else ink.muted,
-                )
+                if (avatarBmp != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = avatarBmp.asImageBitmap(),
+                        contentDescription = "头像",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape),
+                    )
+                } else {
+                    Text(
+                        text = session.userName.firstOrNull()?.toString() ?: "安",
+                        fontSize = Type.title,
+                        color = if (session.loggedIn) ink.strong else ink.muted,
+                    )
+                }
             }
             Spacer(Modifier.width(Gap.md))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = when {
                         session.loggedIn -> session.userName.ifBlank { session.account }
@@ -154,6 +173,9 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     color = ink.faint,
                 )
             }
+            if (session.loggedIn) {
+                Text("›", fontSize = Type.title, color = ink.faint)
+            }
         }
 
         if (!session.loggedIn) {
@@ -168,41 +190,11 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 
         SectionTitle("本机")
         Sheet {
-            // 宿舍那一栏撤了（他 10-21 09:2x："宿舍这栏删了"）。
-            // 报修表单里那格"宿舍"本来靠它预填，现在就是空着、自己填 ——
-            // 比在设置里多养一格只有一张表吃得上的数据干净。
+            // 宿舍、登录口令这两格都撤了（10-21 09:2x / 09:3x 他两句话）。
+            // 记住口令是登录那一屏的勾选，状态不该在本机设置里再复述一遍。
             ReminderRow()
-            Hairline()
-            PasswordRow()
         }
 
-        /*
-         * 退出登录：**只有登录着才画**。
-         *
-         * 没登录时原来写的是"退出登录（当前没登录）/ 本机没有 token" —— 一句话里
-         * 两个"没有"，还在讲 token。他要的是"退出登录就退出登录"（10-21 09:2x），
-         * 那没登录的时候这一块本来也没意义，干脆不画。
-         * 登录时平时不带副标题，只有按了第一下才说"再点一次就退出"。
-         */
-        if (session.loggedIn) {
-            Spacer(Modifier.height(Gap.md))
-            Sheet {
-                RowLine(
-                    title = "退出登录",
-                    sub = if (armedToQuit) "再点一次就退出" else "",
-                    right = if (armedToQuit) "确认?" else "",
-                    flag = if (armedToQuit) Flag.Warn else Flag.None,
-                    onClick = {
-                        if (armedToQuit) {
-                            scope.launch { graph.session.signOut() }
-                            armedToQuit = false
-                        } else {
-                            armedToQuit = true
-                        }
-                    },
-                )
-            }
-        }
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -339,43 +331,3 @@ private fun ReminderRow() {
         Text(status, fontSize = Type.micro, color = ink.faint)
     }
 }
-
-/**
- * 「记住密码」这一格的状态与出口。三件事得让他看见，不然这一格只是个开关：
- * ① 存的是 Keystore 加密后的密文，不是口令本身，而且这把密钥**不可导出**；
- * ② 记着它，到期或被顶号时 App 才能自己重登 —— 校方那条 `refresh.do` 回 404，自动续期只有这一条路；
- * ③ 反过来它会把别的客户端挤下线（校方一个账号只留一个活会话），所以给一颗明确的「忘掉」。
- */
-@Composable
-private fun PasswordRow() {
-    val graph = LocalAppGraph.current
-    val ink = LocalInk.current
-    val scope = rememberCoroutineScope()
-    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
-    var usable by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(session.remembered) {
-        // 解一次才算数：`vault.usable` 里要读 DataStore（挂起），所以整段放在协程里
-        usable = if (!session.remembered) {
-            null
-        } else {
-            val blob = graph.session.passwordBlob()
-            blob != null && graph.vault.usable(blob)
-        }
-    }
-    RowLine(
-        title = "登录口令",
-        sub = when {
-            !session.remembered && session.rememberedWhy.isNotBlank() -> "这台机器存不下：" + session.rememberedWhy
-            !session.remembered -> "没记住，到期要你自己再输一次"
-            usable == true -> "已记住，到期或被顶号时能自己重登"
-            usable == false -> "存的那份解不开了，重新登一次就好"
-            else -> "在查…"
-        },
-        right = if (session.remembered) "忘掉" else "",
-        flag = if (session.remembered) Flag.Warn else Flag.None,
-        onClick = if (session.remembered) {
-            { scope.launch { graph.session.forgetPassword() } }
-        } else null,
-    )
-}
-

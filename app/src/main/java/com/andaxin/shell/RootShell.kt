@@ -64,6 +64,7 @@ import com.andaxin.feature.modules.HolidayFormScreen
 import com.andaxin.feature.modules.HolidayListScreen
 import com.andaxin.feature.modules.LaborDetailScreen
 import com.andaxin.feature.modules.LaborListScreen
+import com.andaxin.feature.me.ProfileScreen
 import com.andaxin.feature.modules.LoginScreen
 import com.andaxin.feature.modules.MoreScreen
 import com.andaxin.feature.modules.RepairDetailScreen
@@ -100,6 +101,8 @@ object Route {
     const val SHELF = "shelf"
     const val THEME = "theme"
     const val ABOUT = "about"
+    /** 个人信息：头像、学籍资料、退出登录（从「我的」头像点进来）。 */
+    const val PROFILE = "profile"
     const val SPORT = "sport"
     const val SPORT_RUN = "sport/run"
     const val SPORT_RECORDS = "sport/records"
@@ -193,6 +196,7 @@ fun RootShell() {
         page(Route.SHELF) { Gate(appearance, open = { nav.navigate(it) }) }
         page(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
         page(Route.ABOUT) { AboutScreen(onBack = { nav.popBackStack() }) }
+        page(Route.PROFILE) { ProfileScreen(onBack = { nav.popBackStack() }) }
         page(Route.SPORT) { SportStartScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
         page(Route.SPORT_RECORDS) {
