@@ -61,6 +61,11 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             Hairline()
             Spacer(Modifier.height(Gap.sm))
             Labeled(label = "包名", value = BuildConfig.APPLICATION_ID)
+            Spacer(Modifier.height(Gap.sm))
+            Hairline()
+            Spacer(Modifier.height(Gap.sm))
+            // 《MiSans 字体知识产权许可协议》要求"在软件中特别注明使用了 MiSans 字体"
+            Labeled(label = "字体", value = "MiSans（小米，免费商用）")
         }
 
         Spacer(Modifier.height(Gap.xl))
