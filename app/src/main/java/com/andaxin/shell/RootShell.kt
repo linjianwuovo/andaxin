@@ -34,6 +34,8 @@ import com.andaxin.feature.about.AboutScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
 import com.andaxin.feature.aiclass.RecordPlayScreen
 import com.andaxin.feature.aiclass.ScanScreen
+import com.andaxin.feature.aiclass.QrSignScreen
+import com.andaxin.feature.aiclass.SignCodeScreen
 import com.andaxin.feature.home.HomeScreen
 import com.andaxin.feature.me.MeScreen
 import com.andaxin.feature.modules.OnboardingScreen
@@ -136,6 +138,11 @@ object Route {
     const val AICLASS = "aiclass"
     const val AICLASS_DETAIL = "aiclass/detail/{id}"
     const val AICLASS_SCAN = "aiclass/scan"
+    /** 六位签到码签到。 */
+    const val AICLASS_SIGNCODE = "aiclass/signcode"
+
+    /** 扫码签到：把码里的链接交给带 FIF 会话的 WebView 打开。{u} 是整条 URL。 */
+    const val AICLASS_SIGN_QR = "aiclass/signqr/{u}"
     const val AICLASS_PLAY = "aiclass/play/{id}"
     const val OPEN_COURSE = "opencourse"
     const val OPEN_COURSE_DETAIL = "opencourse/detail/{id}"
@@ -254,7 +261,24 @@ fun RootShell() {
         }
         page(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
         page(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        page(Route.AICLASS_SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
+        page(Route.AICLASS_SIGNCODE) { SignCodeScreen(onBack = { nav.popBackStack() }) }
+        page(
+            Route.AICLASS_SIGN_QR,
+            arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
+        ) { e ->
+            QrSignScreen(
+                url = e.arguments?.getString("u").orEmpty(),
+                onBack = { nav.popBackStack() },
+            )
+        }
+        page(Route.AICLASS_SCAN) {
+            ScanScreen(
+                onBack = { nav.popBackStack() },
+                onSignUrl = { url ->
+                    nav.navigate("aiclass/signqr/" + android.net.Uri.encode(url))
+                },
+            )
+        }
         page(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
             CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), open = { nav.navigate(it) }) { nav.popBackStack() }
         }

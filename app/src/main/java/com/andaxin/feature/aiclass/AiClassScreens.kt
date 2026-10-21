@@ -442,6 +442,18 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(Gap.sm))
+        // 签到码：跟扫码是同一件事的两种入口（老师报数字 / 屏幕出二维码）
+        Sheet(modifier = Modifier.pressClick { open("aiclass/signcode") }) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f)) {
+                    Text("签到码", fontSize = Type.title, color = ink.strong)
+                    Spacer(Modifier.height(Gap.xs))
+                    Text("输老师报的 6 位数字", fontSize = Type.meta, color = ink.muted)
+                }
+                Text("去签到", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.height(Gap.sm))
         Hairline()
         Spacer(Modifier.height(Gap.lg))
 
