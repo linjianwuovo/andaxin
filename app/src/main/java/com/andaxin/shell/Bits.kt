@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -151,7 +152,13 @@ fun Modifier.pressClick(enabled: Boolean = true, shrink: Boolean = true, onClick
  */
 @Composable
 fun Modifier.enterFade(key: Any? = Unit): Modifier {
-    var shown by remember(key) { mutableStateOf(false) }
+    /*
+     * 用 rememberSaveable 而不是 remember：从二级页（比如「关于」）退回来时，这一屏是
+     * **重新进组合**的，用 remember 的话"已经淡入过"这个事实跟着丢了，于是每退一次
+     * 就再播一遍 0→1 —— 反复进出「关于」看到的那一下闪就是这个。
+     * Navigation 会把每个返回栈条目的 saveable 状态存住，回来时是 true，就直接跳过动画。
+     */
+    var shown by rememberSaveable(key) { mutableStateOf(false) }
     LaunchedEffect(key) { shown = true }
     val a = animateFloatAsState(if (shown) 1f else 0f, tween(Motion.enter, easing = Motion.EaseOut), label = "enter")
     // 读 state 而不是读裸值：这样动画每帧只重画这一层，不会把整块内容 recompose 一遍
