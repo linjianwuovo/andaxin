@@ -2,8 +2,19 @@ package com.andaxin.core.map
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -22,6 +34,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.util.fastCoerceIn
@@ -125,8 +139,10 @@ fun TileMap(
         }
     }
 
+    Box(modifier = modifier) {
     Canvas(
-        modifier = modifier
+        modifier = Modifier
+            .fillMaxSize()
             .onSizeChanged { viewport = it }
             .pointerInput(zoom) {
             awaitEachGesture {
@@ -208,6 +224,35 @@ fun TileMap(
             drawCircle(Color(0xFF0D9488), radius = 7f * density, center = at)
             drawCircle(Color.White, radius = 3f * density, center = at)
         }
+    }
+
+    // 手指两指缩放之外，给鼠标/单手一个明确的加/减；范围跟手势一样锁 10..18
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ZoomButton("+") { if (zoom < 18) zoom++ }
+        ZoomButton("−") { if (zoom > 10) zoom-- }
+    }
+    }
+}
+
+@Composable
+private fun ZoomButton(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = 20.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
