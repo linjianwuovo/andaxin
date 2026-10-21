@@ -243,15 +243,20 @@ class CampusCardClient(
             val entries = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
             // 10-20 那会儿这一条叫「完美校园」，10-21 再看已经改名成「校园卡交易」——
             // 按名字硬比会静默失配。所以先认**地址**（17wanxiao 那套），认不到再按名字里带"校园卡"兜。
+            /*
+             * 入口先看清单里有没有 17wanxiao 那条；没有就**用他旧项目里那套写死的入口**：
+             * `hub.17wanxiao.com/bsacs/light.action?flag=ahxx_ecardh5_1000538`。
+             * 那个 flag 是学校在完美校园那边的租户串（他从旧项目带过来的），
+             * 不依赖校方服务清单 —— 10-21 清单里那条改名成「校园卡交易」并指向学校自己的 H5，
+             * 但 hub 这跳本身还在。
+             */
             (entries.firstOrNull { it.optString("sjdfwdz").contains("17wanxiao", true) }
                 ?: entries.firstOrNull {
                     it.optString("mc").contains("校园卡") && it.optString("sjdfwdz").startsWith("http")
                 })
                 ?.optString("sjdfwdz")
-                ?: error(
-                    "换不出校园卡会话：清单回了 ${arr.length()} 条（flag=${root.optBoolean("flag")}）" +
-                        (if (names.isEmpty()) "" else "，里面是 " + names.take(6).joinToString("、"))
-                )
+                ?.takeIf { it.contains("17wanxiao", true) }
+                ?: FALLBACK_LIGHT
         }.getOrElse { return@withContext Result.failure(Exception(it.message)) }
 
         val jar = MapJar()
@@ -327,6 +332,15 @@ class CampusCardClient(
     private companion object {
         const val HUB = "https://hub.17wanxiao.com/bsacs"
         const val ECARD = "https://ecardh5.17wanxiao.com/ecardh5"
+
+        /**
+         * 校方清单里那条 17wanxiao 入口没了之后的兜底（旧项目 `ApiConstants` 那对常量）：
+         * hub 地址 + 学校在完美校园那边的租户串。**不依赖校方服务清单** ——
+         * 10-21 清单里那条改名成「校园卡交易」并指向学校自己的 H5，但 hub 这跳本身还在。
+         */
+        const val FALLBACK_LIGHT =
+            "https://hub.17wanxiao.com/bsacs/light.action?flag=ahxx_ecardh5_1000538&ecardFunc=index"
+
         fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
     }
 }
