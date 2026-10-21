@@ -107,6 +107,39 @@ class CampusCardClient(
         return first
     }
 
+    /**
+     * 学校那一页的地址：`getAppServiceMore.do` 里「校园卡交易」那条的 `sjdfwdz`，
+     * 后面挂上和 App 里其它服务一样的身份参数（H5 就是从 query 里读 `access_token` 的）。
+     *
+     * 为什么要这条：10-21 校方把「完美校园」那条入口换成了自己的 H5
+     * （`in.aiit.edu.cn/dist/index.html#!/card-transaction/...`），换 17wanxiao 的旧链路断了。
+     * 原生那屏还能读的地方就拿原生，读不到时至少给一条官方页面能点。
+     */
+    suspend fun pageUrl(): String? {
+        val id = session.identity() ?: return null
+        val root = school.post(
+            "${School.SCPS}/appService/getAppServiceMore.do",
+            "pageIndex" to "1", "pageSize" to "60",
+        ).getOrNull() ?: return null
+        val arr = root.optJSONArray("data") ?: return null
+        val entries = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+        val raw = (entries.firstOrNull { it.optString("sjdfwdz").contains("17wanxiao", true) }
+            ?: entries.firstOrNull {
+                it.optString("mc").contains("校园卡") && it.optString("sjdfwdz").startsWith("http")
+            })?.optString("sjdfwdz") ?: return null
+        return runCatching {
+            raw.toHttpUrl().newBuilder()
+                .addQueryParameter("access_token", id.accessToken)
+                .addQueryParameter("_userCode", id.userCode)
+                .addQueryParameter("userCode", id.userCode)
+                .addQueryParameter("code", id.userCode)
+                .addQueryParameter("_userName", id.userName)
+                .addQueryParameter("_userType", id.userType)
+                .addQueryParameter("appId", School.APP_ID)
+                .build().toString()
+        }.getOrNull()
+    }
+
     private suspend fun attempt(token: String): Result<Card> {
         val bal = xyk(token, "XYK_BALANCE", "{}")
             .getOrElse { return Result.failure(it) }
@@ -204,11 +237,21 @@ class CampusCardClient(
             "pageIndex" to "1", "pageSize" to "60",
         ).mapCatching { root ->
             val arr = root.optJSONArray("data") ?: JSONArray()
-            (0 until arr.length())
-                .mapNotNull { arr.optJSONObject(it) }
-                .firstOrNull { it.optString("mc") == "完美校园" && it.optString("sjdfwdz").startsWith("http") }
+            // 出错时把这一发"到底回了什么"带出来：条数 + flag。
+            // 只写"没有那一条"分不清是"清单变了"还是"这一发根本没成"——11:5x 就是卡在这儿。
+            val names = (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("mc") }
+            val entries = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+            // 10-20 那会儿这一条叫「完美校园」，10-21 再看已经改名成「校园卡交易」——
+            // 按名字硬比会静默失配。所以先认**地址**（17wanxiao 那套），认不到再按名字里带"校园卡"兜。
+            (entries.firstOrNull { it.optString("sjdfwdz").contains("17wanxiao", true) }
+                ?: entries.firstOrNull {
+                    it.optString("mc").contains("校园卡") && it.optString("sjdfwdz").startsWith("http")
+                })
                 ?.optString("sjdfwdz")
-                ?: error("校方服务清单里没有「完美校园」那一条入口，换不出校园卡会话")
+                ?: error(
+                    "换不出校园卡会话：清单回了 ${arr.length()} 条（flag=${root.optBoolean("flag")}）" +
+                        (if (names.isEmpty()) "" else "，里面是 " + names.take(6).joinToString("、"))
+                )
         }.getOrElse { return@withContext Result.failure(Exception(it.message)) }
 
         val jar = MapJar()
@@ -254,7 +297,10 @@ class CampusCardClient(
             // 少 cookie 时这里是 14 字节纯文本 "Access timeout"，HTTP 仍是 200 —— 别当 JSON 解
             val root = runCatching { JSONObject(text) }.getOrNull()
                 ?: return@use Result.failure(
-                    Exception("换校园卡会话没成（服务端回的是纯文本：${text.take(24)}）"),
+                    Exception(
+                        "换校园卡会话没成（服务端回的是纯文本：${text.take(24)}；" +
+                            "入口 ${withIdentity.host}${withIdentity.encodedPath}）"
+                    ),
                 )
             val token = root.optString("token")
             if (!root.optBoolean("result_", false) || token.length < 20) {

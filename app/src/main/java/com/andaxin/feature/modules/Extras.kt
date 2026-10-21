@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.sp
+import com.andaxin.shell.Chip
+import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -86,7 +88,7 @@ fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
 @Composable
 fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ink = LocalInk.current
-    val (card, why, reload) = rememberCard()
+    val (card, why, page, reload) = rememberCard()
     ScaffoldPage(title = "校园卡", onBack = onBack, onRefresh = { reload() }) {
         Box(
             Modifier
@@ -105,11 +107,25 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     Text(
                         text = when {
                             card != null -> "补助钱包 ¥ %.2f · ${card.statusText}".format(card.subsidy)
-                            why != null -> "余额暂时没取到 · 下拉再试一次"
+                            why != null -> "余额暂时没取到"
                             else -> "正在取余额…"
                         },
                         fontSize = Type.micro, color = Palette.Cream.copy(alpha = 0.78f),
                     )
+                }
+            }
+        }
+        // 为什么没取到要写在卡面下面：卡面上只有一句"没取到"，人没法判断是会话、网络还是第三方。
+        // 这一层走 LoadWhy：没登录是灰字 + 去登录，真失败才是红色那句。
+        if (why != null) {
+            Spacer(Modifier.height(Gap.sm))
+            LoadWhy(why, wide = false)
+            // 校方 10-21 把「完美校园」换成了自己的 H5，原生这条换不出会话时，
+            // 至少给一条官方页面能点（页面地址和应用里其它服务同源，身份走 query）。
+            if (!page.isNullOrBlank()) {
+                Spacer(Modifier.height(Gap.sm))
+                Chip("打开校园卡交易页", picked = false) {
+                    open("web/" + com.andaxin.feature.web.encodeUrl(page))
                 }
             }
         }
@@ -160,19 +176,30 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
 /** 卡片数据只给校园卡两屏用，就地取，不再多开一个 Model。 */
 @Composable
-private fun rememberCard(): Triple<com.andaxin.data.capture.CampusCardClient.Card?, String?, suspend () -> Unit> {
+private fun rememberCard(): CardHolder {
     val graph = LocalAppGraph.current
     var card by remember { mutableStateOf<com.andaxin.data.capture.CampusCardClient.Card?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
+    var page by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
         val r = graph.card.card()
         card = r.getOrNull()
         why = r.exceptionOrNull()?.message
+        // 没拿到才去问"官方页面在哪"：拿到了原生数据就不必多这一条
+        page = if (r.isSuccess) null else graph.card.pageUrl()
     }
     LaunchedEffect(Unit) { reload() }
-    return Triple(card, why, { reload() })
+    return CardHolder(card, why, page) { reload() }
 }
+
+/** [rememberCard] 的四样东西。Triple 装不下了，单独起一个名字，读的地方也清楚。 */
+private data class CardHolder(
+    val card: com.andaxin.data.capture.CampusCardClient.Card?,
+    val why: String?,
+    val page: String?,
+    val reload: suspend () -> Unit,
+)
 
 private fun money(f: com.andaxin.data.capture.CampusCardClient.Flow): String =
     (if (f.income) "+" else "-") + "%.2f".format(f.yuan) + (if (f.what.isBlank()) "" else " ${f.what}")
@@ -184,8 +211,10 @@ private fun money(f: com.andaxin.data.capture.CampusCardClient.Flow): String =
 @Composable
 fun CardFlowsScreen(onBack: () -> Unit) {
     val ink = LocalInk.current
-    val (card, why, reload) = rememberCard()
-    ScaffoldPage(title = "校园卡流水", onBack = onBack, onRefresh = { reload() }) {
+    val holder = rememberCard()
+    val card = holder.card
+    val why = holder.why
+    ScaffoldPage(title = "校园卡流水", onBack = onBack, onRefresh = { holder.reload() }) {
         if (card == null) {
             Text(
                 text = why ?: "正在取…",
