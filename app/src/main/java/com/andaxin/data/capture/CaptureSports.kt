@@ -313,15 +313,18 @@ class CaptureSports(
         if (draft.points.size < 2) {
             return Result.failure(IOException("这一场没采到轨迹点（室内/没给定位），交上去也会判无效，先不交"))
         }
-        if (draft.exerciseId.isBlank() || draft.memberId.isBlank()) {
-            return Result.failure(IOException("这一场没有会话 id，交不上去 —— 开始的时候没拿到"))
+        if (draft.memberId.isBlank()) {
+            return Result.failure(IOException("这一场没有 memberId，交不上去 —— 开始的时候没拿到"))
         }
         val endText = serverTimeText() ?: fmtTime(draft.endedAtMillis)
         val startText = fmtTime(draft.startedAtMillis)
         val speed = draft.km / (draft.seconds / 3600.0)
         val list = SportsUploadCodec.buildListField(
             SportsUploadCodec.Run(
-                exerciseId = draft.exerciseId,
+                // 官方那四条上传报文（10-14 17:57，全 200、data.id 是真 id）里
+                // `exerciseId` 的值就是空串 —— 十个键照旧加密，值给空。
+                // 我们原先把 extraId 塞进去，服务端 iBatis 就报"Could not set parameters"。
+                exerciseId = "",
                 memberId = draft.memberId,
                 runningType = draft.runningType,
                 startText = startText,
@@ -336,21 +339,33 @@ class CaptureSports(
         val code = school.userCode()
         val token = school.token()
         val name = school.userName()
-        val root = school.postH5(
+        /*
+         * 2026-10-21 22:11 官方安小信自己发出的两条上传（米11 上 tcpdump 抓 8082 现抓现拆）：
+         * 第一条 200 + `data.id:"fb592e54…"` 真落库，第二条同一场回 `data.id:"0"`。逐项对出来的形状：
+         *   头：`studentCode: <学号>` —— 它是**请求头**，不是表单字段。我们先前把它塞进表单，
+         *       服务端读不到，才先报 `studentCode` 为 null 的"无效的列类型 1111"、
+         *       补进表单后又改报"Could not set parameters"。
+         *   体：就六个键，顺序 `list / access_token / _userCode / userId / _userName / appId`；
+         *       姓名在包上是 urlencode 一次的（3 个字 → 27 字节），FormBody 正好给这一份。
+         *   list：十个键全加密，第一个（exerciseId）值是空串，第九个（runningRoute）明文。
+         * 一个键都不多给。
+         */
+        val root = school.postExact(
             "$BASE/extra/addExtraCheckNew.do",
-            "access_token" to token,
-            // 官方上传表单里有它；10-21 18:3x 那次没带，服务端 iBatis 直接
-            // `studentCode` 参数为 null 报“无效的列类型 1111”。别省。
+            listOf(
+                "list" to list,
+                "access_token" to token,
+                "_userCode" to code,
+                "userId" to code,
+                "_userName" to name,
+                "appId" to SportsUploadCodec.APP_ID,
+            ),
             "studentCode" to code,
-            "userId" to code,
-            "_userName" to name,
-            "appId" to SportsUploadCodec.APP_ID,
-            "list" to list,
         ).getOrElse { e ->
             val raw = e.message.orEmpty()
-            // 服务端把 iBatis 整段栈甩回来了，界面上只留一句能看懂的
+            // 服务端把 iBatis 整段栈甩回来了：留够长度，那一句里点名是哪个参数没设进去
             val short = if (raw.contains("Exception") || raw.contains("SQLException")) {
-                "学校数据库拒了这次提交（参数没对上）。原文开头：" + raw.take(120) + "…"
+                "学校数据库拒了这次提交（参数没对上）。原文：" + raw.take(600) + "…"
             } else {
                 raw.ifBlank { "提交失败" }
             }

@@ -218,19 +218,42 @@ class School(private val session: SessionStore) {
         }
     }
 
+    /**
+     * 只发调用方给的那几个字段，一个身份字段都不自动补。
+     *
+     * 为什么单开这一条：跑步上传 `extra/addExtraCheckNew.do` 的官方报文（10-14 那四条 +
+     * 10-21 22:11 在米11 上现抓的两条，全 200、`data.id` 是真 id）表单**只有六个键**
+     * `list / access_token / _userCode / userId / _userName / appId`，
+     * 而学号是走**请求头** `studentCode` 的。
+     * 我们原先走 [postH5]，它还会再塞 `accessToken`、`_userType`、`userCode`、`xh` 四个，
+     * 外加我们自己把 `studentCode` 当成表单字段补进去 —— 服务端那套 iBatis 参数表被搅过两次
+     * （先报 `studentCode` 为 null 的"无效的列类型 1111"，补上之后改报
+     * "Could not set parameters for mapping"）。这一条按官方那六个键 + 那一个头原样发。
+     */
+    suspend fun postExact(
+        url: String,
+        fields: List<Pair<String, String>>,
+        vararg headers: Pair<String, String>,
+    ): Result<JSONObject> = withContext(Dispatchers.IO) { send(url, fields, headers = headers.toList()) }
+
     /** 同一个键只留调用方那一份（见类注释第四个坑）。 */
     private fun dedupe(identity: List<Pair<String, String>>, extra: List<Pair<String, String>>): List<Pair<String, String>> {
         val given = extra.mapTo(HashSet()) { it.first }
         return identity.filterNot { it.first in given } + extra
     }
 
-    private suspend fun send(url: String, pairs: List<Pair<String, String>>, timeoutMs: Long? = null) =
-        withContext(Dispatchers.IO) {
-            val form = FormBody.Builder().apply { pairs.forEach { (k, v) -> add(k, v) } }.build()
-            val request = Request.Builder().url(url).post(form)
-                .header("Accept", "application/json")
-                .header("User-Agent", AGENT)
-                .build()
+    private suspend fun send(
+        url: String,
+        pairs: List<Pair<String, String>>,
+        timeoutMs: Long? = null,
+        headers: List<Pair<String, String>> = emptyList(),
+    ) = withContext(Dispatchers.IO) {
+        val form = FormBody.Builder().apply { pairs.forEach { (k, v) -> add(k, v) } }.build()
+        val request = Request.Builder().url(url).post(form)
+            .header("Accept", "application/json")
+            .header("User-Agent", AGENT)
+            .apply { headers.forEach { (k, v) -> header(k, v) } }
+            .build()
             // 单发限时：整个客户端的读超时是 20 秒，那一档是给"课表、成绩这种真在算的"留的。
             // 有些口（`process/getForm.do`）校方现在给到 46 秒还只回 214 字节 ——
             // 跟着 20 秒等，就是详情白屏 20 秒换几行没有的字段。这种口自己报一个短得多的数。
