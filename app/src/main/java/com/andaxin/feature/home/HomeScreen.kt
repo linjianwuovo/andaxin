@@ -20,12 +20,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -114,10 +116,11 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         model.refresh()
         graph.home.load().onSuccess { extras = it }
     }, modifier.fillMaxSize()) {
+        val scroll = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(horizontal = Gap.screen),
         ) {
             Spacer(Modifier.height(Gap.md))
@@ -126,10 +129,17 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
              * 名字太长（少数民族姓名、英文名）就不接：那一行会折成两行，问候语就不像问候语了。
              */
             val name = session.userName.trim()
+            /*
+             * 折叠大标题（照他发的那份规范）：静止 28sp，往上滚最多 60dp 收到 18sp；
+             * 周次那行跟着淡出。没有做"缩到中间顶栏"那一半 —— 我们这屏没有独立顶栏，
+             * 硬做会变成一颗悬空的字。
+             */
+            val collapse by remember { derivedStateOf { (scroll.value / 60f).coerceIn(0f, 1f) } }
+            val titleSize = Type.display * (1f - collapse * 0.36f)
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = (d?.greeting ?: "…") + if (session.loggedIn && name.length in 2..4) "，$name" else "",
-                    fontSize = Type.display,
+                    fontSize = titleSize,
                     fontWeight = FontWeight.SemiBold,
                     color = ink.strong,
                     modifier = Modifier.weight(1f),
@@ -161,6 +171,12 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             if (!extras?.calendar.isNullOrBlank()) {
                 Spacer(Modifier.height(Gap.xxs))
                 Text(extras!!.calendar, fontSize = Type.meta, color = ink.faint)
+            }
+
+            // 【第一高效】下一节直接以主色卡摆在首屏：课名、教室、还有几分钟，一眼看完
+            d?.nextLesson?.takeIf { it.isNotBlank() }?.let { line ->
+                Spacer(Modifier.height(Gap.md))
+                NextClassCard(line, ink.dark, Modifier.enterFade(session.generation))
             }
 
             Spacer(Modifier.height(Gap.md))
@@ -201,23 +217,6 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                         modifier = Modifier.weight(1f),
                     )
                     Spacer(Modifier.weight(1f))
-                }
-                // 下一节是一句话不是数字，所以它单独占一行，不跟上面那两行格子挤。
-                // 右边补上"几点到几点"：服务端那句话里只有"第 3 节"，没有钟点，人还得自己去课表里换。
-                if (!d?.nextLesson.isNullOrBlank()) {
-                    val text = d!!.nextLesson!!.let { Regex("（[^）]*）").replace(it, "") }
-                    // 不用正则：句子里那句是"第 3 节"或"第 3-4 节"，数出两个数字就够了。
-                    val numStart = text.indexOf('第')
-                    val numEnd = if (numStart >= 0) text.indexOf('节', numStart + 1) else -1
-                    val span = if (numStart >= 0 && numEnd > numStart) {
-                        val parts = text.substring(numStart + 1, numEnd).trim().split('-', '–')
-                        val from = parts.firstOrNull()?.trim()?.toIntOrNull()
-                        val to = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: from
-                        if (from == null) null else com.andaxin.core.schedule.Periods.rangeText(from, to!! - from + 1)
-                    } else null
-                    Spacer(Modifier.height(Gap.sm))
-                    Hairline()
-                    RowLine("下一节", sub = text, right = span.orEmpty())
                 }
             }
 
@@ -279,6 +278,80 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 }
             }
             Spacer(Modifier.height(Gap.xxl))
+        }
+    }
+}
+
+/**
+ * 「下一节」主色卡（照他发的那份规范里的 Now-Focus Card）。
+ *
+ * 左边课名 + 教室，右边一颗小药丸写"还有 N 分钟"或这一节的起止时间。
+ * 服务端给的那句话是"第3节 · 高等数学 · 博文楼S301"，钟点从 `Periods` 里按节次查 ——
+ * 和课程表同一张作息表。
+ */
+@Composable
+private fun NextClassCard(line: String, dark: Boolean, modifier: Modifier = Modifier) {
+    val parts = line.split("·").map { it.trim() }.filter { it.isNotBlank() }
+    val period = parts.firstOrNull()?.filter { it.isDigit() }?.toIntOrNull()
+    val course = parts.getOrNull(1).orEmpty().ifBlank { parts.firstOrNull().orEmpty() }
+    val room = parts.drop(2).joinToString(" · ")
+    val start = period?.let { com.andaxin.core.schedule.Periods.startAt(it) }
+    val span = period?.let { com.andaxin.core.schedule.Periods.rangeText(it, 1) }.orEmpty()
+
+    val now = java.util.Calendar.getInstance()
+    val nowMin = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
+    val startMin = start?.let { t ->
+        val h = t.substringBefore(':').toIntOrNull()
+        val m = t.substringAfter(':').toIntOrNull()
+        if (h == null || m == null) null else h * 60 + m
+    }
+    val pill = when {
+        startMin == null -> span
+        nowMin in startMin..(startMin + 45) -> "正在上课"
+        nowMin in (startMin - 30)..startMin -> "还有 ${startMin - nowMin} 分钟"
+        else -> span
+    }
+
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+    val bg = if (dark) {
+        androidx.compose.ui.graphics.Brush.linearGradient(listOf(Palette.NightCardBlue, Color(0xFF16213F)))
+    } else {
+        androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF2F6BFF), Color(0xFF1E44C9)))
+    }
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(bg, shape)
+            .padding(horizontal = Gap.lg, vertical = Gap.lg),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("下一节", fontSize = Type.micro, color = Palette.Cream.copy(alpha = 0.72f))
+            Spacer(Modifier.height(Gap.xs))
+            Text(
+                text = course,
+                fontSize = (Type.title.value + 2).sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 2,
+                lineHeight = Type.bodyLine,
+            )
+            if (room.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(room, fontSize = Type.meta, color = Palette.Cream.copy(alpha = 0.82f), maxLines = 1)
+            }
+        }
+        if (pill.isNotBlank()) {
+            Spacer(Modifier.width(Gap.md))
+            Box(
+                Modifier
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = if (dark) 0.14f else 0.18f))
+                    .padding(horizontal = Gap.md, vertical = Gap.sm),
+            ) {
+                Text(pill, fontSize = Type.meta, color = Color.White, fontWeight = FontWeight.Medium)
+            }
         }
     }
 }
