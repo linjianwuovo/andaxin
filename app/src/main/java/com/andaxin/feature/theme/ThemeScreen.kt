@@ -1,6 +1,8 @@
 package com.andaxin.feature.theme
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,10 +29,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.R
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
@@ -40,6 +47,7 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.DayNight
+import com.andaxin.core.settings.HeroStyle
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
 import kotlinx.coroutines.launch
@@ -77,6 +85,70 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 options = listOf("跟随系统" to DayNight.System, "白天" to DayNight.Light, "夜间" to DayNight.Dark),
                 picked = draft.dayNight,
             ) { draft = draft.copy(dayNight = it); commit() }
+        }
+
+        Spacer(Modifier.height(Gap.xl))
+        GroupTitle("首页壁纸")
+        /*
+         * 参考图里那句"壁纸是材质，不是一张贴图"：首页没课/课都上完时那一块用它。
+         * 四档缩略图直接能看到长什么样，不用先选了再回首页试 —— 自动按早/中/晚挑。
+         */
+        Sheet {
+            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                HEROES.forEach { (label, style, res) ->
+                    val on = draft.hero == style
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .pressClick { draft = draft.copy(hero = style); commit() },
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .clip(Radius.field)
+                                .then(
+                                    if (on) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, Radius.field)
+                                    else Modifier
+                                ),
+                        ) {
+                            if (res == null) {
+                                // 「自动」用早/中/夜三段色表示"跟着时间走"
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.linearGradient(
+                                                listOf(Color(0xFFBFD9E6), Color(0xFFE8C48A), Color(0xFF16213F))
+                                            )
+                                        ),
+                                )
+                            } else {
+                                Image(
+                                    painter = painterResource(res),
+                                    contentDescription = label,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(Gap.xs))
+                        Text(
+                            text = label,
+                            fontSize = Type.tiny,
+                            color = if (on) ink.strong else ink.faint,
+                            fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "只在首页那一块出现；自动：早上晨雾、下午金树、夜里月亮。",
+                fontSize = Type.micro,
+                color = ink.faint,
+                modifier = Modifier.padding(top = Gap.md),
+            )
         }
 
         Spacer(Modifier.height(Gap.xl))
@@ -156,6 +228,14 @@ private val ACCENTS = listOf(
     "琥珀" to "#B45309",
     "紫" to "#7C3AED",
     "玫红" to "#E5484D",
+)
+
+/** 首页壁纸四档：自动 + 三张实图。第三项 null = 自动（画三段渐变）。 */
+private val HEROES = listOf(
+    Triple("自动", HeroStyle.Auto, null),
+    Triple("晨雾", HeroStyle.Dawn, R.drawable.hero_dawn),
+    Triple("金树", HeroStyle.Dusk, R.drawable.hero_dusk),
+    Triple("月夜", HeroStyle.Night, R.drawable.hero_night),
 )
 
 @Composable
