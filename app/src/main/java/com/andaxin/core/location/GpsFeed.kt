@@ -32,21 +32,30 @@ class GpsFeed(private val context: Context) {
 
     fun fixes(): Flow<Fix> = callbackFlow {
         val lm = context.getSystemService(LocationManager::class.java)
-        var last: LatLng? = null
+        // 地图要的是"最近一次定位"，精度差也先挪过去；轨迹只认精度够的 lastGood。
+        var lastAny: LatLng? = null
+        var lastGood: LatLng? = null
         val listener = LocationListener { loc ->
-            val bundleOk = loc.accuracy <= 35f
             val p = LatLng(loc.latitude, loc.longitude)
-            val prev = last
-            val meters = prev?.let { Geo.metersBetween(it, p) } ?: 0.0
-            when {
-                !bundleOk -> Unit
-                prev != null && meters > jumpFloorMeters -> Unit   // 跳点，丢
-                prev != null && abs(meters - 0.0) < 1e-9 -> Unit   // 完全同一个点
-                else -> {
-                    last = p
-                    trySend(Fix(p, meters.coerceAtLeast(if (meters > jitterFloorMeters) meters else 0.0), loc.accuracy))
+            val acc = loc.accuracy
+            val prevAny = lastAny
+            val jump = prevAny?.let { Geo.metersBetween(it, p) } ?: 0.0
+            if (prevAny != null && jump > jumpFloorMeters * 2.5) return@LocationListener
+            lastAny = p
+            val usable = acc <= 35f
+            var meters = 0.0
+            if (usable) {
+                val prev = lastGood
+                val d = prev?.let { Geo.metersBetween(it, p) } ?: 0.0
+                if (prev == null) {
+                    lastGood = p
+                } else if (d > jitterFloorMeters) {
+                    // 小于 2 米当抖动：不更新 lastGood，让慢走也能攒够 2 米再记
+                    lastGood = p
+                    meters = d
                 }
             }
+            trySend(Fix(p, meters, acc, usable))
         }
         val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             .filter { lm.isProviderEnabled(it) }
@@ -78,5 +87,27 @@ class GpsFeed(private val context: Context) {
         awaitClose { lm.removeUpdates(listener) }
     }
 
-    data class Fix(val where: LatLng, val meters: Double, val accuracyMeters: Float)
+    /**
+     * 上次已知位置：地图进屏先落在这儿，别拿一个写死的坐标冒充"你在的位置"。
+     * 可能有点旧；第一颗可用 GPS 点来了就会顶掉。
+     */
+    fun lastKnown(): LatLng? {
+        if (!available) return null
+        val lm = context.getSystemService(LocationManager::class.java) ?: return null
+        return listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER,
+        ).mapNotNull { provider ->
+            runCatching { lm.getLastKnownLocation(provider) }.getOrNull()
+        }.maxByOrNull { it.time }?.let { LatLng(it.latitude, it.longitude) }
+    }
+
+    data class Fix(
+        val where: LatLng,
+        val meters: Double,
+        val accuracyMeters: Float,
+        /** 精度够 35 米、能进轨迹 / 累距离的那一档。 */
+        val usable: Boolean,
+    )
 }

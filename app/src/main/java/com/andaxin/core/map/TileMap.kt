@@ -60,6 +60,8 @@ fun TileMap(
     pathWgs: List<LatLng> = emptyList(),
     markersWgs: List<LatLng> = emptyList(),
     zoomStart: Int = 16,
+    /** 跑动中：中心跟着最后一个点走。静态看图/明细不要开，开了会把人家拖的地图拽回去。 */
+    follow: Boolean = false,
     onPickWgs: ((LatLng) -> Unit)? = null,
     onCenterMoved: ((LatLng) -> Unit)? = null,
 ) {
@@ -79,6 +81,14 @@ fun TileMap(
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableIntStateOf(zoomStart) }
     var centerGcj by remember { mutableStateOf(Geo.wgsToGcj(centerWgs.latitude, centerWgs.longitude)) }
+    /*
+     * 跟随模式：跑起来以后 centerWgs 每个点都在变，但上面那个 centerGcj 是 remember 的，
+     * 不主动改就永远停在进屏那一刻 —— 10-21 傍晚他跑起来看到的就是"地图上的位置不是我"：
+     * 引擎在收点、读秒也涨，地图却钉在原地。这里跟着最后一个点重新落中心。
+     */
+    LaunchedEffect(centerWgs.latitude, centerWgs.longitude) {
+        if (follow) centerGcj = Geo.wgsToGcj(centerWgs.latitude, centerWgs.longitude)
+    }
 
     fun pxOf(g: LatLng, z: Int) = Offset(
         Tiles.lngToPixelX(g.longitude, z, dd).toFloat(),

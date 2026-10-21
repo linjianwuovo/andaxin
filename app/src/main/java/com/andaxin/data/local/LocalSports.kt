@@ -3,6 +3,7 @@ package com.andaxin.data.local
 import com.andaxin.data.RunDetail
 import com.andaxin.data.RunDraft
 import com.andaxin.data.RunRecord
+import com.andaxin.data.SportPlan
 import com.andaxin.data.SportSummary
 import com.andaxin.data.SportsFeed
 
@@ -17,6 +18,13 @@ class LocalSports : SportsFeed {
     override suspend fun summary() = Result.success(
         SportSummary(weekKm = 3.2, weekRequiredKm = 5.0, weekCount = 2, bestKm = 3.14, semesterKm = 41.6)
     )
+
+    /** 计划卡没有占位值：编一个 60 公里的目标比空着更糟。 */
+    override suspend fun plan(): Result<SportPlan> =
+        Result.failure(UnsupportedOperationException("运动计划要校方数据，未登录时没有可看的"))
+
+    override suspend fun beginRun(): Result<com.andaxin.data.RunSession> =
+        Result.failure(UnsupportedOperationException("开始跑步要校方会话，未登录时开不了"))
 
     override suspend fun records(page: Int) = Result.success(
         listOf(
