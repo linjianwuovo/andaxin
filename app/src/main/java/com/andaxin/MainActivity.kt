@@ -10,6 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.AndaXinTheme
 import com.andaxin.core.settings.Appearance
+import com.andaxin.shell.ElasticFeel
 import com.andaxin.shell.RootShell
 
 class MainActivity : ComponentActivity() {
@@ -24,7 +25,8 @@ class MainActivity : ComponentActivity() {
                 .collectAsStateWithLifecycle(initialValue = Appearance())
             AndaXinTheme(dayNight = appearance.dayNight, accentHex = appearance.accent) {
                 CompositionLocalProvider(LocalAppGraph provides graph) {
-                    RootShell()
+                    // 列表拉到头那一下的触觉；弹性回弹还是系统自己的（见 shell/Feel.kt）
+                    ElasticFeel { RootShell() }
                 }
             }
         }

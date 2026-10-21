@@ -1,6 +1,8 @@
 package com.andaxin.shell
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,9 +32,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,10 +78,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 能点的东西按下去得有个交代。
  *
  * 两种交代，分开用：
- * ① [shrink] = true —— 独立的胶囊、图标格、按钮：整块缩到 0.97。
- *    只有 3%，因为缩多了会看出"抖"，1% 以下又等于没反馈；
+ * ① [shrink] = true —— 独立的胶囊、图标格、按钮、整张卡：按他 10-21 那份规范，
+ *    缩到 **0.98**（原来 0.97，2% 就够，缩多了像抖），同时叠一层很淡的白光（"微亮高光"）；
  * ② [shrink] = false —— 卡在一张卡里的行：不能缩，一缩就把同卡别的行也带歪，
- *    所以改成压暗到 0.55，这是 HyperOS 设置列表那一下。
+ *    所以改成压暗到 0.55，这是 HyperOS 设置列表那一下（这种行也不叠高光，白一下反而像闪）。
+ *
+ * 触觉：只在**真的点中**那一下响（`onClick` 里），不在手指刚落下时响 ——
+ * 卡片铺满整屏，按在卡上起手一划也是"按下"，按下去就震会变成一路滑一路嗡嗡。
+ * 震感走系统的 `CONTEXT_CLICK`，用户关了系统触感反馈就自动没有。
  *
  * 涟漪（ripple）在这儿一律关掉：这一层已经给足了反馈，再叠一圈水波纹就是两种风格打架。
  * 松手比按下稍慢（[Motion.press] / [Motion.pressRelease]），手指抬起来的那一下能看见"回弹"，
@@ -86,22 +95,50 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun Modifier.pressClick(enabled: Boolean = true, shrink: Boolean = true, onClick: () -> Unit): Modifier {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
+    val view = LocalView.current
+    val ink = LocalInk.current
     val amount = animateFloatAsState(
         targetValue = if (pressed) 1f else 0f,
-        animationSpec = tween(if (pressed) Motion.press else Motion.pressRelease, easing = Motion.EaseOut),
+        // 按下去是一段贴手的 tween；松手走 spring —— 2% 的形变带一点回弹刚好，
+        // 用直线 tween 回来会像"被人按回去"（他发的那份规范里的 Spring Physics）。
+        animationSpec = if (pressed) {
+            tween(Motion.press, easing = Motion.EaseOut)
+        } else {
+            spring(dampingRatio = 0.62f, stiffness = 900f)
+        },
         label = "press",
     )
+    /*
+     * 高光的圆角按高度猜：胶囊/按钮的高都在 40dp 内，取 height/2 就是一颗药丸；
+     * 卡片更高，封顶 16dp —— 正好是 `Radius.Card`。不另加参数，62 个调用点不用逐个改。
+     */
+    val glow = if (ink.dark) 0.10f else 0.16f
     return this
         .graphicsLayer {
             val t = amount.value
             if (shrink) {
-                scaleX = 1f - t * 0.03f
-                scaleY = 1f - t * 0.03f
+                scaleX = 1f - t * 0.02f
+                scaleY = 1f - t * 0.02f
             } else {
                 alpha = 1f - t * 0.45f
             }
         }
-        .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick)
+        .then(
+            if (shrink) Modifier.drawWithContent {
+                drawContent()
+                val t = amount.value
+                if (t > 0.001f) {
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = glow * t),
+                        cornerRadius = CornerRadius(minOf(size.height / 2f, 16.dp.toPx())),
+                    )
+                }
+            } else Modifier
+        )
+        .clickable(interactionSource = src, indication = null, enabled = enabled) {
+            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+            onClick()
+        }
 }
 
 /**
