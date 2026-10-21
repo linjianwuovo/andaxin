@@ -5,6 +5,7 @@ import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -291,6 +292,9 @@ fun ShelfBar(
                         BarMaterial.Solid -> Modifier.background(Palette.Paper, Capsule())
                     },
                 )
+                // 一圈 1dp 描边：底栏底下常压着白卡片、玻璃本身也是白的，没有这圈线
+                // 就成了一块"纯色圆角块"（他 11:38 那句"tab 怎么不是悬浮的"说的就是这个）。
+                .border(1.dp, ink.hairline, Capsule())
                 .height(BAR_HEIGHT.dp)
                 .fillMaxWidth(),
         ) {}
