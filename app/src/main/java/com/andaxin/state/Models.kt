@@ -27,6 +27,8 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
     val firstLoad: Boolean = true,
     val data: Dashboard? = null,
+    /** 屏幕上这批数字是上一份快照、正在换新的。界面据此写"更新中"，不把旧数字冒充成刚拉的。 */
+    val refreshing: Boolean = false,
     val today: List<TimetableSlot> = emptyList(),
     val error: String? = null,
 )
@@ -45,6 +47,8 @@ class HomeModel(
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     init {
+        // 冷启动先用上一次的数字垫屏：六条并行接口回来之前，屏幕不再是一片空白
+        _state.value = _state.value.copy(data = feed.cached())
         reload()
     }
 
@@ -57,6 +61,7 @@ class HomeModel(
      * 所以给一个能等的（[reload] 是后台起协程，不等）。
      */
     suspend fun refresh() {
+        _state.value = _state.value.copy(refreshing = true)
         val dash = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
         val slots = try { timetable.week(0) } catch (e: Exception) { Result.failure(e) }
         val list = slots.getOrDefault(emptyList())
@@ -71,6 +76,7 @@ class HomeModel(
             // 周一看着对，周二起就把周一的课当今天显示（10-20 上午装机读屏撞中的就是这个）。
             today = list.filter { it.day == Periods.today() },
             error = (dash.exceptionOrNull() ?: slots.exceptionOrNull())?.message,
+            refreshing = false,
         )
     }
 }

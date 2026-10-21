@@ -83,24 +83,49 @@ class DashboardSource(
     private val messages: MessageFeed,
     private val sports: SportsFeed,
     private val dormBoard: CaptureDormBoard,
+    /** 冷启动垫屏用的上一份快照（由 AppGraph 用 `Snap` 递进来，数据层不直接拿 Context）。 */
+    private val readSnap: () -> String? = { null },
+    private val writeSnap: (String) -> Unit = {},
 ) : DashboardFeed {
+
+    override fun cached(): Dashboard? = readSnap()?.let { text ->
+        runCatching {
+            val o = org.json.JSONObject(text)
+            Dashboard(
+                greeting = o.optString("greeting"),
+                todayLessons = if (o.isNull("todayLessons")) null else o.optInt("todayLessons"),
+                nextLesson = if (o.isNull("nextLesson")) null else o.optString("nextLesson"),
+                unreadMessages = o.optInt("unreadMessages"),
+                dormCheckState = o.optString("dormCheckState"),
+                runSemesterKm = if (o.isNull("runSemesterKm")) null else o.optDouble("runSemesterKm"),
+                runMorningKm = if (o.isNull("runMorningKm")) null else o.optDouble("runMorningKm"),
+                runWhy = if (o.isNull("runWhy")) null else o.optString("runWhy"),
+            )
+        }.getOrNull()
+    }
 
     override suspend fun snapshot(): Result<Dashboard> {
         if (!session.signedIn()) return local.snapshot()
         // 五路互不相干，一起发：首页要"一次出"，不该一路加载一路蹦
         return coroutineScope {
-            val counts = async { school.post("$SCPS/msgCenter/notReadCount.do").getOrNull() }
-            val week = async { today.week(0).getOrDefault(emptyList()) }
-            val dorm = async { tasks.all().getOrNull() }
-            val nextDormTask = async { dormBoard.nextTask() }
-            val msgs = async { messages.page(0).getOrNull() }
-            val run = async { sports.summary() }
+            /*
+             * 每路各自封顶 8 秒：这几条在学校那边快慢差很远（fdygl 那条偶尔要十几秒），
+             * 没有闸的话首页就跟着最慢的那条一起卡着 —— 用户看到的是"整屏都不出来"。
+             * 超时的那一路按"没拿到"处理，格子上是"—"，别拖累其它几路。
+             */
+            val cap = 8_000L
+            val counts = async { kotlinx.coroutines.withTimeoutOrNull(cap) { school.post("$SCPS/msgCenter/notReadCount.do").getOrNull() } }
+            val week = async { kotlinx.coroutines.withTimeoutOrNull(cap) { today.week(0).getOrDefault(emptyList()) } }
+            val dorm = async { kotlinx.coroutines.withTimeoutOrNull(cap) { tasks.all().getOrNull() } }
+            val nextDormTask = async { kotlinx.coroutines.withTimeoutOrNull(cap) { dormBoard.nextTask() } }
+            val msgs = async { kotlinx.coroutines.withTimeoutOrNull(cap) { messages.page(0).getOrNull() } }
+            val run = async { kotlinx.coroutines.withTimeoutOrNull(cap) { sports.summary() } }
             val data = counts.await()?.optJSONObject("data")
             val greeting = data?.optString("date").orEmpty().ifBlank { "你好" }
             // 未读只数列表里 readFlag=0 的那几条，理由见上面那段取证
             val unread = msgs.await()?.count { it.unread } ?: 0
             // 全周接口一次给七天，首页那一格只要今天
-            val allWeek = week.await()
+            val allWeek = week.await() ?: emptyList()
             val slots = allWeek.filter { it.day == com.andaxin.core.schedule.Periods.today() }
             val next = slots.firstOrNull { it.startPeriod >= com.andaxin.core.schedule.Periods.current() }
                 ?: slots.lastOrNull()
@@ -114,10 +139,9 @@ class DashboardSource(
             } else {
                 bed?.receiveTime?.let { t -> if (t.length > 5) t.substring(5) else t }.orEmpty()
             }
-            val runR = run.await()
+            val runR = run.await() ?: Result.failure(Exception("跑步那两条超时了"))
             val sports0 = runR.getOrNull()
-            Result.success(
-                Dashboard(
+            val dash = Dashboard(
                     greeting = greeting,
                     // 整周一条都没有 = 这份数据没拿到，别报成"今天 0 节" ——
                     // 10-21 凌晨装机就撞上这一条：课表那一屏还有课，首页已经写"今天有课 0 节"
@@ -127,9 +151,24 @@ class DashboardSource(
                     dormCheckState = bedAt.ifBlank { "—" },
                     runSemesterKm = sports0?.semesterKm,
                     runMorningKm = sports0?.morningKm,
-                    runWhy = if (sports0 == null) whyOf(runR.exceptionOrNull()) else null,
-                )
+                runWhy = if (sports0 == null) whyOf(runR.exceptionOrNull()) else null,
             )
+            // 落一份给下次冷启动垫屏用（只存首页这几个数，不存任何身份/单据）
+            runCatching {
+                writeSnap(
+                    org.json.JSONObject()
+                        .put("greeting", dash.greeting)
+                        .put("todayLessons", dash.todayLessons ?: org.json.JSONObject.NULL)
+                        .put("nextLesson", dash.nextLesson ?: org.json.JSONObject.NULL)
+                        .put("unreadMessages", dash.unreadMessages)
+                        .put("dormCheckState", dash.dormCheckState)
+                        .put("runSemesterKm", dash.runSemesterKm ?: org.json.JSONObject.NULL)
+                        .put("runMorningKm", dash.runMorningKm ?: org.json.JSONObject.NULL)
+                        .put("runWhy", dash.runWhy ?: org.json.JSONObject.NULL)
+                        .toString(),
+                )
+            }
+            Result.success(dash)
         }
     }
 

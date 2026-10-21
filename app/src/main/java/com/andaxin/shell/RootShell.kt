@@ -341,6 +341,21 @@ private fun Gate(appearance: Appearance, open: (String) -> Unit) {
         if (session.loggedIn) graph.keepAlive.ensureFresh()
     }
 
+    /*
+     * 后台预热（登录着才有意义）：
+     * ① AI 课堂要 fif.ensure 的 SSO + 学期 + 课程三发，冷启动时全摊在"点进 AI 课堂"那一刻；
+     * ② 校园卡要 hub → redirect → authorize 三跳换会话；
+     * ③ 课表/首页各走各的，这里不碰。
+     * 全都 fire-and-forget，失败不弹任何东西 —— 用户没点那一屏之前，这些失败不归他管。
+     */
+    LaunchedEffect(session.loggedIn) {
+        if (session.loggedIn) {
+            launch { runCatching { graph.fif.ensure() } }
+            launch { runCatching { graph.aiCourses.courses() } }
+            launch { runCatching { graph.card.warm() } }
+        }
+    }
+
     /**
      * 会话半路没了（被顶号 / 校方夜里清了会话），别等下一次回前台才处理。
      *

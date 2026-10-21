@@ -126,12 +126,19 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
              * 名字太长（少数民族姓名、英文名）就不接：那一行会折成两行，问候语就不像问候语了。
              */
             val name = session.userName.trim()
-            Text(
-                text = (d?.greeting ?: "…") + if (session.loggedIn && name.length in 2..4) "，$name" else "",
-                fontSize = Type.display,
-                fontWeight = FontWeight.SemiBold,
-                color = ink.strong,
-            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = (d?.greeting ?: "…") + if (session.loggedIn && name.length in 2..4) "，$name" else "",
+                    fontSize = Type.display,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ink.strong,
+                    modifier = Modifier.weight(1f),
+                )
+                // 屏幕上这批数字是上一份快照时，明写"更新中" —— 不把旧数字冒充成刚拉的
+                if (state.refreshing && state.data != null) {
+                    Text("更新中…", fontSize = Type.micro, color = ink.faint)
+                }
+            }
             /*
              * 没登录时这一屏那几个数是本机编的示例（`LocalDashboard`）。
              * 「只要还在用 Local*，界面上那条说明就不许摘」是这条线的规矩，而首页是原来

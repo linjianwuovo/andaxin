@@ -140,7 +140,11 @@ class AppGraph(val context: Context) {
 
     val dashboard: DashboardFeed by lazy {
         // 未读数走 messages 这一路（跟消息屏同一个来源），不再用 notReadCount 那个 count —— 见 DashboardSource
-        DashboardSource(school, session, LocalDashboard(messages, timetable), timetable, ywlz, messages, sports, dormBoard)
+        DashboardSource(
+            school, session, LocalDashboard(messages, timetable), timetable, ywlz, messages, sports, dormBoard,
+            readSnap = { com.andaxin.core.store.Snap.read(context, "home") },
+            writeSnap = { com.andaxin.core.store.Snap.write(context, "home", it) },
+        )
     }
 
     /** 成绩与学分：列表和详情共用一份进程内缓存（详情就是把列表那一行展开，校方没有单独接口） */
