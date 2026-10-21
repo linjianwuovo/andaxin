@@ -8,8 +8,15 @@ import java.util.Calendar
  *
  * 学校改作息的话这张表要跟着接口走 —— 目前抓到的接口里没有一条给节次时间，
  * 所以它是我们自己拍的，界面上不许把它说成校方给的。
+ *
+ * **10-21 早上他确认过：接口不给，但实际作息就是这个时间。** 一节课 45 分钟，
+ * 课间 10 分钟、大课间 20 分钟（12:00 / 12:55 那两节之间是午休）。
+ * 所以"结束时刻"可以算出来显示，但注释里仍要记住它是**按 45 分钟推的**，不是接口字段。
  */
 object Periods {
+
+    /** 一节课的时长（分钟）。他确认过的实际作息。 */
+    const val LENGTH_MINUTES = 45
 
     val START_AT = listOf(
         "08:00", "08:55", "10:00", "10:55", "12:00", "12:55",
@@ -43,8 +50,9 @@ object Periods {
     fun periodNow(now: Calendar = Calendar.getInstance()): Int? {
         val minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
         START_MINUTES.forEachIndexed { i, start ->
-            val end = START_MINUTES.getOrNull(i + 1) ?: start + 45
-            if (minute in start until end) return i + 1
+            // 结束 = 开始 + 45 分钟，**不是**下一节的开始：两节之间有 10 分钟课间，
+            // 按下一节算会把课间也算成上课（08:45–08:55 那十分钟会一直高亮着第一节）。
+            if (minute in start until (start + LENGTH_MINUTES)) return i + 1
         }
         return null
     }
@@ -59,6 +67,21 @@ object Periods {
 
     /** 第 [period] 节（1 起）的上课时刻，"HH:mm"。越界回 null，调用方自己决定怎么兜。 */
     fun startAt(period: Int): String? = START_AT.getOrNull(period - 1)
+
+    private fun hhmm(minutes: Int): String = "%02d:%02d".format(minutes / 60, minutes % 60)
+
+    /** 第 [period] 节的下课时刻（开始 + 45 分钟）。越界回 null。 */
+    fun endAt(period: Int): String? = START_MINUTES.getOrNull(period - 1)?.let { hhmm(it + LENGTH_MINUTES) }
+
+    /**
+     * 从第 [startPeriod] 节起连上 [periodCount] 节的整段时间，"08:00–09:35"。
+     * 只看今天那一屏和首页的"下一节"用它 —— 只给节次不给钟点，人还是得自己换一遍。
+     */
+    fun rangeText(startPeriod: Int, periodCount: Int): String? {
+        val from = startAt(startPeriod) ?: return null
+        val to = endAt(startPeriod + periodCount.coerceAtLeast(1) - 1) ?: return null
+        return "$from–$to"
+    }
 
     /** 本周（`offset=0`）或第 offset 周后的那一周，周一 00:00:00.000。 */
     fun weekMonday(now: Calendar = Calendar.getInstance(), offset: Int = 0): Calendar {
