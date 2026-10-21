@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
 
 // 地图默认中心。这个坐标不是本校，是从一个报文实样里抄来占位的 ——
 // 真正的校区中心要等我们自己定位/抓包再定，别拿它当事实。
-private val CAMPUS = LatLng(31.146501, 118.635061)
+internal val CAMPUS = LatLng(31.146501, 118.635061)
 
 /* ───────────────────────── ① 开始运动 ───────────────────────── */
 
@@ -73,20 +73,12 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // 高级模式下的模拟跑：不碰系统定位，只沿本机画的线生成轨迹
-    val advanced by graph.advanced.state.collectAsStateWithLifecycle(initialValue = false)
-    var routes by remember { mutableStateOf<List<RouteTemplate>>(emptyList()) }
-    var armed by remember { mutableStateOf<RouteTemplate?>(null) }
-    var pace by remember { mutableStateOf(7.0) }
-    var showPicker by remember { mutableStateOf(false) }
-    LaunchedEffect(advanced, showPicker) {
-        if (advanced) routes = graph.sports.routes()
-        if (!advanced) {
-            armed = null
-            showPicker = false
-            graph.mockGps.stop()
-        }
-    }
+    /*
+     * 调试那一档不在这一屏里：beta 那份给一颗「模拟路线」加选线面板（`core/debug/DebugKit.kt`
+     * 的 sportEntry），正式版那份是 null，这一屏就什么都画不出来。
+     * 这里只留一样东西：选上了哪条线（armed）—— 开始那一处要拿它喂端内回放。
+     */
+    var armed by remember { mutableStateOf<com.andaxin.core.debug.Armed?>(null) }
 
     /*
      * 先向校方要这一场的会话 id（大一大二 extraId/memberId，大三大四 startRunning.do），
@@ -100,16 +92,12 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             val r = try { graph.sports.beginRun() } catch (e: Exception) { Result.failure(e) }
             starting = false
             r.onSuccess { session ->
-                val mock = armed
-                if (mock != null) {
-                    // 他旧项目里写的那套端内假 GPS：沿这条线三秒喂一个点，
-                    // 跑步页照常走真 GPS 的那条链
-                    graph.mockGps.startRoute(mock.points, pace)
-                    graph.engine.startReal(graph.gps, session)
-                } else {
-                    graph.mockGps.stop()
-                    graph.engine.startReal(graph.gps, session)
-                }
+                // 选上了线就让 beta 那份的端内回放沿这条线三秒喂一个点（他自己写的那套）；
+                // 没选上就是真 GPS。两条路进的是同一条采集链。正式版这边 debug 是 null，永远走真 GPS。
+                val mock = graph.debug?.mock
+                val plan0 = armed
+                if (plan0 != null) mock?.startRoute(plan0.points, plan0.paceKmh) else mock?.stop()
+                graph.engine.startReal(graph.gps, session)
                 com.andaxin.core.run.RunService.start(ctx)
                 open("sport/run")
             }.onFailure {
@@ -175,55 +163,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Text(it, fontSize = Type.meta, lineHeight = Type.metaLine, color = MaterialTheme.colorScheme.error)
         }
 
-        /*
-         * 调试模式下的「模拟路线」：就按他定的位置和名字 —— 开始键下面一颗次按钮，
-         * 点开挑一条自己画的线/配速，再点开始。普通模式完全看不到。
-         */
-        if (advanced) {
-            Spacer(Modifier.height(Gap.sm))
-            Row {
-                HalfButton(
-                    if (armed != null) "模拟路线 · ${armed!!.name}" else "模拟路线",
-                ) { showPicker = !showPicker }
-            }
-            if (showPicker) {
-                Spacer(Modifier.height(Gap.sm))
-                Sheet {
-                    if (routes.isEmpty()) {
-                        Text("还没有画过线，先新建一条。", fontSize = Type.meta, color = ink.faint)
-                        Spacer(Modifier.height(Gap.sm))
-                    }
-                    routes.forEachIndexed { i, r ->
-                        RowLine(
-                            title = r.name,
-                            sub = "${r.points.size} 个点",
-                            right = if (armed?.id == r.id) "已选" else "",
-                            onClick = {
-                                armed = r
-                                showPicker = false
-                            },
-                        )
-                        if (i != routes.lastIndex) Hairline()
-                    }
-                    Spacer(Modifier.height(Gap.sm))
-                    Text("配速", fontSize = Type.micro, color = ink.faint)
-                    Spacer(Modifier.height(Gap.xs))
-                    Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                        listOf(6.0, 8.0, 10.0).forEach { p ->
-                            Chip("${p.toInt()} km/h", pace == p) { pace = p }
-                        }
-                    }
-                    Spacer(Modifier.height(Gap.md))
-                    Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                        HalfButton("新建路线") {
-                            showPicker = false
-                            open("sport/planner")
-                        }
-                        HalfButton("收起") { showPicker = false }
-                    }
-                }
-            }
-        }
+        graph.debug?.sportEntry?.invoke(armed, { armed = it }, open)
 
         // 官方这一屏右上角那颗「运动记录」和记录页里的维护入口，收进这一排。
         Spacer(Modifier.height(Gap.md))
@@ -449,7 +389,8 @@ fun SportRunScreen(onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     val state by graph.engine.state.collectAsStateWithLifecycle()
-    val mockOn by graph.mockGps.isOn.collectAsStateWithLifecycle()
+    val mockOn by (graph.debug?.mock?.isOn ?: com.andaxin.core.debug.DebugKit.off)
+        .collectAsStateWithLifecycle()
     var confirmStop by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf<RunDraft?>(null) }
     var submitting by remember { mutableStateOf(false) }
@@ -467,7 +408,7 @@ fun SportRunScreen(onBack: () -> Unit) {
 
     fun abandon() {
         graph.engine.abandon()
-        graph.mockGps.stop()
+        graph.debug?.mock?.stop()
         onBack()
     }
 
@@ -619,7 +560,7 @@ fun SportRunScreen(onBack: () -> Unit) {
                 text = buildString {
                     val acc = state.accuracy
                     if (mockOn) {
-                        append("端内模拟 · 精度 ±${acc?.toInt() ?: 3} 米 · 步速由配速决定。")
+                        append(graph.debug?.mockNote(acc?.toInt()).orEmpty())
                     } else {
                         if (acc != null) append("GPS 精度 ±${acc.toInt()} 米 · ")
                         append("只认真实位移，踏步/原地不动距离不会涨。")
@@ -640,10 +581,10 @@ fun SportRunScreen(onBack: () -> Unit) {
             HalfButton(if (state.paused) "继续" else "暂停") {
                 if (state.paused) {
                     graph.engine.resume()
-                    graph.mockGps.paused = false
+                    graph.debug?.mock?.paused = false
                 } else {
                     graph.engine.pause()
-                    graph.mockGps.paused = true
+                    graph.debug?.mock?.paused = true
                 }
             }
             HalfButton(if (confirmStop) "再点一次确认结束" else "结束") {
@@ -651,7 +592,7 @@ fun SportRunScreen(onBack: () -> Unit) {
                     confirmStop = true
                 } else {
                     draft = graph.engine.finish()
-                    graph.mockGps.stop()
+                    graph.debug?.mock?.stop()
                     confirmStop = false
                 }
             }
@@ -670,7 +611,7 @@ fun SportRunScreen(onBack: () -> Unit) {
             // 运动开始只有一条路：手机 GPS。以前这句在 Free 档写"沿演示圈走"，
             // 而 startReal() 给的正是 Free —— 真跑反而被标成假轨迹，读着正好反了。
             text = if (mockOn) {
-                "端内模拟：沿选中的线三秒一个点，带随机游走；不碰系统定位。"
+                graph.debug?.mockBanner.orEmpty()
             } else {
                 "采的是手机 GPS 的真实位置。楼边、室内会飘，飘出来的那几段学校那边也可能判无效。"
             },
@@ -848,71 +789,10 @@ fun SportMaintainScreen(onBack: () -> Unit) {
     }
 }
 
-/* ─────────────── ⑥ 模拟线（只有高级入口能进来） ─────────────── */
-
-@Composable
-fun RoutePlannerScreen(onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    val ink = LocalInk.current
-    var points by remember { mutableStateOf<List<LatLng>>(emptyList()) }
-    // 从"上次已知位置"起画；拿不到才退回那个占位点。别再让画线的人从市区开始挪。
-    var center by remember { mutableStateOf(graph.gps.lastKnown() ?: CAMPUS) }
-    var saved by remember { mutableStateOf(false) }
-
-    Page("画一条模拟线", onBack) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.82f)
-                .background(Palette.Sand, Radius.card),
-        ) {
-            TileMap(
-                centerWgs = center,
-                pathWgs = points,
-                markersWgs = points.takeIf { it.isNotEmpty() }?.let { listOf(it.last()) } ?: emptyList(),
-                zoomStart = 18,
-                modifier = Modifier.fillMaxSize().clip(Radius.card),
-                onPickWgs = { points = points + it },
-                onCenterMoved = { center = it },
-            )
-        }
-        Spacer(Modifier.height(Gap.md))
-        Text(
-            "点图加一个拐点，连起来就是模拟要走的线；拖动地图挪视野，两指缩放。",
-            fontSize = Type.meta,
-            lineHeight = Type.metaLine,
-            color = ink.faint,
-        )
-        Spacer(Modifier.height(Gap.lg))
-        Sheet {
-            Labeled(label = "点数", value = "${points.size}")
-            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "长度", value = "%.0f 米".format(lengthOf(points)))
-            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "圈数", value = "%.2f".format(lengthOf(points) / 400.0))
-        }
-        Spacer(Modifier.height(Gap.lg))
-        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-            HalfButton("撤销最后一点") { if (points.isNotEmpty()) points = points.dropLast(1) }
-            HalfButton(if (saved) "已存" else "保存这条") {
-                if (points.size < 2) return@HalfButton
-                scope.launch {
-                    graph.sports.saveRoute(
-                        RouteTemplate(UUID.randomUUID().toString(), "模拟线 ${points.size} 点", points),
-                    )
-                    saved = true
-                }
-            }
-        }
-        Spacer(Modifier.height(Gap.xxl))
-    }
-}
-
 /* ───────────────────────── 公共小块 ───────────────────────── */
 
 @Composable
-private fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -959,7 +839,7 @@ private fun BigButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String, onClick: () -> Unit) {
+internal fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String, onClick: () -> Unit) {
     Box(
         Modifier
             .weight(1f)
@@ -977,7 +857,7 @@ private fun LaunchedLoad(block: suspend () -> Unit) {
     androidx.compose.runtime.LaunchedEffect(Unit) { block() }
 }
 
-private fun lengthOf(points: List<LatLng>): Double {
+internal fun lengthOf(points: List<LatLng>): Double {
     var t = 0.0
     for (i in 1 until points.size) {
         t += com.andaxin.core.map.Geo.metersBetween(points[i - 1], points[i])

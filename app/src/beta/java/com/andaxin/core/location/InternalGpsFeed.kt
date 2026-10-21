@@ -1,5 +1,6 @@
 package com.andaxin.core.location
 
+import com.andaxin.core.debug.MockGps
 import com.andaxin.core.map.Geo
 import com.andaxin.core.map.LatLng
 import kotlin.math.abs
@@ -24,32 +25,35 @@ import kotlin.random.Random
  * 点源接到 [GpsFeed] 上，跑步/定位页拿到的就是这条线。
  *
  * 仍然是"端内回放"：**不会自己提交**，跑完的提交按钮还是人按。
+ *
+ * 这个类只存在于 beta 源集：正式版（stable flavor）不编译它，
+ * 界面那边通过 `core/debug/DebugKit.kt` 的 [MockGps] 接口拿它，正式版那份接口是 null。
  */
-class InternalGpsFeed {
+class InternalGpsFeed : MockGps {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
 
     private val _isOn = MutableStateFlow(false)
-    val isOn: StateFlow<Boolean> = _isOn.asStateFlow()
+    override val isOn: StateFlow<Boolean> = _isOn.asStateFlow()
 
     private val _point = MutableStateFlow<LatLng?>(null)
     val point: StateFlow<LatLng?> = _point.asStateFlow()
 
     private val _atMillis = MutableStateFlow(0L)
-    val atMillis: StateFlow<Long> = _atMillis.asStateFlow()
+    override val atMillis: StateFlow<Long> = _atMillis.asStateFlow()
 
     private val _accuracy = MutableStateFlow(8f)
-    val accuracy: StateFlow<Float> = _accuracy.asStateFlow()
+    override val accuracy: StateFlow<Float> = _accuracy.asStateFlow()
 
     private val _fedCount = MutableStateFlow(0)
     val fedCount: StateFlow<Int> = _fedCount.asStateFlow()
 
     /** 跑步页按暂停时置位：暂停期间一个点都不发，位置也不往前挪。 */
     @Volatile
-    var paused: Boolean = false
+    override var paused: Boolean = false
 
-    fun startRoute(points: List<LatLng>, paceKmh: Double) {
+    override fun startRoute(points: List<LatLng>, paceKmh: Double) {
         stop()
         if (points.size < 2) return
         val sampler = LineSampler(points)
@@ -92,7 +96,7 @@ class InternalGpsFeed {
         }
     }
 
-    fun stop() {
+    override fun stop() {
         job?.cancel()
         job = null
         paused = false
@@ -101,7 +105,7 @@ class InternalGpsFeed {
         _atMillis.value = 0L
     }
 
-    fun snapshot(): LatLng? = if (_isOn.value) _point.value else null
+    override fun snapshot(): LatLng? = if (_isOn.value) _point.value else null
 
     private class LineSampler(private val points: List<LatLng>) {
         val total: Double

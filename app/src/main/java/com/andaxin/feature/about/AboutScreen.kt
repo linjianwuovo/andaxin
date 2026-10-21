@@ -46,23 +46,12 @@ import com.andaxin.core.design.Type
 fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
     val graph = LocalAppGraph.current
-    val advanced by graph.advanced.state.collectAsStateWithLifecycle(initialValue = false)
-    val scope = rememberCoroutineScope()
     /*
-     * 和旧项目一样的开法：连点十下版本号，每两下间隔超过 1.5 秒就从头数。
-     * 打开后运动页才多出模拟跑入口；关掉那一行就连着入口一起消失。
+     * 调试这一档整个不在 main 里：`graph.debug` 由 flavor 给 —— beta 那份给实现
+     * （连点十下开门 + 关于页那一格 + 运动页「模拟路线」），正式版给 null。
+     * 所以这里既没有计数、也没有那一格，只有一个"有面板就把事件递过去"的口子。
      */
-    var taps by remember { mutableIntStateOf(0) }
-    var lastTapAt by remember { mutableLongStateOf(0L) }
-    fun registerVersionTap() {
-        val now = android.os.SystemClock.elapsedRealtime()
-        taps = if (now - lastTapAt > 1500L) 1 else taps + 1
-        lastTapAt = now
-        if (taps >= 10) {
-            taps = 0
-            scope.launch { graph.advanced.set(true) }
-        }
-    }
+    val debug = graph.debug
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -80,11 +69,11 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.sm))
             Hairline()
             Spacer(Modifier.height(Gap.sm))
-            // 十下开高级模式：只在版本这一行计数，别的行点了不算
+            // 版本这一行是调试那一档唯一的入口：递一下计数，正式版这边 debug 是 null，什么都不发生
             Labeled(
                 label = "版本",
                 value = BuildConfig.VERSION_NAME,
-                modifier = Modifier.pressClick(shrink = false) { registerVersionTap() },
+                modifier = Modifier.pressClick(shrink = false) { debug?.versionTapped() },
             )
             Spacer(Modifier.height(Gap.sm))
             Hairline()
@@ -97,35 +86,7 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             Labeled(label = "字体", value = "MiSans（小米，免费商用）")
         }
 
-        if (advanced) {
-            Spacer(Modifier.height(Gap.xl))
-            Sheet {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("调试模式", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "开始运动页会多出「模拟路线」",
-                            fontSize = Type.micro,
-                            color = ink.faint,
-                        )
-                    }
-                    Switch(
-                        checked = true,
-                        onCheckedChange = { on ->
-                            if (!on) scope.launch { graph.advanced.set(false) }
-                        },
-                    )
-                }
-                Spacer(Modifier.height(Gap.sm))
-                Text(
-                    "调试功能内的所有功能仅供开发者调试，不允许通过其中任何功能进行滥用行为，所有责任由使用者自己承担。",
-                    fontSize = Type.tinier,
-                    lineHeight = Type.metaLine,
-                    color = ink.faint,
-                )
-            }
-        }
+        debug?.aboutCard?.invoke()
 
         Spacer(Modifier.height(Gap.xl))
         Spacer(Modifier.height(Gap.lg))

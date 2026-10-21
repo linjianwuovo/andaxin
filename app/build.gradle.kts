@@ -22,11 +22,30 @@ android {
         applicationId = "com.andaxin"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "0.7.7-试做"
+        versionCode = 42
+        versionName = "0.8.0"
 
         // 只出 arm64：装机就是米11 和那台 OPPO，多一套 abi 只是让包胖 30%
         ndk { abiFilters += "arm64-v8a" }
+    }
+
+    /*
+     * 两条线：
+     *   beta   —— 带调试那一档（关于页连点十下、端内假 GPS、模拟路线、画线页）。
+     *            实现全在 `app/src/beta/java`，versionName 后缀 -beta。
+     *   stable —— 正式版。`app/src/stable/java` 里只有一份返回 null 的插座工厂，
+     *            那些类连编译都不参与，dex / 资源里搜不到"模拟路线"。
+     * 编哪条：assembleBetaRelease / assembleStableRelease。
+     */
+    flavorDimensions += "channel"
+    productFlavors {
+        create("beta") {
+            dimension = "channel"
+            versionNameSuffix = "-beta"
+        }
+        create("stable") {
+            dimension = "channel"
+        }
     }
 
     signingConfigs {
