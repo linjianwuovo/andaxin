@@ -265,13 +265,12 @@ class AppGraph(val context: Context) {
     /** 「我的」那一页的学院/专业/班级/辅导员 */
     val profile by lazy { CaptureProfile(school) }
 
-    /** 运动：记录是占位，路线规划是真的（存本机文件） */
     /**
      * 运动这一路：读侧走校方那台 sports:8082（总量/记录/维护申请三条已现打验过），
-     * 路线模板本来就在本机、上传那两条口没抓到实样所以仍由 Local 那侧明确回失败。
+     * 上传那两条口没抓到实样，所以仍由 Local 那侧明确回失败。
      * 见 `CaptureSports` 顶上那段取证。
      */
-    private val localSports by lazy { LocalSports(File(context.filesDir, "sport_routes.json")) }
+    private val localSports by lazy { LocalSports() }
 
     val sports: SportsFeed by lazy { CaptureSports(school, localSports) }
 
