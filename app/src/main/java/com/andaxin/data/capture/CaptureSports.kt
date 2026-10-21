@@ -183,12 +183,19 @@ class CaptureSports(
                     km = km,
                     minutes = minutesOf(start, o.optString("endDate")),
                     pacePerKm = pace(km, minutesOf(start, o.optString("endDate"))),
-                    // exerciseState 实样只见过 "1" 和 "2"，**服务端没给过枚举表**。
-                    // 10-14 那三条里 1 是 3.33/1.83/1.36 公里、2 是 1 公里整 —— 看着像 1=有效 2=不足，
-                    // 但那是一次巧合对上的，所以这里不写"无效原因"，只把状态码原样带出去。
+                    /*
+                     * `exerciseState` 现在有两把实样了：
+                     * "1" = 有效（07:29 的 2.01km、07:18 的 1.00km、10-20 的 1.01km 都是 1）；
+                     * "2" = 无效（10-21 夜我们交的 0.00km 那几条都是 2，明细里校方原话是
+                     * "本次运动低于1公里，故无效"）。列表这一行只放两个字，
+                     * 那句原话在明细里读 `remark`，别在这儿摆状态码糊成一条报错。
+                     */
                     valid = o.optString("exerciseState") == "1",
-                    invalidReason = if (o.optString("exerciseState") == "1") ""
-                    else "校方给的 exerciseState=${o.optString("exerciseState")}（含义没有实样）",
+                    invalidReason = when (val st = o.optString("exerciseState")) {
+                        "1" -> ""
+                        "2" -> "无效"
+                        else -> "校方给的状态码 $st（含义没对上）"
+                    },
                 )
             },
         )
