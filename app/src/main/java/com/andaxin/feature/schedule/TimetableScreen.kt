@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,6 +71,29 @@ private const val GUTTER = 28
 /** 星期头那一行的高度：左列也要垫同样高，不然时间轴和格子对不齐。 */
 private const val HEADER_HEIGHT = 24
 
+/**
+ * 一格多高：**放得下就把行拉开，放不下就还是 44dp 让它滚**。
+ *
+ * 原来写死 44dp，12 节一共 528dp；在 411×914dp 这块屏上第 12 节底下会空出 100dp 出头一条白，
+ * 而他一眼看见的就是那条白（10-21 早上他说的就是这句"底下留了一大块白"）。
+ *
+ * 减数 163dp 是**在这台机器上量出来的**（1440×3200 / density 3.5，App 内容区 783dp 高）：
+ * 44dp 时网格底落在内容区 y=683dp（屏幕 y=716dp）。
+ * 于是 `(783 − 8 − 683) / 12 = +7.7dp` 一行 → 51.7dp，网格底回到 775dp，离内容区底 8dp。
+ * 换成 `视口 − 163` 是因为 683 + 8 里那块"网格以上的固定高度"（标题 + 周次芯片 + 表头 + 几处行距）
+ * 一共 155dp，这个数和行高无关，所以只需要从视口里减掉一次。
+ * **底栏那条玻璃画在内容区之外**（它的上沿在屏幕 818dp，内容区到 816dp 就完了），
+ * 所以肉眼上看是网格离底栏约 43dp 的一段呼吸 —— 再往上拉就会觉得格子糊在栏上。
+ *
+ * 上限 58dp 是给更高屏幕留的余量：再往上拉，一格空格子会显得比课本身还重。
+ * 换了字号或改了标题区，这 155dp 会跟着变，偏了的表现是"底下多一条窄白"或"贴住底栏"，
+ * 都不是错位；真要跟着变，量一次这个数就行。
+ */
+private fun rowHeightFor(viewport: Dp): Dp {
+    val gridRoom = viewport - 163.dp
+    return (gridRoom / PERIOD_TIMES.size.toFloat()).coerceIn(ROW_HEIGHT.dp, 58.dp)
+}
+
 @Composable
 fun TimetableScreen(modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
@@ -94,6 +119,13 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
 
     // 这一屏也支持下拉：整周没拿到时，下面会给一条「重试」，但用户更习惯直接拽一下
     Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
+        /*
+         * 要一层 `BoxWithConstraints` 只是为了拿到"这一屏有多高"：格子铺不满时把行高拉开，
+         * 别在 19:55 那一行底下留一条白。里面的 Column 照样滚动 —— 行高只在"能放下"的时候变大，
+         * 放不下（节数多、字号大）时仍是 44dp 往下滚，不会把内容裁掉。
+         */
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+        val viewport = maxHeight
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -123,7 +155,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             if (showDayMode) {
                 DayList(state.slots.filter { it.day == today }.ifEmpty { state.slots }, today)
             } else {
-                Grid(state.slots, today, periodNow)
+                Grid(state.slots, today, periodNow, rowHeightFor(viewport))
             }
 
             if (state.slots.isEmpty() && !state.firstLoad && state.error == null) {
@@ -135,6 +167,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.lg))
             state.error?.let { ErrorLine(it, retry = { model.load(state.weekOffset) }) }
             Spacer(Modifier.height(Gap.xxl))
+        }
         }
     }
 }
@@ -156,7 +189,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
  * 而不是 09:55，整张表看着就是"区块没对准"。
  */
 @Composable
-private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
+private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: Dp) {
     val ink = LocalInk.current
     val accent = MaterialTheme.colorScheme.primary
 
@@ -175,7 +208,7 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
             Spacer(Modifier.height(HEADER_HEIGHT.dp))
             PERIOD_TIMES.forEachIndexed { i, start ->
                 Box(
-                    Modifier.height(ROW_HEIGHT.dp).fillMaxWidth(),
+                    Modifier.height(rowH).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -222,7 +255,7 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
                     var cursor = 1
                     list.forEachIndexed { i, slot ->
                         if (slot.startPeriod > cursor) {
-                            Spacer(Modifier.height(((slot.startPeriod - cursor) * ROW_HEIGHT).dp))
+                            Spacer(Modifier.height(rowH * (slot.startPeriod - cursor)))
                         }
                         // 连排几节就占几行；万一校方排出两门课同一节起，前一门裁到一行，
                         // 后一门照排 —— 宁可挤，也不许把课藏掉（藏掉看着像没排课）。
@@ -232,12 +265,13 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
                             slot, span,
                             isToday && periodNow != null &&
                                 periodNow in slot.startPeriod until (slot.startPeriod + span),
+                            rowH,
                         )
                         cursor = slot.startPeriod + span
                     }
                     // 尾巴补满，几列才一样高
                     if (cursor <= PERIOD_TIMES.size) {
-                        Spacer(Modifier.height(((PERIOD_TIMES.size - cursor + 1) * ROW_HEIGHT).dp))
+                        Spacer(Modifier.height(rowH * (PERIOD_TIMES.size - cursor + 1)))
                     }
                 }
             }
@@ -247,13 +281,13 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?) {
 
 /** 一门课一格。[span] 是连排几节，就占几行高。 */
 @Composable
-private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean) {
+private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean, rowH: Dp) {
     val ink = LocalInk.current
     val (tint, bar) = courseInk(slot.course)
     Column(
         Modifier
             .fillMaxWidth()
-            .height((span * ROW_HEIGHT - 3).dp)
+            .height(rowH * span - 3.dp)
             .padding(horizontal = 1.5.dp, vertical = 1.5.dp)
             .background(tint, Radius.tag)
             .border(
