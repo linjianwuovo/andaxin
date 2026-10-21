@@ -62,8 +62,24 @@ class RunEngine(private val scope: CoroutineScope) {
 
     private var job: Job? = null
     private var startedAt = 0L
+    private var pausedTotalMillis = 0L
+    private var pausedAtMillis = 0L
     /** 开始那一场时校方给的会话，结束时原样带进 draft 去提交。 */
     private var session: RunSession? = null
+
+    /**
+     * 读秒按墙钟算，不按"协程醒了几次"累加。
+     * 10-21 傍晚他 2 分钟走完 260 米，界面只写 0:30 —— 计时协程被系统压过之后
+     * 一次只补 1 秒，越跑越慢。现在每次都从 startedAt 扣掉暂停段重算，晚醒也一次追平。
+     */
+    private fun elapsedSeconds(now: Long = System.currentTimeMillis()): Int {
+        if (startedAt <= 0L) return 0
+        val pausedExtra = if (_state.value.paused) {
+            (now - pausedAtMillis).coerceAtLeast(0L)
+        } else 0L
+        return ((now - startedAt - pausedTotalMillis - pausedExtra) / 1000L)
+            .toInt().coerceAtLeast(0)
+    }
 
     fun start(
         route: List<LatLng>,
@@ -82,6 +98,8 @@ class RunEngine(private val scope: CoroutineScope) {
         val high = (target * 1.15).coerceAtMost(6.9)
         val wander = Wander(Random(System.nanoTime()))
         startedAt = System.currentTimeMillis()
+        pausedTotalMillis = 0L
+        pausedAtMillis = 0L
         this.session = session
         _state.value = RunState(active = true, mode = mode)
 
@@ -100,7 +118,7 @@ class RunEngine(private val scope: CoroutineScope) {
                     )
                     val now = System.currentTimeMillis()
                     _state.value = _state.value.copy(
-                        seconds = _state.value.seconds + (TICK_MS / 1000).toInt(),
+                        seconds = elapsedSeconds(now),
                         meters = _state.value.meters + speed * (TICK_MS / 1000.0),
                         points = _state.value.points + RunPoint(now, point, speed),
                         here = point,
@@ -123,6 +141,8 @@ class RunEngine(private val scope: CoroutineScope) {
     /** 真 GPS 采集：定点由系统给，我们只负责串成轨迹。[session] 是开始前向校方要的那两个 id。 */
     fun startReal(gps: com.andaxin.core.location.GpsFeed, session: RunSession? = null) {
         startedAt = System.currentTimeMillis()
+        pausedTotalMillis = 0L
+        pausedAtMillis = 0L
         this.session = session
         _state.value = RunState(active = true, mode = RunMode.Free)
         job?.cancel()
@@ -137,8 +157,9 @@ class RunEngine(private val scope: CoroutineScope) {
                 while (isActive && _state.value.active) {
                     delay(1_000)
                     val s = _state.value
-                    if (s.active && !s.paused) {
-                        _state.value = s.copy(seconds = s.seconds + 1)
+                    // 晚醒也一次追平：按墙钟算，不累加
+                    if (s.active) {
+                        _state.value = s.copy(seconds = elapsedSeconds())
                     }
                 }
             }
@@ -171,15 +192,23 @@ class RunEngine(private val scope: CoroutineScope) {
     }
 
     fun pause() {
+        if (_state.value.paused) return
+        pausedAtMillis = System.currentTimeMillis()
         _state.value = _state.value.copy(paused = true)
     }
 
     fun resume() {
-        _state.value = _state.value.copy(paused = false)
+        if (!_state.value.paused) return
+        val now = System.currentTimeMillis()
+        pausedTotalMillis += (now - pausedAtMillis).coerceAtLeast(0L)
+        pausedAtMillis = 0L
+        _state.value = _state.value.copy(paused = false, seconds = elapsedSeconds(now))
     }
 
     /** 结束并把这一场交出去。不发网络请求 —— 上传由界面层在用户确认后调 SportsFeed.submit。 */
     fun finish(): RunDraft {
+        val seconds = elapsedSeconds()
+        val endedAt = System.currentTimeMillis()
         job?.cancel()
         val s = _state.value
         val session = this.session
@@ -187,9 +216,9 @@ class RunEngine(private val scope: CoroutineScope) {
         this.session = null
         return RunDraft(
             startedAtMillis = startedAt,
-            endedAtMillis = System.currentTimeMillis(),
+            endedAtMillis = endedAt,
             km = s.km,
-            seconds = s.seconds,
+            seconds = seconds,
             points = s.points,
             exerciseId = session?.exerciseId.orEmpty(),
             memberId = session?.memberId.orEmpty(),
