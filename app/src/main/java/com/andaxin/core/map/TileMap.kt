@@ -1,6 +1,9 @@
 package com.andaxin.core.map
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,18 +47,29 @@ import androidx.compose.ui.util.fastCoerceIn
 import com.andaxin.core.net.Http
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.hypot
+import kotlin.math.ln
+import kotlin.math.pow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 
-/** 一张要画的瓦片：缓存键、下载地址、在网格里的列（按经度取过模）与行。 */
-private class Tile(val key: String, val url: String, val col: Int, val row: Int)
+/**
+ * 一张要画的瓦片：缓存键、下载地址、在网格里的列（按经度取过模）与行。
+ * 用 data class 是为了让 LaunchedEffect(needed) 能按内容比较 —— 缩放动画每帧都会重算列表，
+ * 但格子没变时不该把正在下载的请求反复掐掉。
+ */
+private data class Tile(val key: String, val url: String, val col: Int, val row: Int)
 
 private const val MIN_ZOOM = 10
 private const val MAX_ZOOM = 20
+private const val LN2 = 0.6931472f
 
 /**
  * 带字的高德瓦片只出到 z18：z19、z20 拿 webrd/wprd 都探过，回的是 179 字节空白格。
@@ -63,6 +78,17 @@ private const val MAX_ZOOM = 20
  * 代价是放得越大字越粗，这是直链数据的上限，不是我这里多锁了一档。
  */
 private const val SOURCE_MAX_ZOOM = 18
+
+/**
+ * 连续缩放时实际去下载哪一级：18 级以下取“上一档整级”，这样源图永远是缩小贴上去（清晰）；
+ * 18 级以上没有更细的带字瓦片，固定在 18。
+ */
+private fun sourceZoomOf(zoom: Float): Int =
+    if (zoom >= SOURCE_MAX_ZOOM) SOURCE_MAX_ZOOM
+    else ceil(zoom).toInt().coerceIn(MIN_ZOOM, SOURCE_MAX_ZOOM)
+
+/** 源瓦片在画布上要缩放多少倍。 */
+private fun tileScaleOf(zoom: Float): Float = 2f.pow(zoom - sourceZoomOf(zoom))
 
 /**
  * 自写的栅格瓦片层，替掉 osmdroid。
@@ -103,7 +129,11 @@ fun TileMap(
     val tilePx = Tiles.SIZE.toFloat()
     var loadedTick by remember { mutableIntStateOf(0) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    var zoom by remember { mutableIntStateOf(zoomStart) }
+    // 缩放是连续的：双指按两指距离的比值实时改，按键则用一个 240ms 的补间推过去。
+    // 之前一档一档跳，19/20 级每跳一下整屏直接翻倍，看起来就是“闪现”。
+    var zoom by remember { mutableFloatStateOf(zoomStart.toFloat()) }
+    var zoomTarget by remember { mutableFloatStateOf(zoomStart.toFloat()) }
+    var zoomAnim by remember { mutableStateOf<Job?>(null) }
     var centerGcj by remember { mutableStateOf(Geo.wgsToGcj(centerWgs.latitude, centerWgs.longitude)) }
     /*
      * 跟随模式：跑起来以后 centerWgs 每个点都在变，但上面那个 centerGcj 是 remember 的，
@@ -119,37 +149,26 @@ fun TileMap(
         Tiles.latToPixelY(g.latitude, z, dd).toFloat(),
     )
 
-    val needed = remember(viewport, centerGcj, zoom, tilePx) {
-        if (viewport.width <= 0 || viewport.height <= 0) emptyList()
-        else {
-            // 可视区先换算到“真正要下载的那一级”上算行列；19/20 级就是 z18 的格子。
-            val srcZoom = minOf(zoom, SOURCE_MAX_ZOOM)
-            val scale = 1 shl (zoom - srcZoom)
-            val centerSrc = pxOf(centerGcj, srcZoom)
-            val viewW = viewport.width / scale.toFloat()
-            val viewH = viewport.height / scale.toFloat()
-            val ox = centerSrc.x - viewW / 2f
-            val oy = centerSrc.y - viewH / 2f
-            val count = 1 shl srcZoom
-            val xa = floor(ox / tilePx).toInt()
-            val xb = floor((ox + viewW) / tilePx).toInt()
-            val ya = floor(oy / tilePx).toInt()
-            val yb = floor((oy + viewH) / tilePx).toInt()
-            buildList {
-                for (tx in xa..xb) for (ty in ya..yb) {
-                    if (ty < 0 || ty >= count) continue
-                    val wrapped = ((tx % count) + count) % count
-                    add(
-                        Tile(
-                            key = "${srcZoom}_${wrapped}_$ty",
-                            url = Tiles.urlTile(wrapped, ty, srcZoom),
-                            col = wrapped,
-                            row = ty,
-                        )
-                    )
-                }
-            }
-        }
+    val desiredSrc = sourceZoomOf(zoom)
+    val desiredScale = tileScaleOf(zoom)
+    /*
+     * 实际贴到屏上的那一级。换级时新图还没下回来，旧一级继续放大顶着 ——
+     * 之前是级一变就整屏空白等下载，手指一捏就“闪现”；现在宁可先糊半秒，也不出白屏。
+     */
+    var shownSrc by remember { mutableIntStateOf(sourceZoomOf(zoomStart.toFloat())) }
+    val needed = remember(viewport, centerGcj, desiredSrc, desiredScale, tilePx) {
+        tilesFor(viewport, centerGcj, desiredSrc, desiredScale, tilePx, dd)
+    }
+    // 九成格子到齐就切；个别格子失败也不至于把整屏一直压在旧级上
+    val enough = remember(needed, loadedTick) {
+        needed.isEmpty() || needed.count { cache.get(it.key) != null } * 10 >= needed.size * 9
+    }
+    LaunchedEffect(desiredSrc, enough) {
+        if (enough) shownSrc = desiredSrc
+    }
+    val shownScale = 2f.pow(zoom - shownSrc)
+    val shownTiles = remember(viewport, centerGcj, shownSrc, shownScale, tilePx) {
+        tilesFor(viewport, centerGcj, shownSrc, shownScale, tilePx, dd)
     }
 
     LaunchedEffect(needed) {
@@ -160,16 +179,50 @@ fun TileMap(
         }
     }
 
+    /*
+     * 预取下一级、下两级：手指一捏就要换级，等换过去再下载就来不及，那一下就是白屏。
+     * 先等 350ms 让拖动/缩放停下来，再按当前屏幕范围抓图，避免一路拖一路乱下。
+     */
+    LaunchedEffect(desiredSrc, centerGcj, viewport) {
+        delay(350)
+        for (ahead in 1..2) {
+            val z = desiredSrc + ahead
+            if (z > SOURCE_MAX_ZOOM) break
+            val aheadTiles = tilesFor(viewport, centerGcj, z, 1f, tilePx, dd)
+            coroutineScope {
+                aheadTiles.forEach { t ->
+                    if (cache.get(t.key) == null) launch { cache.load(t.url, t.key) }
+                }
+            }
+        }
+    }
+
+    fun zoomBy(delta: Float) {
+        val end = (zoomTarget + delta).fastCoerceIn(MIN_ZOOM.toFloat(), MAX_ZOOM.toFloat())
+        zoomTarget = end
+        zoomAnim?.cancel()
+        val start = zoom
+        if (abs(end - start) < 0.01f) return
+        zoomAnim = scope.launch {
+            animate(
+                initialValue = start,
+                targetValue = end,
+                animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+            ) { value, _ -> zoom = value }
+        }
+    }
+
     Box(modifier = modifier) {
     Canvas(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { viewport = it }
-            .pointerInput(zoom) {
+            .pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 var last = down.position
                 var pinchBase = -1f
+                var pinchStartZoom = zoom
                 var travelled = 0f
                 var shift = Offset.Zero
                 while (true) {
@@ -183,16 +236,27 @@ fun TileMap(
                         )
                         if (pinchBase < 0f) {
                             pinchBase = d
-                        } else if (pinchBase > 0f) {
+                            pinchStartZoom = zoom
+                            zoomAnim?.cancel()
+                            // 这一手是捏合，松手时不要顺手落一个标注点
+                            travelled = 100f
+                        } else if (pinchBase > 0f && d > 0f) {
+                            // 两指距离每翻一倍 = 升一级，中间按对数连续走，不再一档一档闪
                             val ratio = d / pinchBase
-                            if (abs(ratio - 1f) > 0.22f) {
-                                zoom = (zoom + (if (ratio > 1f) 1 else -1)).fastCoerceIn(MIN_ZOOM, MAX_ZOOM)
-                                pinchBase = d
-                                shift = Offset.Zero
-                            }
+                            zoom = (pinchStartZoom + ln(ratio) / LN2)
+                                .fastCoerceIn(MIN_ZOOM.toFloat(), MAX_ZOOM.toFloat())
+                            zoomTarget = zoom
                         }
+                        last = held.first().position
+                        shift = Offset.Zero
                     } else {
                         val p = held.first().position
+                        if (pinchBase >= 0f) {
+                            // 两指变一指：从这里重新起算，别把捏合前的位置当成拖动
+                            pinchBase = -1f
+                            last = p
+                            shift = Offset.Zero
+                        }
                         val delta = p - last
                         last = p
                         travelled += hypot(delta.x, delta.y)
@@ -200,6 +264,8 @@ fun TileMap(
                     }
                     held.forEach { it.consume() }
                 }
+                val srcZoom = sourceZoomOf(zoom)
+                val scale = tileScaleOf(zoom)
                 if (travelled < 8f) {
                     onPickWgs?.invoke(
                         pickAt(
@@ -207,15 +273,16 @@ fun TileMap(
                             width = size.width.toFloat(),
                             height = size.height.toFloat(),
                             centerGcj = centerGcj,
-                            zoom = zoom,
+                            srcZoom = srcZoom,
+                            scale = scale,
                             dd = dd,
                         )
                     )
                 } else if (shift != Offset.Zero) {
-                    val moved = pxOf(centerGcj, zoom) - shift
+                    val moved = pxOf(centerGcj, srcZoom) - shift / scale
                     centerGcj = LatLng(
-                        latitude = Tiles.pixelYToLat(moved.y.toDouble(), zoom, dd),
-                        longitude = Tiles.pixelXToLng(moved.x.toDouble(), zoom, dd),
+                        latitude = Tiles.pixelYToLat(moved.y.toDouble(), srcZoom, dd),
+                        longitude = Tiles.pixelXToLng(moved.x.toDouble(), srcZoom, dd),
                     )
                     onCenterMoved?.invoke(Geo.gcjToWgs(centerGcj.latitude, centerGcj.longitude))
                 }
@@ -224,24 +291,24 @@ fun TileMap(
     ) {
         // 读一次 loadedTick：每加载完一张，绘制阶段才被标脏重画
         if (loadedTick < 0) return@Canvas
-        val srcZoom = minOf(zoom, SOURCE_MAX_ZOOM)
-        val zoomScale = (1 shl (zoom - srcZoom)).toFloat()
+        val srcZoom = shownSrc
+        val zoomScale = shownScale
         val centerSrc = pxOf(centerGcj, srcZoom)
         val originSrc = Offset(
             centerSrc.x - size.width / (2f * zoomScale),
             centerSrc.y - size.height / (2f * zoomScale),
         )
-        // 瓦片在“源像素”坐标里摆，再整体放大；轨迹和标记在下面按显示级另算，线宽不跟着粗。
+        // 瓦片在“源像素”坐标里摆，再整体放大；轨迹和标记在下面按同一缩放算，线宽不跟着粗。
         withTransform({ scale(zoomScale, zoomScale, pivot = Offset.Zero) }) {
-            needed.forEach { t ->
+            shownTiles.forEach { t ->
                 val bmp = cache.get(t.key) ?: return@forEach
                 drawImage(bmp, topLeft = Offset(t.col * tilePx - originSrc.x, t.row * tilePx - originSrc.y))
             }
         }
-        val center = pxOf(centerGcj, zoom)
-        val origin = Offset(center.x - size.width / 2f, center.y - size.height / 2f)
 
-        val pts = pathWgs.map { pxOf(Geo.wgsToGcj(it.latitude, it.longitude), zoom) - origin }
+        val pts = pathWgs.map {
+            (pxOf(Geo.wgsToGcj(it.latitude, it.longitude), srcZoom) - originSrc) * zoomScale
+        }
         if (pts.size > 1) {
             val line = Path().apply {
                 moveTo(pts.first().x, pts.first().y)
@@ -250,7 +317,9 @@ fun TileMap(
             drawPath(line, color = Color(0xFF2563EB), style = Stroke(width = 5f * density))
         }
 
-        markersWgs.map { pxOf(Geo.wgsToGcj(it.latitude, it.longitude), zoom) - origin }.forEach { at ->
+        markersWgs.map {
+            (pxOf(Geo.wgsToGcj(it.latitude, it.longitude), srcZoom) - originSrc) * zoomScale
+        }.forEach { at ->
             drawCircle(Color(0xFF0D9488), radius = 7f * density, center = at)
             drawCircle(Color.White, radius = 3f * density, center = at)
         }
@@ -263,8 +332,8 @@ fun TileMap(
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ZoomButton("+") { if (zoom < MAX_ZOOM) zoom++ }
-        ZoomButton("−") { if (zoom > MIN_ZOOM) zoom-- }
+        ZoomButton("+") { zoomBy(1f) }
+        ZoomButton("−") { zoomBy(-1f) }
     }
     }
 }
@@ -291,14 +360,53 @@ private fun pickAt(
     width: Float,
     height: Float,
     centerGcj: LatLng,
-    zoom: Int,
+    srcZoom: Int,
+    scale: Float,
     dd: Double,
 ): LatLng {
-    val cx = Tiles.lngToPixelX(centerGcj.longitude, zoom, dd)
-    val cy = Tiles.latToPixelY(centerGcj.latitude, zoom, dd)
-    val gcjLng = Tiles.pixelXToLng(cx + screen.x - width / 2f, zoom, dd)
-    val gcjLat = Tiles.pixelYToLat(cy + screen.y - height / 2f, zoom, dd)
+    val cx = Tiles.lngToPixelX(centerGcj.longitude, srcZoom, dd)
+    val cy = Tiles.latToPixelY(centerGcj.latitude, srcZoom, dd)
+    // 屏幕位移先除回源图像素，再落到经纬度
+    val gcjLng = Tiles.pixelXToLng(cx + (screen.x - width / 2f) / scale, srcZoom, dd)
+    val gcjLat = Tiles.pixelYToLat(cy + (screen.y - height / 2f) / scale, srcZoom, dd)
     return Geo.gcjToWgs(gcjLat, gcjLng)
+}
+
+/** 某一级、当前视野里要用的瓦片；scale 是这一级源图在屏幕上的缩放倍数。 */
+private fun tilesFor(
+    viewport: IntSize,
+    centerGcj: LatLng,
+    srcZoom: Int,
+    scale: Float,
+    tilePx: Float,
+    dd: Double,
+): List<Tile> {
+    if (viewport.width <= 0 || viewport.height <= 0 || scale <= 0f) return emptyList()
+    val cx = Tiles.lngToPixelX(centerGcj.longitude, srcZoom, dd)
+    val cy = Tiles.latToPixelY(centerGcj.latitude, srcZoom, dd)
+    val viewW = viewport.width / scale
+    val viewH = viewport.height / scale
+    val ox = cx - viewW / 2
+    val oy = cy - viewH / 2
+    val count = 1 shl srcZoom
+    val xa = floor(ox / tilePx).toInt()
+    val xb = floor((ox + viewW) / tilePx).toInt()
+    val ya = floor(oy / tilePx).toInt()
+    val yb = floor((oy + viewH) / tilePx).toInt()
+    return buildList {
+        for (tx in xa..xb) for (ty in ya..yb) {
+            if (ty < 0 || ty >= count) continue
+            val wrapped = ((tx % count) + count) % count
+            add(
+                Tile(
+                    key = "${srcZoom}_${wrapped}_$ty",
+                    url = Tiles.urlTile(wrapped, ty, srcZoom),
+                    col = wrapped,
+                    row = ty,
+                )
+            )
+        }
+    }
 }
 
 /** 内存 + 磁盘两级瓦片缓存：一张 256² 约 256KB，内存留 40MB，其余落盘。 */
