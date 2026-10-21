@@ -129,11 +129,13 @@ object Tiles {
         return Math.toDegrees(Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))))
     }
 
-    /** 高德街道瓦片直链。走 webrd 那组子域，和官方网页一致。 */
-    fun url(lng: Double, lat: Double, zoom: Int): String {
-        val z = 1 shl zoom
-        val x = lngToPixelX(lng, zoom).toInt() / SIZE
-        val y = latToPixelY(lat, zoom).toInt() / SIZE
+    /**
+     * 高德街道瓦片直链。走 webrd 那组子域，和官方网页一致。
+     *
+     * 这里直接吃瓦片行列号，不再从经纬度反算：放大到 z19/z20 时画的是 z18 的图，
+     * 反算一次会把边界格子算到隔壁去，缓存键和实际下载的图就对不上了。
+     */
+    fun urlTile(x: Int, y: Int, zoom: Int): String {
         val sub = ((x + y) % 4) + 1
         return "https://webrd0$sub.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=$x&y=$y&z=$zoom"
     }
