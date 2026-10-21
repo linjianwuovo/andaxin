@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -51,6 +52,17 @@ import okhttp3.Request
 
 /** 一张要画的瓦片：缓存键、下载地址、在网格里的列（按经度取过模）与行。 */
 private class Tile(val key: String, val url: String, val col: Int, val row: Int)
+
+private const val MIN_ZOOM = 10
+private const val MAX_ZOOM = 20
+
+/**
+ * 带字的高德瓦片只出到 z18：z19、z20 拿 webrd/wprd 都探过，回的是 179 字节空白格。
+ * scl=2 能换到 512² 更细的图，但整层没有地名，不能直接顶替。
+ * 所以 19/20 级贴着 z18 的图做 2 倍、4 倍数字放大 —— 地图能继续往近处看，
+ * 代价是放得越大字越粗，这是直链数据的上限，不是我这里多锁了一档。
+ */
+private const val SOURCE_MAX_ZOOM = 18
 
 /**
  * 自写的栅格瓦片层，替掉 osmdroid。
@@ -82,11 +94,9 @@ fun TileMap(
     val context = LocalContext.current
     val density = LocalDensity.current.density
     // 网格一律按 1 张瓦片 = 256 物理像素来算，不乘 density。
-    // 为什么：高德 webrd 这套直链只出 256² 的图，我 10-19 拿 scale=1/2、size=1/2 四种组合
-    // 各打了一次同一个格子，返回的字节数与尺寸完全一样（6171B / 256x256），也就是没有 @2x。
-    // 乘上 density 去贴就是把 256 的图硬拉到 2.75 倍，糊；1:1 贴最锐，视野靠 zoom 档位补回来
-    // （z18 在 1:1 下 ≈ 0.6 米/像素，一屏 860 米，正好是看校园的量）。
-    // 直链最高到 z18：z19、z20 我探过，返回 179 字节的空白格，所以上限锁在 18。
+    // 为什么：高德 webrd 这套直链默认只出 256² 的图（scl=2 才是 512² 且不带地名）。
+    // 乘上 density 去贴就是把 256 的图硬拉到 2.75 倍，糊；1:1 贴最锐。
+    // 直链最高到 z18，19/20 级按 SOURCE_MAX_ZOOM 做数字放大，见上面的常量注释。
     val dd = 1.0
     val cache = remember { TileCache(context.cacheDir) }
     val scope = rememberCoroutineScope()
@@ -112,20 +122,31 @@ fun TileMap(
     val needed = remember(viewport, centerGcj, zoom, tilePx) {
         if (viewport.width <= 0 || viewport.height <= 0) emptyList()
         else {
-            val ox = pxOf(centerGcj, zoom).x - viewport.width / 2f
-            val oy = pxOf(centerGcj, zoom).y - viewport.height / 2f
-            val count = 1 shl zoom
+            // 可视区先换算到“真正要下载的那一级”上算行列；19/20 级就是 z18 的格子。
+            val srcZoom = minOf(zoom, SOURCE_MAX_ZOOM)
+            val scale = 1 shl (zoom - srcZoom)
+            val centerSrc = pxOf(centerGcj, srcZoom)
+            val viewW = viewport.width / scale.toFloat()
+            val viewH = viewport.height / scale.toFloat()
+            val ox = centerSrc.x - viewW / 2f
+            val oy = centerSrc.y - viewH / 2f
+            val count = 1 shl srcZoom
             val xa = floor(ox / tilePx).toInt()
-            val xb = floor((ox + viewport.width) / tilePx).toInt()
+            val xb = floor((ox + viewW) / tilePx).toInt()
             val ya = floor(oy / tilePx).toInt()
-            val yb = floor((oy + viewport.height) / tilePx).toInt()
+            val yb = floor((oy + viewH) / tilePx).toInt()
             buildList {
                 for (tx in xa..xb) for (ty in ya..yb) {
                     if (ty < 0 || ty >= count) continue
                     val wrapped = ((tx % count) + count) % count
-                    val lng = Tiles.pixelXToLng((wrapped * tilePx).toDouble(), zoom, dd)
-                    val lat = Tiles.pixelYToLat((ty * tilePx).toDouble(), zoom, dd)
-                    add(Tile("${zoom}_${wrapped}_$ty", Tiles.url(lng, lat, zoom), wrapped, ty))
+                    add(
+                        Tile(
+                            key = "${srcZoom}_${wrapped}_$ty",
+                            url = Tiles.urlTile(wrapped, ty, srcZoom),
+                            col = wrapped,
+                            row = ty,
+                        )
+                    )
                 }
             }
         }
@@ -165,7 +186,7 @@ fun TileMap(
                         } else if (pinchBase > 0f) {
                             val ratio = d / pinchBase
                             if (abs(ratio - 1f) > 0.22f) {
-                                zoom = (zoom + (if (ratio > 1f) 1 else -1)).fastCoerceIn(10, 18)
+                                zoom = (zoom + (if (ratio > 1f) 1 else -1)).fastCoerceIn(MIN_ZOOM, MAX_ZOOM)
                                 pinchBase = d
                                 shift = Offset.Zero
                             }
@@ -203,13 +224,22 @@ fun TileMap(
     ) {
         // 读一次 loadedTick：每加载完一张，绘制阶段才被标脏重画
         if (loadedTick < 0) return@Canvas
+        val srcZoom = minOf(zoom, SOURCE_MAX_ZOOM)
+        val zoomScale = (1 shl (zoom - srcZoom)).toFloat()
+        val centerSrc = pxOf(centerGcj, srcZoom)
+        val originSrc = Offset(
+            centerSrc.x - size.width / (2f * zoomScale),
+            centerSrc.y - size.height / (2f * zoomScale),
+        )
+        // 瓦片在“源像素”坐标里摆，再整体放大；轨迹和标记在下面按显示级另算，线宽不跟着粗。
+        withTransform({ scale(zoomScale, zoomScale, pivot = Offset.Zero) }) {
+            needed.forEach { t ->
+                val bmp = cache.get(t.key) ?: return@forEach
+                drawImage(bmp, topLeft = Offset(t.col * tilePx - originSrc.x, t.row * tilePx - originSrc.y))
+            }
+        }
         val center = pxOf(centerGcj, zoom)
         val origin = Offset(center.x - size.width / 2f, center.y - size.height / 2f)
-
-        needed.forEach { t ->
-            val bmp = cache.get(t.key) ?: return@forEach
-            drawImage(bmp, topLeft = Offset(t.col * tilePx - origin.x, t.row * tilePx - origin.y))
-        }
 
         val pts = pathWgs.map { pxOf(Geo.wgsToGcj(it.latitude, it.longitude), zoom) - origin }
         if (pts.size > 1) {
@@ -226,15 +256,15 @@ fun TileMap(
         }
     }
 
-    // 手指两指缩放之外，给鼠标/单手一个明确的加/减；范围跟手势一样锁 10..18
+    // 手指两指缩放之外，给鼠标/单手一个明确的加/减；范围跟手势一样锁 10..20
     Column(
         modifier = Modifier
             .align(Alignment.BottomEnd)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ZoomButton("+") { if (zoom < 18) zoom++ }
-        ZoomButton("−") { if (zoom > 10) zoom-- }
+        ZoomButton("+") { if (zoom < MAX_ZOOM) zoom++ }
+        ZoomButton("−") { if (zoom > MIN_ZOOM) zoom-- }
     }
     }
 }
