@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -114,16 +114,20 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                                 ),
                         ) {
                             if (res == null) {
-                                // 「自动」用早/中/夜三段色表示"跟着时间走"
-                                Box(
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.linearGradient(
-                                                listOf(Color(0xFFBFD9E6), Color(0xFFE8C48A), Color(0xFF16213F))
+                                // 「自动」= 三张图并排各切一条：一看就知道它跟着时段换
+                                Row(Modifier.fillMaxSize()) {
+                                    listOf(R.drawable.hero_dawn, R.drawable.hero_dusk, R.drawable.hero_night)
+                                        .forEach { id ->
+                                            Image(
+                                                painter = painterResource(id),
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxHeight(),
+                                                contentScale = ContentScale.Crop,
                                             )
-                                        ),
-                                )
+                                        }
+                                }
                             } else {
                                 Image(
                                     painter = painterResource(res),
