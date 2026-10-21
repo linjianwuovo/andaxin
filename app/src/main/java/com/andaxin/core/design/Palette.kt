@@ -69,6 +69,17 @@ object Palette {
     val VioletSoft = Color(0x1A8B5CF6)
     val Slate = Color(0xFF64748B)
     val SlateSoft = Color(0x1A64748B)
+    /*
+     * 课表色块。照他发的那版官方课表：**实心块 + 白字**。
+     * 所以这四颗给的是"白字压得住"的深一档（白字对比度都在 5:1 以上），不是给淡底用的 Soft 那几颗。
+     * 夜间也用同一颗 —— 实心块在两套主题下都成立，不必再分。
+     */
+    val CourseTeal = Color(0xFF0F766E)
+    val CourseViolet = Color(0xFF6D28D9)
+    val CourseBlue = Color(0xFF1D4ED8)
+    val CourseAmber = Color(0xFFB45309)
+    val CourseSlate = Color(0xFF475569)
+
     /** 报错文字、失败状态都吃这颗。原来是 #E5484D，纸色上 3.61:1，写小字不合格 → 压到 4.73。 */
     val Rose = Color(0xFFCC333A)
 

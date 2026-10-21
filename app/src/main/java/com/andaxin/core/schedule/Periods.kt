@@ -3,29 +3,39 @@ package com.andaxin.core.schedule
 import java.util.Calendar
 
 /**
- * 每节课的开始时刻。周网格那一屏和首页"下一节"用的是同一张表，所以只留一份，放在 core 层，
+ * 作息表。周网格那一屏、首页"下一节"、上课提醒都用这一份，放在 core 层，
  * 免得数据层反过来依赖界面层。
  *
- * 学校改作息的话这张表要跟着接口走 —— 目前抓到的接口里没有一条给节次时间，
- * 所以它是我们自己拍的，界面上不许把它说成校方给的。
- *
- * **10-21 早上他确认过：接口不给，但实际作息就是这个时间。** 一节课 45 分钟，
- * 课间 10 分钟、大课间 20 分钟（12:00 / 12:55 那两节之间是午休）。
- * 所以"结束时刻"可以算出来显示，但注释里仍要记住它是**按 45 分钟推的**，不是接口字段。
+ * **10 节，时间照他 10-21 早上发的那张官方课表逐行抄的。**
+ * 以前这里是一张我自己拍的 12 节表（08:00 起、每节按 45 分钟推）—— 官方课表里根本没有
+ * 第 11、12 节，那两行是凭空多出来的，还带着编出来的时间。他一句"哪来的 11 节 12 节"
+ * 把它钉住了。现在这里只放官方那十对时间，**结束时刻是抄的，不是算的**：
+ * 第 7 节官方给的是 15:55–16:35（40 分钟），所以"每节都 45 分钟"这个假设也一并删了。
  */
 object Periods {
 
-    /** 一节课的时长（分钟）。他确认过的实际作息。 */
-    const val LENGTH_MINUTES = 45
-
-    val START_AT = listOf(
-        "08:00", "08:55", "10:00", "10:55", "12:00", "12:55",
-        "14:00", "14:55", "16:00", "16:55", "19:00", "19:55",
+    /** 一节一对 (开始, 结束)，"HH:mm"。顺序就是第 1..10 节。 */
+    val SLOTS = listOf(
+        "08:30" to "09:15",
+        "09:20" to "10:05",
+        "10:25" to "11:10",
+        "11:15" to "12:00",
+        "14:00" to "14:45",
+        "14:50" to "15:35",
+        "15:55" to "16:35",
+        "16:45" to "17:30",
+        "19:00" to "19:45",
+        "19:55" to "20:40",
     )
 
-    private val START_MINUTES = START_AT.map {
-        it.substringBefore(":").toInt() * 60 + it.substringAfter(":").toInt()
-    }
+    val START_AT = SLOTS.map { it.first }
+    val END_AT = SLOTS.map { it.second }
+
+    private fun minutes(hhmm: String): Int =
+        hhmm.substringBefore(":").toInt() * 60 + hhmm.substringAfter(":").toInt()
+
+    private val START_MINUTES = START_AT.map(::minutes)
+    private val END_MINUTES = END_AT.map(::minutes)
 
     /** 今天星期几，1..7（周一起算）。课表那一屏和首页"今天几节"都按它切。 */
     fun today(now: Calendar = Calendar.getInstance()): Int =
@@ -40,19 +50,15 @@ object Periods {
         }
 
     /**
-     * 现在**是不是真的在一节课里**。是就给节次号（1 起），课间、还没上课、已经放学都回 null。
+     * 现在**是不是真的在一节课里**。是就给节次号（1 起），课间、午休、还没上课都回 null。
      *
-     * `current()` 那个是"现在大概第几节"，前后都夹紧，拿它做高亮会出问题：
-     * 课间十分钟也被标成"正在上第二节"，看着像课表算错了。
-     * 每节的时长按 45 分钟算（校方没有一条接口给节次时长，这张表本来就是我们自己拍的，
-     * 界面上不许说成校方给的）。
+     * 结束时刻用的是官方那张表里抄来的那一个（不是"下一节的开始"，也不是"开始 + 45"）：
+     * 课间那十分钟要是按下一节算，会被一直高亮成"正在上这一节"。
      */
     fun periodNow(now: Calendar = Calendar.getInstance()): Int? {
         val minute = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
         START_MINUTES.forEachIndexed { i, start ->
-            // 结束 = 开始 + 45 分钟，**不是**下一节的开始：两节之间有 10 分钟课间，
-            // 按下一节算会把课间也算成上课（08:45–08:55 那十分钟会一直高亮着第一节）。
-            if (minute in start until (start + LENGTH_MINUTES)) return i + 1
+            if (minute in start until END_MINUTES[i]) return i + 1
         }
         return null
     }
@@ -68,14 +74,12 @@ object Periods {
     /** 第 [period] 节（1 起）的上课时刻，"HH:mm"。越界回 null，调用方自己决定怎么兜。 */
     fun startAt(period: Int): String? = START_AT.getOrNull(period - 1)
 
-    private fun hhmm(minutes: Int): String = "%02d:%02d".format(minutes / 60, minutes % 60)
-
-    /** 第 [period] 节的下课时刻（开始 + 45 分钟）。越界回 null。 */
-    fun endAt(period: Int): String? = START_MINUTES.getOrNull(period - 1)?.let { hhmm(it + LENGTH_MINUTES) }
+    /** 第 [period] 节的下课时刻。越界回 null。 */
+    fun endAt(period: Int): String? = END_AT.getOrNull(period - 1)
 
     /**
-     * 从第 [startPeriod] 节起连上 [periodCount] 节的整段时间，"08:00–09:35"。
-     * 只看今天那一屏和首页的"下一节"用它 —— 只给节次不给钟点，人还是得自己换一遍。
+     * 从第 [startPeriod] 节起连上 [periodCount] 节的整段时间，"08:30–10:05"。
+     * 「只看今天」每一行用它 —— 只给节次不给钟点，人还是得自己换一遍。
      */
     fun rangeText(startPeriod: Int, periodCount: Int): String? {
         val from = startAt(startPeriod) ?: return null
