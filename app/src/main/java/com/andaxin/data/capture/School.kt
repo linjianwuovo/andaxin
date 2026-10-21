@@ -65,6 +65,9 @@ class School(private val session: SessionStore) {
     /** 当前会话的 token。同上。 */
     suspend fun token(): String = session.identity()?.accessToken.orEmpty()
 
+    /** 当前会话的姓名。sports 上传那条表单要带 `_userName`。 */
+    suspend fun userName(): String = session.identity()?.userName.orEmpty()
+
     /** 带身份表单发一次 POST，回根节点 JSON。没登录直接给失败，不发网络。 */
     suspend fun post(url: String, vararg fields: Pair<String, String>): Result<JSONObject> {
         val id = session.identity()

@@ -17,9 +17,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -33,12 +36,15 @@ import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.Type
+import com.andaxin.core.design.InkSet
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.map.LatLng
 import com.andaxin.core.map.TileMap
 import com.andaxin.core.run.RunMode
+import com.andaxin.data.RunDraft
+import com.andaxin.data.SportPlan
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.Sheet
@@ -55,16 +61,41 @@ private val CAMPUS = LatLng(31.146501, 118.635061)
 fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
-    var summary by remember { mutableStateOf<com.andaxin.data.SportSummary?>(null) }
+    var plan by remember { mutableStateOf<SportPlan?>(null) }
+    var planWhy by remember { mutableStateOf<String?>(null) }
+    var tryNo by remember { mutableIntStateOf(0) }
     var denied by remember { mutableStateOf<String?>(null) }
+    var starting by remember { mutableStateOf(false) }
+    var startWhy by remember { mutableStateOf<String?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    /*
+     * 先向校方要这一场的会话 id（大一大二 extraId/memberId，大三大四 startRunning.do），
+     * 拿到了才开 GPS。拿不到就停在原地把原因写出来 —— 跑完再发现交不上去，那才叫白跑。
+     */
+    fun begin() {
+        if (starting) return
+        starting = true
+        startWhy = null
+        scope.launch {
+            val r = try { graph.sports.beginRun() } catch (e: Exception) { Result.failure(e) }
+            starting = false
+            r.onSuccess { session ->
+                graph.engine.startReal(graph.gps, session)
+                com.andaxin.core.run.RunService.start(ctx)
+                open("sport/run")
+            }.onFailure {
+                startWhy = it.message ?: "校方没让开始这一场"
+            }
+        }
+    }
+
     val ask = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
         if (result[android.Manifest.permission.ACCESS_FINE_LOCATION] == true) {
-            graph.engine.startReal(graph.gps)
-            com.andaxin.core.run.RunService.start(ctx)
-            open("sport/run")
+            begin()
         } else {
             // 没给定位就不开始。不退回"沿画好的线走"那种演示：那一圈点是算出来的，
             // 报上去就是假成绩，界面上也绝不用"演示"两个字给它留门。
@@ -72,21 +103,33 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
     }
 
-    LaunchedLoad {
-        summary = graph.sports.summary().getOrNull()
+    /*
+     * 这一屏照官方 startIndex 那张来：计划进度、今日/最长、有效阈值、体育课，全是校方给的真数。
+     * 旧项目里那五条口（checkDsStudent / currentTerm / extraInfo / extraDetailInfo / clubInfo）
+     * 10-21 傍晚拿活 token 逐条重打过，`CaptureSports.plan()` 里写着实样。
+     */
+    LaunchedEffect(tryNo) {
+        planWhy = null
+        val r = try { graph.sports.plan() } catch (e: Exception) { Result.failure(e) }
+        plan = r.getOrNull()
+        planWhy = r.exceptionOrNull()?.message
     }
 
     Page("开始运动", onBack) {
-        Sheet {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Stat("本周", summary?.let { "%.1f / %.0f km".format(it.weekKm, it.weekRequiredKm) } ?: "—")
-                Stat("次数", summary?.let { "${it.weekCount} 次" } ?: "—")
-                Stat("最长", summary?.let { "%.2f km".format(it.bestKm) } ?: "—")
-            }
+        PlanCard(plan, ink)
+        planWhy?.let {
+            Spacer(Modifier.height(Gap.md))
+            LoadWhy(it, wide = false)
+            Text(
+                "重试",
+                fontSize = Type.meta,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.pressClick(shrink = false) { tryNo++ }.padding(vertical = Gap.xs),
+            )
         }
 
         Spacer(Modifier.height(Gap.xl))
-        BigButton("开始") {
+        BigButton(if (starting) "正在向学校要这一场…" else "开始") {
             ask.launch(
                 arrayOf(
                     android.Manifest.permission.ACCESS_FINE_LOCATION,
@@ -95,14 +138,227 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 )
             )
         }
-        denied?.let {
+        (denied ?: startWhy)?.let {
             Spacer(Modifier.height(Gap.md))
-            Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
+            Text(it, fontSize = Type.meta, lineHeight = Type.metaLine, color = MaterialTheme.colorScheme.error)
         }
+
+        // 官方这一屏右上角那颗「运动记录」和记录页里的维护入口，收进这一排。
         Spacer(Modifier.height(Gap.md))
+        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            HalfButton("运动记录") { open("sport/records") }
+            HalfButton("考勤维护记录") { open("sport/maintain") }
+        }
+
+        Spacer(Modifier.height(Gap.xl))
+        TipsCard(ink)
         Spacer(Modifier.height(Gap.xxl))
     }
 }
+
+/**
+ * 官方那张「跑步计划」卡。
+ *
+ * 数字全是可选：缺哪条就把那一格写成"—"，**不拿 0 冒充**（0 是这个学期真的没跑，
+ * 和"没拉到"是两件事）。进度条只在计划里程 > 0 时画。
+ */
+@Composable
+private fun PlanCard(plan: SportPlan?, ink: InkSet) {
+    val primary = MaterialTheme.colorScheme.primary
+    val planKm = plan?.planKm
+    val doneKm = plan?.doneKm
+    val ratio = if (planKm != null && planKm > 0 && doneKm != null) {
+        (doneKm / planKm).toFloat().coerceIn(0f, 1f)
+    } else null
+    val left = plan?.leftKm ?: if (planKm != null && doneKm != null) (planKm - doneKm) else null
+
+    Sheet {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                Text("本学期跑步", fontSize = Type.micro, color = ink.faint)
+                Spacer(Modifier.height(Gap.xs))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = km2(doneKm),
+                        fontSize = Type.num,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ink.strong,
+                    )
+                    if (planKm != null) {
+                        Text(
+                            text = " / ${km1(planKm)} km",
+                            fontSize = Type.meta,
+                            color = ink.faint,
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = plan?.termTitle.orEmpty().ifBlank { "—" },
+                    fontSize = Type.micro,
+                    color = ink.faint,
+                )
+                if (ratio != null) {
+                    Text(
+                        text = "${(ratio * 100).roundToInt()}%",
+                        fontSize = Type.title,
+                        fontWeight = FontWeight.SemiBold,
+                        color = primary,
+                    )
+                }
+            }
+        }
+        if (ratio != null) {
+            Spacer(Modifier.height(Gap.md))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(Radius.pill)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(ratio)
+                        .height(8.dp)
+                        .clip(Radius.pill)
+                        .background(primary),
+                )
+            }
+            Spacer(Modifier.height(Gap.sm))
+            val from = md(plan?.planStart)
+            val to = md(plan?.planEnd)
+            val range = if (from.isNotBlank() && to.isNotBlank()) "$from – $to" else ""
+            Text(
+                text = listOfNotNull(
+                    left?.let { "还差 ${km2(it)} km" },
+                    range.takeIf { it.isNotBlank() },
+                ).joinToString(" · "),
+                fontSize = Type.micro,
+                color = ink.faint,
+            )
+        }
+
+        Spacer(Modifier.height(Gap.md))
+        Hairline()
+        Spacer(Modifier.height(Gap.md))
+        Row(Modifier.fillMaxWidth()) {
+            TodayCell("今日", km2(plan?.todayKm), md(plan?.todayDate), Modifier.weight(1f))
+            TodayCell("最长一次", km2(plan?.bestKm), md(plan?.bestDate), Modifier.weight(1f))
+        }
+
+        val morning = plan?.morningKm
+        val groupCount = plan?.groupCount ?: 0
+        if (morning != null || groupCount > 0) {
+            Spacer(Modifier.height(Gap.md))
+            Hairline()
+            Spacer(Modifier.height(Gap.md))
+            Text(
+                text = buildString {
+                    if (morning != null) append("其中晨跑 ${km2(morning)} km")
+                    if (groupCount > 0) {
+                        if (isNotEmpty()) append(" · ")
+                        append("团体 $groupCount 次")
+                    }
+                },
+                fontSize = Type.meta,
+                color = ink.muted,
+            )
+        }
+
+        val rule = validity(plan)
+        if (rule.isNotBlank()) {
+            Spacer(Modifier.height(Gap.md))
+            Text(
+                text = "有效标准：$rule",
+                fontSize = Type.micro,
+                lineHeight = Type.metaLine,
+                color = ink.faint,
+            )
+        }
+
+        val clubName = plan?.clubName.orEmpty()
+        if (clubName.isNotBlank()) {
+            Spacer(Modifier.height(Gap.md))
+            Hairline()
+            Spacer(Modifier.height(Gap.md))
+            Text(
+                text = listOf(clubName, plan?.memberLevel.orEmpty())
+                    .filter { it.isNotBlank() }.joinToString(" · "),
+                fontSize = Type.meta,
+                color = ink.muted,
+            )
+            val who = listOf(
+                plan?.teacher?.takeIf { it.isNotBlank() }?.let { "教师 $it" },
+                plan?.studentCount?.let { "$it 人" },
+            ).filterNotNull()
+            if (who.isNotEmpty()) {
+                Spacer(Modifier.height(2.dp))
+                Text(who.joinToString(" · "), fontSize = Type.micro, color = ink.faint)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodayCell(label: String, value: String, date: String, modifier: Modifier) {
+    val ink = LocalInk.current
+    Column(modifier) {
+        Text(label, fontSize = Type.micro, color = ink.faint)
+        Spacer(Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = if (value == "—") "—" else "$value km",
+                fontSize = Type.title,
+                fontWeight = FontWeight.Medium,
+                color = ink.strong,
+            )
+            if (date.isNotBlank()) {
+                Spacer(Modifier.width(Gap.xs))
+                Text(date, fontSize = Type.tinier, color = ink.faint, modifier = Modifier.padding(bottom = 3.dp))
+            }
+        }
+    }
+}
+
+/** 官方那四条安全提示，原样落在这一屏最底下。 */
+@Composable
+private fun TipsCard(ink: InkSet) {
+    Sheet {
+        Text("跑步提示", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
+        Spacer(Modifier.height(Gap.sm))
+        listOf(
+            "1、请勿戴口罩跑步！",
+            "2、运动之前，请准备活动！",
+            "3、运动过程中，出现任何身体不适，请立即停止！",
+            "4、运动结束后，请慢走几分钟！",
+        ).forEach {
+            Text(it, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
+            Spacer(Modifier.height(Gap.xs))
+        }
+    }
+}
+
+private fun validity(plan: SportPlan?): String {
+    if (plan == null) return ""
+    val parts = buildList {
+        plan.minOnceKm?.let { add("单次不少于 ${num(it)} 公里") }
+        plan.maxDayKm?.let { add("每天最多累计 ${num(it)} 公里") }
+        if (plan.minSpeedKmh != null && plan.maxSpeedKmh != null) {
+            add("速率 ${num(plan.minSpeedKmh)}–${num(plan.maxSpeedKmh)} km/h")
+        }
+    }
+    return parts.joinToString("，")
+}
+
+private fun km1(v: Double?): String = v?.let { "%.1f".format(it) } ?: "—"
+private fun km2(v: Double?): String = v?.let { "%.2f".format(it) } ?: "—"
+private fun num(v: Double): String =
+    if (v == v.toLong().toDouble()) v.toLong().toString() else "%.1f".format(v)
+private fun md(s: String?): String =
+    s?.takeIf { it.length >= 5 }?.takeLast(5) ?: ""
 
 /* ───────────────────────── ② 运动中 ───────────────────────── */
 
@@ -112,20 +368,143 @@ fun SportRunScreen(onBack: () -> Unit) {
     val ink = LocalInk.current
     val state by graph.engine.state.collectAsStateWithLifecycle()
     var confirmStop by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf<RunDraft?>(null) }
+    var submitting by remember { mutableStateOf(false) }
+    var submitWhy by remember { mutableStateOf<String?>(null) }
+    var submittedId by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    // 进屏先把"上次已知位置"拿出来垫地图，别拿写死的 CAMPUS 冒充他的位置
+    val lastKnown = remember { graph.gps.lastKnown() }
 
-    Page("运动中", onBack) {
+    Page(if (draft == null) "运动中" else "这一趟", onBack) {
+        val done = draft
+        if (done != null) {
+            // 结束页：地图 + 三个数 + 一颗明确写着"提交到学校"的键。不自动交。
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1.2f)
+                    .background(Palette.Sand, Radius.card)
+            ) {
+                if (done.points.size >= 2) {
+                    TileMap(
+                        centerWgs = done.points.last().where,
+                        pathWgs = done.points.map { it.where },
+                        zoomStart = 17,
+                        modifier = Modifier.fillMaxSize().clip(Radius.card),
+                    )
+                } else {
+                    Text(
+                        "这一趟没有采到可用轨迹（原地/室内，精度不到 35 米）。",
+                        fontSize = Type.meta,
+                        color = ink.faint,
+                        modifier = Modifier.align(Alignment.Center).padding(Gap.lg),
+                    )
+                }
+            }
+            Spacer(Modifier.height(Gap.lg))
+            Sheet {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Stat("距离", "%.2f km".format(done.km))
+                    Stat("时长", "%d:%02d".format(done.seconds / 60, done.seconds % 60))
+                    Stat(
+                        "配速",
+                        if (done.km > 0.05) {
+                            val sec = done.seconds / done.km
+                            "%d'%02d\"".format((sec / 60).toInt(), (sec % 60).toInt())
+                        } else "—",
+                    )
+                }
+                Spacer(Modifier.height(Gap.md))
+                Hairline()
+                Spacer(Modifier.height(Gap.md))
+                Text(
+                    text = "轨迹点 ${done.points.size} 个 · 这次只在本机，按下「提交到学校」才发出去。",
+                    fontSize = Type.micro,
+                    color = ink.faint,
+                )
+            }
+
+            val id = submittedId
+            when {
+                id != null -> {
+                    Spacer(Modifier.height(Gap.lg))
+                    Sheet {
+                        Text("已提交", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+                        Spacer(Modifier.height(Gap.xs))
+                        Text(
+                            "学校回执 id：$id。运动记录里要刷新一下才看得到。",
+                            fontSize = Type.meta,
+                            lineHeight = Type.metaLine,
+                            color = ink.muted,
+                        )
+                    }
+                    Spacer(Modifier.height(Gap.lg))
+                    BigButton("返回") { onBack() }
+                }
+                else -> {
+                    submitWhy?.let {
+                        Spacer(Modifier.height(Gap.md))
+                        Text(
+                            it,
+                            fontSize = Type.meta,
+                            lineHeight = Type.metaLine,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Spacer(Modifier.height(Gap.lg))
+                    BigButton(if (submitting) "正在提交…" else "提交到学校") {
+                        if (submitting) return@BigButton
+                        submitting = true
+                        submitWhy = null
+                        scope.launch {
+                            val r = try { graph.sports.submit(done) } catch (e: Exception) {
+                                Result.failure(e)
+                            }
+                            submitting = false
+                            submittedId = r.getOrNull()
+                            submitWhy = r.exceptionOrNull()?.message
+                        }
+                    }
+                    Spacer(Modifier.height(Gap.sm))
+                    Text(
+                        "不提交，直接返回",
+                        fontSize = Type.meta,
+                        color = ink.muted,
+                        modifier = Modifier
+                            .pressClick(shrink = false) { onBack() }
+                            .padding(vertical = Gap.sm),
+                    )
+                }
+            }
+            Spacer(Modifier.height(Gap.xxl))
+            return@Page
+        }
+
+        val here = state.here ?: state.points.lastOrNull()?.where ?: lastKnown
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .background(Palette.Sand, Radius.card)
         ) {
-            TileMap(
-                centerWgs = state.points.lastOrNull()?.where ?: CAMPUS,
-                pathWgs = state.points.map { it.where },
-                zoomStart = 17,
-                modifier = Modifier.fillMaxSize().clip(Radius.card),
-            )
+            if (here != null) {
+                TileMap(
+                    centerWgs = here,
+                    pathWgs = state.points.map { it.where },
+                    markersWgs = listOf(here),
+                    zoomStart = 17,
+                    follow = true,
+                    modifier = Modifier.fillMaxSize().clip(Radius.card),
+                )
+            } else {
+                Text(
+                    "正在定位…（到室外开阔处，第一颗星可能要几十秒）",
+                    fontSize = Type.meta,
+                    color = ink.faint,
+                    modifier = Modifier.align(Alignment.Center).padding(Gap.lg),
+                )
+            }
         }
 
         Spacer(Modifier.height(Gap.lg))
@@ -135,6 +514,16 @@ fun SportRunScreen(onBack: () -> Unit) {
                 Stat("时长", "%d:%02d".format(state.seconds / 60, state.seconds % 60))
                 Stat("配速", state.pacePerKm)
             }
+            Spacer(Modifier.height(Gap.sm))
+            Text(
+                text = buildString {
+                    val acc = state.accuracy
+                    if (acc != null) append("GPS 精度 ±${acc.toInt()} 米 · ")
+                    append("只认真实位移，踏步/原地不动距离不会涨。")
+                },
+                fontSize = Type.tinier,
+                color = ink.faint,
+            )
         }
 
         if (state.error != null) {
@@ -151,9 +540,8 @@ fun SportRunScreen(onBack: () -> Unit) {
                 if (!confirmStop) {
                     confirmStop = true
                 } else {
-                    graph.engine.finish()
+                    draft = graph.engine.finish()
                     confirmStop = false
-                    onBack()
                 }
             }
         }
@@ -241,9 +629,8 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
     Page("运动明细", onBack) {
         val d = detail
         if (d == null) {
-            // 这一条现在**必然**是失败：单次轨迹的报文一次都没抓到，`CaptureSports.detail`
-            // 明确回失败。所以这里绝不许停在"加载中…"上装还在转 —— 那会让人白等，
-            // 也把我们早就知道"这条没接"这件事藏起来了。
+            // 10-21 接上了 getExtraCheck.do；这时 null 只表示"没拉到/还在拉"，
+            // 原因照 `why` 显示，别停在"加载中…"上装转。
             Text(
                 text = why ?: "明细拉取中…",
                 fontSize = Type.body,
@@ -252,25 +639,41 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
             )
             return@Page
         }
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(1.1f).background(Palette.Sand, Radius.card)
-        ) {
-            TileMap(
-                centerWgs = d.track.firstOrNull() ?: CAMPUS,
-                pathWgs = d.track,
-                zoomStart = 16,
-                modifier = Modifier.fillMaxSize().clip(Radius.card),
-            )
+        if (d.track.isNotEmpty()) {
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(1.1f).background(Palette.Sand, Radius.card)
+            ) {
+                TileMap(
+                    centerWgs = d.track.first(),
+                    pathWgs = d.track,
+                    zoomStart = 16,
+                    modifier = Modifier.fillMaxSize().clip(Radius.card),
+                )
+            }
+        } else {
+            Sheet {
+                Text(
+                    "校方这一条没有存轨迹（明细里的 runningRoute 是空的）。",
+                    fontSize = Type.meta,
+                    color = ink.faint,
+                )
+            }
         }
         Spacer(Modifier.height(Gap.lg))
+        val mins = d.record.minutes
         Sheet {
             Labeled(label = "日期", value = d.record.date)
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(label = "距离", value = "%.2f km".format(d.record.km))
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "配速", value = d.record.pacePerKm)
+            Labeled(label = "用时", value = "%d:%02d".format(mins.toInt() / 60, mins.toInt() % 60))
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "跑道", value = d.lane)
+            Labeled(
+                "平均速度",
+                if (d.record.km > 0.01 && mins > 0) "%.2f km/h".format(d.record.km / (mins / 60.0)) else "—",
+            )
+            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
+            Labeled(label = "跑道", value = d.lane.ifBlank { "—" })
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(label = "学校判定", value = d.schoolComment)
         }

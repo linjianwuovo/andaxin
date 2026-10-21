@@ -5,6 +5,7 @@ import com.andaxin.core.map.Geo
 import com.andaxin.core.map.LatLng
 import com.andaxin.data.RunDraft
 import com.andaxin.data.RunPoint
+import com.andaxin.data.RunSession
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -28,6 +29,9 @@ data class RunState(
     val seconds: Int = 0,
     val meters: Double = 0.0,
     val points: List<RunPoint> = emptyList(),
+    /** 最近一次系统定位，哪怕精度不够也拿来把地图挪到人附近；轨迹只收精度够的点。 */
+    val here: LatLng? = null,
+    val accuracy: Float? = null,
     val error: String? = null,
 ) {
     val km get() = meters / 1000.0
@@ -58,6 +62,8 @@ class RunEngine(private val scope: CoroutineScope) {
 
     private var job: Job? = null
     private var startedAt = 0L
+    /** 开始那一场时校方给的会话，结束时原样带进 draft 去提交。 */
+    private var session: RunSession? = null
 
     fun start(route: List<LatLng>, paceKmh: Double, mode: RunMode) {
         val line = if (route.size >= 2) route else demoLoop
@@ -71,6 +77,7 @@ class RunEngine(private val scope: CoroutineScope) {
         val high = (target * 1.15).coerceAtMost(6.9)
         val wander = Wander(Random(System.nanoTime()))
         startedAt = System.currentTimeMillis()
+        session = null
         _state.value = RunState(active = true, mode = mode)
 
         job?.cancel()
@@ -107,22 +114,52 @@ class RunEngine(private val scope: CoroutineScope) {
         }
     }
 
-    /** 真 GPS 采集：定点由系统给，我们只负责串成轨迹。 */
-    fun startReal(gps: com.andaxin.core.location.GpsFeed) {
+    /** 真 GPS 采集：定点由系统给，我们只负责串成轨迹。[session] 是开始前向校方要的那两个 id。 */
+    fun startReal(gps: com.andaxin.core.location.GpsFeed, session: RunSession? = null) {
         startedAt = System.currentTimeMillis()
+        this.session = session
         _state.value = RunState(active = true, mode = RunMode.Free)
         job?.cancel()
         job = scope.launch {
-            var lastAt = startedAt
-            gps.fixes().collect { fix ->
-                val now = System.currentTimeMillis()
-                val dt = ((now - lastAt) / 1000.0).coerceAtLeast(0.5)
-                lastAt = now
-                _state.value = _state.value.copy(
-                    seconds = ((now - startedAt) / 1000).toInt(),
-                    meters = _state.value.meters + fix.meters,
-                    points = _state.value.points + RunPoint(now, fix.where, fix.meters / dt),
-                )
+            /*
+             * 读秒必须自己走，不能挂在 GPS 回调上。
+             * 10-21 傍晚他跑起来只看到 0:06 不动：GpsFeed 把精度 >35m 的点整个丢了，
+             * 室内/楼边一颗也进不来，于是"秒数"跟着最后一个好点一起冻住。
+             * 现在计时是独立的一路，每秒加一；GPS 只负责位置和距离。
+             */
+            val timer = launch {
+                while (isActive && _state.value.active) {
+                    delay(1_000)
+                    val s = _state.value
+                    if (s.active && !s.paused) {
+                        _state.value = s.copy(seconds = s.seconds + 1)
+                    }
+                }
+            }
+            try {
+                gps.fixes().collect { fix ->
+                    val now = System.currentTimeMillis()
+                    val s = _state.value
+                    // 精度差的点也用来把地图挪到人附近，但不进轨迹、不加距离
+                    val here = if (fix.accuracyMeters <= 150f) fix.where else s.here
+                    if (s.paused) {
+                        _state.value = s.copy(here = here, accuracy = fix.accuracyMeters)
+                    } else {
+                        val addPoint = fix.usable && fix.meters > 0
+                        _state.value = s.copy(
+                            here = here,
+                            accuracy = fix.accuracyMeters,
+                            meters = s.meters + fix.meters,
+                            points = if (addPoint) {
+                                s.points + RunPoint(now, fix.where, fix.meters / 3.0)
+                            } else {
+                                s.points
+                            },
+                        )
+                    }
+                }
+            } finally {
+                timer.cancel()
             }
         }
     }
@@ -139,18 +176,24 @@ class RunEngine(private val scope: CoroutineScope) {
     fun finish(): RunDraft {
         job?.cancel()
         val s = _state.value
+        val session = this.session
         _state.value = RunState()
+        this.session = null
         return RunDraft(
             startedAtMillis = startedAt,
             endedAtMillis = System.currentTimeMillis(),
             km = s.km,
             seconds = s.seconds,
             points = s.points,
+            exerciseId = session?.exerciseId.orEmpty(),
+            memberId = session?.memberId.orEmpty(),
+            runningType = session?.runningType ?: "1",
         )
     }
 
     fun abandon() {
         job?.cancel()
+        session = null
         _state.value = RunState()
     }
 

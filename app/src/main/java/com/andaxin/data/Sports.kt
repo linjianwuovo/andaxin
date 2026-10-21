@@ -49,6 +49,48 @@ data class SportSummary(
     val morningKm: Double = 0.0,
 )
 
+/**
+ * 运动首页那张计划卡要的东西。
+ *
+ * 来源全是校方那台 sports 的读侧，10-21 傍晚用设备上这把活 token 现打对过：
+ * `checkDsStudent`（年级）、`common/currentTerm`（学年学期）、`index/extraInfo`（计划/已完成）、
+ * `extra/extraDetailInfo`（日期/今日/最长/有效阈值）、`index/clubInfo`（体育课）、
+ * `check/getTotalInfo`（晨跑/团体）。数字能缺就缺 —— 缺了界面写"—"，不拿 0 冒充。
+ */
+@Immutable
+data class SportPlan(
+    val grade: String = "",
+    val termTitle: String = "",
+    val planStart: String = "",
+    val planEnd: String = "",
+    val planKm: Double? = null,
+    val doneKm: Double? = null,
+    val leftKm: Double? = null,
+    val todayKm: Double? = null,
+    val todayDate: String = "",
+    val bestKm: Double? = null,
+    val bestDate: String = "",
+    val minOnceKm: Double? = null,
+    val maxDayKm: Double? = null,
+    val minSpeedKmh: Double? = null,
+    val maxSpeedKmh: Double? = null,
+    val morningKm: Double? = null,
+    val groupKm: Double? = null,
+    val groupCount: Int? = null,
+    val clubName: String = "",
+    val memberLevel: String = "",
+    val teacher: String = "",
+    val studentCount: Int? = null,
+)
+
+/** 开始一场时校方给的那两个 id：上传时 `exerciseId` / `memberId` 就填它们。 */
+@Immutable
+data class RunSession(
+    val exerciseId: String,
+    val memberId: String,
+    val runningType: String = "1",
+)
+
 @Immutable
 data class RunDraft(
     val startedAtMillis: Long,
@@ -56,10 +98,21 @@ data class RunDraft(
     val km: Double,
     val seconds: Int,
     val points: List<RunPoint>,
+    /** 开始那一场时拿到的会话；空串表示没拿到，提交会明确失败而不是拼一个空 id。 */
+    val exerciseId: String = "",
+    val memberId: String = "",
+    val runningType: String = "1",
 )
 
 interface SportsFeed {
     suspend fun summary(): Result<SportSummary>
+    suspend fun plan(): Result<SportPlan>
+
+    /**
+     * 开始一场之前必须拿到的会话（大一大二：extraInfo.extraId + extraDetail.memberId；
+     * 大三大四：startRunning.do 回的 rows[0]）。拿不到就别开始 —— 跑完也交不上去。
+     */
+    suspend fun beginRun(): Result<RunSession>
     suspend fun records(page: Int): Result<List<RunRecord>>
     suspend fun detail(id: String): Result<RunDetail>
     suspend fun maintenanceLog(): Result<List<Pair<String, String>>>
