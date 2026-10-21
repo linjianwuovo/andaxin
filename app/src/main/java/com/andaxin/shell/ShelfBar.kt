@@ -1,5 +1,6 @@
 package com.andaxin.shell
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -415,6 +417,8 @@ private fun RowScope.ShelfCell(
     badge: Int = 0,
 ) {
     val ink = LocalInk.current
+    // 玻璃底栏切 tab 也给一下触感：这一下是"换了一屏"，值得一个实心反馈
+    val view = LocalView.current
     Column(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -431,7 +435,10 @@ private fun RowScope.ShelfCell(
                 // 叠在折射上就变成"点哪一格哪一格发灰"，且部分机型按下后不会自动清掉。
                 interactionSource = remember(label) { MutableInteractionSource() },
                 indication = null,
-                onClick = onClick,
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    onClick()
+                },
             ),
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
