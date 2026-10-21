@@ -40,6 +40,7 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.ErrorLine
+import com.andaxin.shell.ShelfTail
 import com.andaxin.state.MessageModel
 
 @Composable
@@ -105,7 +106,7 @@ fun MessageScreen(modifier: Modifier = Modifier) {
             )
             Spacer(Modifier.height(Gap.sm))
             state.error?.let { ErrorLine(it) }
-            Spacer(Modifier.height(Gap.xxl))
+            ShelfTail()
         }
     }
 }

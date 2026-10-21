@@ -397,7 +397,13 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(bottom = 92.dp)
+                /*
+                 * 这里以前写着 `.padding(bottom = 92.dp)`，把整页挡在底栏上方。
+                 * 那一挡就是"玻璃栏背景是纯色"的真正原因：栏子采的那一层背景底下永远只有
+                 * 一片空窗口底色，模糊再大糊出来的也是一个颜色，跟不透明没区别。
+                 * 现在整页铺到屏幕底，内容从栏底下滚过去，折射和模糊才有东西可吃；
+                 * 各屏尾部那条 ShelfTail 负责让最后一条停在栏子上沿之上。
+                 */
                 .hazeSource(haze)
                 .layerBackdrop(pageBackdrop),
         ) { index ->

@@ -30,6 +30,7 @@ import com.andaxin.state.NoticeModel
 import com.andaxin.core.design.Type
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.ErrorLine
+import com.andaxin.shell.ShelfTail
 
 @Composable
 fun NoticeScreen(modifier: Modifier = Modifier) {
@@ -77,7 +78,7 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
                         .padding(bottom = Gap.md),
                 )
             }
-            Spacer(Modifier.height(Gap.xxl))
+            ShelfTail()
         }
         return
     }
@@ -116,7 +117,7 @@ fun NoticeScreen(modifier: Modifier = Modifier) {
 
             Spacer(Modifier.height(Gap.lg))
             state.error?.let { ErrorLine(it) }
-            Spacer(Modifier.height(Gap.xxl))
+            ShelfTail()
         }
     }
 }

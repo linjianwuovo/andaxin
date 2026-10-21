@@ -30,6 +30,13 @@ object Gap {
 
     /** 左右边距：整屏统一，改这一处 */
     val screen: Dp = 18.dp
+
+    /**
+     * 悬浮底栏让出来的那条尾巴（再加系统导航条的高度，见 shell 的 ShelfTail）。
+     *
+     * 64 栏体 + 12 栏底间距 + 收尾留白，凑成 96。
+     */
+    val shelfTail: Dp = 96.dp
 }
 
 /**
