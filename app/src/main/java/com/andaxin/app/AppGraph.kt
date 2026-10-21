@@ -288,7 +288,10 @@ class AppGraph(val context: Context) {
     val poller: Poller by lazy { Poller(messages, engineScope) }
 
     /** 真 GPS：只有跑步那一屏会订阅 */
-    val gps: GpsFeed by lazy { GpsFeed(context) }
+    /** 端内假 GPS（他自己写的那套），只在调试模式里由「模拟路线」启动 */
+    val mockGps by lazy { com.andaxin.core.location.InternalGpsFeed() }
+
+    val gps: GpsFeed by lazy { GpsFeed(context, mockGps) }
 
     /** 跑步引擎跟着进程活：界面切来切去不该打断采集 */
     val engine: RunEngine by lazy { RunEngine(engineScope) }
