@@ -30,29 +30,52 @@ class GpsFeed(private val context: Context) {
     private val jitterFloorMeters = 2.0
     private val jumpFloorMeters = 120.0
 
+    /** 两帧之间换算出的合理上限：8 m/s ≈ 28.8 km/h，走路/跑步不会超过它。 */
+    private val maxSpeedMps = 8.0
+
     fun fixes(): Flow<Fix> = callbackFlow {
         val lm = context.getSystemService(LocationManager::class.java)
         // 地图要的是"最近一次定位"，精度差也先挪过去；轨迹只认精度够的 lastGood。
         var lastAny: LatLng? = null
         var lastGood: LatLng? = null
+        var lastGoodAt = 0L
         val listener = LocationListener { loc ->
             val p = LatLng(loc.latitude, loc.longitude)
             val acc = loc.accuracy
             val prevAny = lastAny
             val jump = prevAny?.let { Geo.metersBetween(it, p) } ?: 0.0
-            if (prevAny != null && jump > jumpFloorMeters * 2.5) return@LocationListener
+            /*
+             * 硬跳点：两次定位之间超过 120 米不画、也不算。
+             * 10-21 傍晚他走 30 秒记出 260 米、配速 2'07"，就是开头那颗点
+             * 和后面的点差了两百多米，被当成一步算进去了。
+             */
+            if (prevAny != null && jump > jumpFloorMeters) {
+                // 不是把人钉在旧点上：地图要跟过去，但这一跳绝不进距离/轨迹。
+                lastAny = p
+                lastGood = p
+                lastGoodAt = loc.time.takeIf { it > 0L } ?: System.currentTimeMillis()
+                trySend(Fix(p, 0.0, acc, usable = false))
+                return@LocationListener
+            }
             lastAny = p
             val usable = acc <= 35f
             var meters = 0.0
             if (usable) {
                 val prev = lastGood
-                val d = prev?.let { Geo.metersBetween(it, p) } ?: 0.0
                 if (prev == null) {
                     lastGood = p
-                } else if (d > jitterFloorMeters) {
-                    // 小于 2 米当抖动：不更新 lastGood，让慢走也能攒够 2 米再记
-                    lastGood = p
-                    meters = d
+                    lastGoodAt = loc.time.takeIf { it > 0L } ?: System.currentTimeMillis()
+                } else {
+                    val d = Geo.metersBetween(prev, p)
+                    val now = loc.time.takeIf { it > 0L } ?: System.currentTimeMillis()
+                    val dt = ((now - lastGoodAt) / 1000.0).coerceAtLeast(0.5)
+                    if (d > jitterFloorMeters) {
+                        // 按时间换成速度：30 秒 260 米那种 31km/h 的"一步"直接丢，
+                        // 只把锚点挪到新位置，别让后面的点继续从旧点量。
+                        if (d / dt <= maxSpeedMps) meters = d
+                        lastGood = p
+                        lastGoodAt = now
+                    }
                 }
             }
             trySend(Fix(p, meters, acc, usable))

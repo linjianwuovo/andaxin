@@ -339,11 +339,23 @@ class CaptureSports(
         val root = school.postH5(
             "$BASE/extra/addExtraCheckNew.do",
             "access_token" to token,
+            // 官方上传表单里有它；10-21 18:3x 那次没带，服务端 iBatis 直接
+            // `studentCode` 参数为 null 报“无效的列类型 1111”。别省。
+            "studentCode" to code,
             "userId" to code,
             "_userName" to name,
             "appId" to SportsUploadCodec.APP_ID,
             "list" to list,
-        ).getOrElse { return Result.failure(it) }
+        ).getOrElse { e ->
+            val raw = e.message.orEmpty()
+            // 服务端把 iBatis 整段栈甩回来了，界面上只留一句能看懂的
+            val short = if (raw.contains("Exception") || raw.contains("SQLException")) {
+                "学校数据库拒了这次提交（参数没对上）。原文开头：" + raw.take(120) + "…"
+            } else {
+                raw.ifBlank { "提交失败" }
+            }
+            return Result.failure(IOException(short))
+        }
         val id = root.optJSONObject("data")?.optString("id").orEmpty()
             .ifBlank { root.optString("id") }
         if (id.isBlank() || id == "0") {
