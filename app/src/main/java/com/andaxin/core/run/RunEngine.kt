@@ -65,7 +65,12 @@ class RunEngine(private val scope: CoroutineScope) {
     /** 开始那一场时校方给的会话，结束时原样带进 draft 去提交。 */
     private var session: RunSession? = null
 
-    fun start(route: List<LatLng>, paceKmh: Double, mode: RunMode) {
+    fun start(
+        route: List<LatLng>,
+        paceKmh: Double,
+        mode: RunMode,
+        session: RunSession? = null,
+    ) {
         val line = if (route.size >= 2) route else demoLoop
         if (line.totalMeters() < 20.0) {
             _state.value = _state.value.copy(error = "这条线太短")
@@ -77,7 +82,7 @@ class RunEngine(private val scope: CoroutineScope) {
         val high = (target * 1.15).coerceAtMost(6.9)
         val wander = Wander(Random(System.nanoTime()))
         startedAt = System.currentTimeMillis()
-        session = null
+        this.session = session
         _state.value = RunState(active = true, mode = mode)
 
         job?.cancel()
@@ -98,6 +103,7 @@ class RunEngine(private val scope: CoroutineScope) {
                         seconds = _state.value.seconds + (TICK_MS / 1000).toInt(),
                         meters = _state.value.meters + speed * (TICK_MS / 1000.0),
                         points = _state.value.points + RunPoint(now, point, speed),
+                        here = point,
                     )
                     speed = (speed + (Random.nextDouble() - 0.5) * 0.3).coerceIn(low, high)
                     travelled += speed * (TICK_MS / 1000.0) * (if (forward) 1 else -1)

@@ -16,6 +16,14 @@ data class RunPoint(
     val metersPerSecond: Double,
 )
 
+/** 本机画的一条模拟线（只在高级入口里可见/可用）。 */
+@Immutable
+data class RouteTemplate(
+    val id: String,
+    val name: String,
+    val points: List<LatLng>,
+)
+
 @Immutable
 data class RunRecord(
     val id: String,
@@ -119,4 +127,9 @@ interface SportsFeed {
 
     /** 写操作：界面停在确认页，按下那一下由用户完成，失败绝不自动重试。 */
     suspend fun submit(draft: RunDraft): Result<String>
+
+    // 模拟线只存在本机，不走校方；高级模式下才会被界面取出来。
+    suspend fun routes(): List<RouteTemplate>
+    suspend fun saveRoute(route: RouteTemplate)
+    suspend fun deleteRoute(id: String)
 }

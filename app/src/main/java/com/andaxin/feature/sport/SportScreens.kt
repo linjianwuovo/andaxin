@@ -43,11 +43,15 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.map.LatLng
 import com.andaxin.core.map.TileMap
 import com.andaxin.core.run.RunMode
+import com.andaxin.data.RouteTemplate
 import com.andaxin.data.RunDraft
 import com.andaxin.data.SportPlan
+import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
+import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import java.util.UUID
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
@@ -70,6 +74,20 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // 高级模式下的模拟跑：不碰系统定位，只沿本机画的线生成轨迹
+    val advanced by graph.advanced.state.collectAsStateWithLifecycle(initialValue = false)
+    var routes by remember { mutableStateOf<List<RouteTemplate>>(emptyList()) }
+    var armed by remember { mutableStateOf<RouteTemplate?>(null) }
+    var pace by remember { mutableStateOf(7.0) }
+    var showPicker by remember { mutableStateOf(false) }
+    LaunchedEffect(advanced, showPicker) {
+        if (advanced) routes = graph.sports.routes()
+        if (!advanced) {
+            armed = null
+            showPicker = false
+        }
+    }
+
     /*
      * 先向校方要这一场的会话 id（大一大二 extraId/memberId，大三大四 startRunning.do），
      * 拿到了才开 GPS。拿不到就停在原地把原因写出来 —— 跑完再发现交不上去，那才叫白跑。
@@ -82,7 +100,12 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             val r = try { graph.sports.beginRun() } catch (e: Exception) { Result.failure(e) }
             starting = false
             r.onSuccess { session ->
-                graph.engine.startReal(graph.gps, session)
+                val mock = armed
+                if (mock != null) {
+                    graph.engine.start(mock.points, pace, RunMode.AlongRoute, session)
+                } else {
+                    graph.engine.startReal(graph.gps, session)
+                }
                 com.andaxin.core.run.RunService.start(ctx)
                 open("sport/run")
             }.onFailure {
@@ -130,13 +153,18 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
         Spacer(Modifier.height(Gap.xl))
         BigButton(if (starting) "正在向学校要这一场…" else "开始") {
-            ask.launch(
-                arrayOf(
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                    android.Manifest.permission.POST_NOTIFICATIONS,
+            // 模拟跑不碰系统定位，也就不去要定位权限
+            if (armed != null) {
+                begin()
+            } else {
+                ask.launch(
+                    arrayOf(
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                        android.Manifest.permission.POST_NOTIFICATIONS,
+                    )
                 )
-            )
+            }
         }
         (denied ?: startWhy)?.let {
             Spacer(Modifier.height(Gap.md))
@@ -152,6 +180,67 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
         Spacer(Modifier.height(Gap.xl))
         TipsCard(ink)
+
+        if (advanced) {
+            Spacer(Modifier.height(Gap.xl))
+            Text("高级", fontSize = Type.meta, fontWeight = FontWeight.Medium, color = ink.muted)
+            Spacer(Modifier.height(Gap.xs))
+            Sheet {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("模拟跑步", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
+                    Text(
+                        armed?.name ?: "未选路线",
+                        fontSize = Type.meta,
+                        color = if (armed == null) ink.faint else MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.height(Gap.xs))
+                Text(
+                    "只在本机沿选中的线生成轨迹，不碰系统定位；结束页仍要你按提交。",
+                    fontSize = Type.micro,
+                    lineHeight = Type.metaLine,
+                    color = ink.faint,
+                )
+                Spacer(Modifier.height(Gap.md))
+                Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                    listOf(6.0, 8.0, 10.0).forEach { p ->
+                        Chip("${p.toInt()} km/h", pace == p) { pace = p }
+                    }
+                }
+                Spacer(Modifier.height(Gap.md))
+                if (!showPicker) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                        HalfButton("选择路线") { showPicker = true }
+                        HalfButton("新建路线") { open("sport/planner") }
+                    }
+                } else {
+                    if (routes.isEmpty()) {
+                        Text("还没有画过线，先新建一条。", fontSize = Type.meta, color = ink.faint)
+                        Spacer(Modifier.height(Gap.sm))
+                    }
+                    routes.forEachIndexed { i, r ->
+                        RowLine(
+                            title = r.name,
+                            sub = "${r.points.size} 个点",
+                            right = if (armed?.id == r.id) "已选" else "",
+                            onClick = {
+                                armed = r
+                                showPicker = false
+                            },
+                        )
+                        if (i != routes.lastIndex) Hairline()
+                    }
+                    Spacer(Modifier.height(Gap.sm))
+                    Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                        HalfButton("新建路线") {
+                            showPicker = false
+                            open("sport/planner")
+                        }
+                        HalfButton("收起") { showPicker = false }
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(Gap.xxl))
     }
 }
@@ -710,6 +799,67 @@ fun SportMaintainScreen(onBack: () -> Unit) {
     }
 }
 
+/* ─────────────── ⑥ 模拟线（只有高级入口能进来） ─────────────── */
+
+@Composable
+fun RoutePlannerScreen(onBack: () -> Unit) {
+    val graph = LocalAppGraph.current
+    val scope = rememberCoroutineScope()
+    val ink = LocalInk.current
+    var points by remember { mutableStateOf<List<LatLng>>(emptyList()) }
+    // 从"上次已知位置"起画；拿不到才退回那个占位点。别再让画线的人从市区开始挪。
+    var center by remember { mutableStateOf(graph.gps.lastKnown() ?: CAMPUS) }
+    var saved by remember { mutableStateOf(false) }
+
+    Page("画一条模拟线", onBack) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.82f)
+                .background(Palette.Sand, Radius.card),
+        ) {
+            TileMap(
+                centerWgs = center,
+                pathWgs = points,
+                markersWgs = points.takeIf { it.isNotEmpty() }?.let { listOf(it.last()) } ?: emptyList(),
+                zoomStart = 18,
+                modifier = Modifier.fillMaxSize().clip(Radius.card),
+                onPickWgs = { points = points + it },
+                onCenterMoved = { center = it },
+            )
+        }
+        Spacer(Modifier.height(Gap.md))
+        Text(
+            "点图加一个拐点，连起来就是模拟要走的线；拖动地图挪视野，两指缩放。",
+            fontSize = Type.meta,
+            lineHeight = Type.metaLine,
+            color = ink.faint,
+        )
+        Spacer(Modifier.height(Gap.lg))
+        Sheet {
+            Labeled(label = "点数", value = "${points.size}")
+            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
+            Labeled(label = "长度", value = "%.0f 米".format(lengthOf(points)))
+            Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
+            Labeled(label = "圈数", value = "%.2f".format(lengthOf(points) / 400.0))
+        }
+        Spacer(Modifier.height(Gap.lg))
+        Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            HalfButton("撤销最后一点") { if (points.isNotEmpty()) points = points.dropLast(1) }
+            HalfButton(if (saved) "已存" else "保存这条") {
+                if (points.size < 2) return@HalfButton
+                scope.launch {
+                    graph.sports.saveRoute(
+                        RouteTemplate(UUID.randomUUID().toString(), "模拟线 ${points.size} 点", points),
+                    )
+                    saved = true
+                }
+            }
+        }
+        Spacer(Modifier.height(Gap.xxl))
+    }
+}
+
 /* ───────────────────────── 公共小块 ───────────────────────── */
 
 @Composable
@@ -776,4 +926,12 @@ private fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String,
 @Composable
 private fun LaunchedLoad(block: suspend () -> Unit) {
     androidx.compose.runtime.LaunchedEffect(Unit) { block() }
+}
+
+private fun lengthOf(points: List<LatLng>): Double {
+    var t = 0.0
+    for (i in 1 until points.size) {
+        t += com.andaxin.core.map.Geo.metersBetween(points[i - 1], points[i])
+    }
+    return t
 }

@@ -300,6 +300,12 @@ class CaptureSports(
      * 服务端回 `data.id`（旧版也可能是根上的 id），`""` 或 `"0"` 都当没存 —— 那一条
      * 以前被当成成功过，结果学校那边什么都没有。
      */
+    override suspend fun routes() = local.routes()
+
+    override suspend fun saveRoute(route: com.andaxin.data.RouteTemplate) = local.saveRoute(route)
+
+    override suspend fun deleteRoute(id: String) = local.deleteRoute(id)
+
     override suspend fun submit(draft: RunDraft): Result<String> {
         if (draft.km <= 0.0 || draft.seconds <= 0) {
             return Result.failure(IOException("这一场是 0 公里或 0 秒，不交"))
