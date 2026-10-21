@@ -50,6 +50,7 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
+import com.andaxin.shell.ShelfTail
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
@@ -195,7 +196,7 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             ReminderRow()
         }
 
-        Spacer(Modifier.height(Gap.xxl))
+        ShelfTail()
     }
 }
 

@@ -64,6 +64,7 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.SampleTag
 import com.andaxin.shell.Refreshable
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.ShelfTail
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
@@ -330,7 +331,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     Text("正在拉…", fontSize = Type.meta, color = ink.faint)
                 }
             }
-            Spacer(Modifier.height(Gap.xxl))
+            ShelfTail()
         }
     }
 }

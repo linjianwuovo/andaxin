@@ -57,6 +57,7 @@ import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.ErrorLine
+import com.andaxin.shell.ShelfTail
 import com.andaxin.state.TimetableModel
 import kotlinx.coroutines.delay
 
@@ -186,7 +187,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             // 原来这里连着摆两遍同一个原因（一行灰字 + 一条 ErrorLine），只留带「重试」的那条
             Spacer(Modifier.height(Gap.lg))
             state.error?.let { ErrorLine(it, retry = { model.load(state.weekOffset) }) }
-            Spacer(Modifier.height(Gap.xxl))
+            ShelfTail()
         }
         }
     }

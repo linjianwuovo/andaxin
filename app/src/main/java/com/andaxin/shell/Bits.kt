@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -432,6 +433,20 @@ fun Hairline(modifier: Modifier = Modifier) {
 
 @Composable
 fun FillHeight(modifier: Modifier = Modifier) = Spacer(modifier.fillMaxHeight())
+
+/**
+ * 五个 tab 那一屏的收尾留白。
+ *
+ * 为什么要有它：底栏是悬浮的玻璃，页面现在从它底下整屏铺过去（这样玻璃才有东西可折射），
+ * 那么滚到底时最后一条内容必须停在栏子上沿之上，不然它永远压在玻璃底下读不出来。
+ *
+ * 两个修饰符的顺序别反：`navigationBarsPadding` 要写在 `height` **前面**，
+ * 那样它是加在 96 之外；写在后面就变成把 96 里面挖掉一块，三键导航的机器上照样被压住。
+ */
+@Composable
+fun ShelfTail() {
+    Spacer(Modifier.navigationBarsPadding().height(Gap.shelfTail))
+}
 
 
 /* ───────────── 界面状态：一句话，不写文章 ───────────── */

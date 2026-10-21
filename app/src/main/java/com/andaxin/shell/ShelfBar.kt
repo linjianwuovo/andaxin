@@ -99,6 +99,11 @@ import kotlin.math.sign
  * 3. 判"手指在哪一格"用 floor，不能用 roundToInt：round 会把格心右侧每个点都算到下一格，
  *    表现成"按住首页球往右飘"。
  * 4. 玻璃栏里不能留触摸水波纹：那层约 10% 黑的圆角矩形叠在折射上就是"点哪哪发灰"。
+ * 5. drawBackdrop 不写 highlight 就是吃 `Highlight.Default` —— 实测是一圈纯白硬边，
+ *    绕整圈，看着就是"栏子被一个矩形框着"（0.8.2 前那版真机像素：栏外 234、栏内 244、中间 3px 是 255）。
+ * 6. 玻璃得有东西可糊。页面要是被挡在栏子上方（pager 自己 padding 掉 92dp），
+ *    栏子采的那一层永远是一片空底色，模糊再大糊出来也是纯色 —— 他 10-22 那句"背景都是纯色"是这条，
+ *    不是模糊参数不够。整页铺到底、各屏尾部留 ShelfTail，玻璃才成立。
  */
 
 private const val BAR_HEIGHT = 64f
@@ -279,6 +284,16 @@ fun ShelfBar(
                                     lens(lensSizePx, lensStrengthPx, spec.chromatic)
                                 }
                             },
+                            /*
+                             * 这一行是被他那句"还有一大块矩形框着那意义何在"逼出来的。
+                             * `drawBackdrop` 不传 highlight 时吃的是库的 `Highlight.Default`，
+                             * 画出来是一圈 1dp（3.5px）的**纯白硬边** —— 真机像素扫过：
+                             * 栏外是 (234,236,239)，栏内是 (244,246,249)，中间那 3 个像素是 (255,255,255)。
+                             * 高光本该是压在玻璃上沿的一道柔光，绕整圈就成了"框"，
+                             * 而且因为它是白的，白天那一圈还特别像贴纸的白边。
+                             * 关成 0，边缘交给下面那圈 1dp 发丝线 —— 那才是给"栏子浮在内容上"用的。
+                             */
+                            highlight = { Highlight.Default.copy(alpha = 0f) },
                             layerBlock = {
                                 val s = lerp(1f, 1f + barPressGrowPx / size.width, press())
                                 scaleX = s
