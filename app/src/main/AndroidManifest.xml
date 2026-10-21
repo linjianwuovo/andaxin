@@ -65,6 +65,17 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <!-- 查寝签到拍照：相机把图写到 cache/checkin/，经 FileProvider 授权给它写 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- 上课提醒那颗闹钟。exported=false：只接自己包内投的广播 -->
         <receiver
             android:name="com.andaxin.core.schedule.ReminderReceiver"

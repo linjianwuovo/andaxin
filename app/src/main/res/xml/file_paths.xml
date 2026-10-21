@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 签到照片只落在 cache/checkin/，不往用户可见目录写 -->
+    <cache-path name="checkin" path="checkin/" />
+</paths>

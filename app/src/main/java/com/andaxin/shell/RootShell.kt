@@ -85,6 +85,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.feature.modules.DormBoardScreen
+import com.andaxin.feature.modules.DormTaskScreen
 import com.andaxin.feature.brief.BriefDetailPage
 
 /**
@@ -226,10 +227,7 @@ fun RootShell() {
 
         page(Route.DORM) { DormBoardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.DORM_TASK, arguments = listOf(idPattern())) { e ->
-            BriefDetailPage(
-                title = "签到详情", source = graph.dormTaskDetail, id = e.arguments?.getString(ID_ARG).orEmpty(),
-                onBack = { nav.popBackStack() },
-            )
+            DormTaskScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
         page(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
             DormDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
