@@ -3,13 +3,16 @@ package com.andaxin.data.capture
 import com.andaxin.core.net.Http
 import com.andaxin.core.store.SchoolIdentity
 import com.andaxin.core.store.SessionStore
+import java.io.File
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -145,6 +148,62 @@ class School(private val session: SessionStore) {
                     }
                     if (!root.optBoolean("flag", false)) {
                         val msg = root.optString("msg").ifBlank { "校方说没通过" }
+                        if (msg.contains("没有访问权限")) {
+                            _kicked.value = true
+                            return@use Result.failure(Exception(KICKED))
+                        }
+                        return@use Result.failure(Exception(msg))
+                    }
+                    Result.success(root)
+                }
+            } catch (e: Exception) {
+                Result.failure(Exception("连不上学校：${e.message ?: e.javaClass.simpleName}"))
+            }
+        }
+    }
+
+    /**
+     * fdygl 的图片上传。旧项目走的是这条路：
+     * `POST /app/file/uploadFileToFastdfs`，multipart 的字段名就是 `file`，
+     * 身份仍放请求头（和 [postJson] 同一套），响应里的 `data.path` 回填签到表的 `signinPhoto`。
+     */
+    suspend fun postFile(url: String, file: File, field: String = "file"): Result<JSONObject> {
+        val id = session.identity()
+            ?: return Result.failure(Exception("还没登录，这一屏要校方数据"))
+        val media = when (file.extension.lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> "image/jpeg"
+        }.toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(field, file.name, file.asRequestBody(media))
+            .build()
+        return withContext(Dispatchers.IO) {
+            val request = Request.Builder().url(url)
+                .post(body)
+                .header("Accept", "application/json")
+                .header("User-Agent", AGENT)
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("accessToken", id.accessToken)
+                .header("userCode", id.userCode)
+                .header("userType", id.userType)
+                .header("xh", id.userCode)
+                .header("role", "")
+                .header("roleId", "")
+                .build()
+            try {
+                client.newCall(request).execute().use { resp ->
+                    val text = resp.body?.string().orEmpty()
+                    if (!resp.isSuccessful) return@use Result.failure(Exception("服务器回了 ${resp.code}"))
+                    val root = runCatching { JSONObject(text) }.getOrNull()
+                        ?: return@use Result.failure(Exception("回来的不是 JSON（多半是被踢到登录页了）"))
+                    if (root.optInt("code") == 203) {
+                        _kicked.value = true
+                        return@use Result.failure(Exception(KICKED))
+                    }
+                    if (!root.optBoolean("flag", false)) {
+                        val msg = root.optString("msg").ifBlank { "照片没传上去" }
                         if (msg.contains("没有访问权限")) {
                             _kicked.value = true
                             return@use Result.failure(Exception(KICKED))

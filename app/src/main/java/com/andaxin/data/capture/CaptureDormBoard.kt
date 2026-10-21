@@ -1,7 +1,9 @@
 package com.andaxin.data.capture
 
 import com.andaxin.core.store.SessionStore
+import java.io.File
 import java.time.LocalDate
+import java.util.Locale
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
@@ -62,6 +64,37 @@ data class DormTask(
     val unit: String,
 ) {
     val isToday: Boolean get() = date == LocalDate.now().toString()
+}
+
+/**
+ * 签到详情里真正驱动界面的那几项。键名照 `getTaskInfoByDateId` 的响应，
+ * 不自己另起一套：`signinPhoto="1"` 是"要拍照"、`signinPhotoName` 才是已签到那张图的地址。
+ */
+data class DormTaskInfo(
+    val dateId: String,
+    val title: String,
+    val date: String,
+    val startAt: String,
+    val endAt: String,
+    val signed: Boolean,
+    val signinAt: String,
+    val signinMode: String,
+    val needPhoto: Boolean,
+    val placeName: String,
+    val locationRange: String,
+    val requirement: String,
+    val creator: String,
+    val unit: String,
+    val photoName: String,
+    val status: String,
+    val lateReturn: String,
+    val replenish: String,
+)
+
+/** fdygl 里缺值是 JSON 的 null，`optString` 会把它读成字符串 "null"，不能原样上屏。 */
+private fun JSONObject.clean(key: String): String {
+    val v = opt(key)
+    return if (v == null || v == JSONObject.NULL) "" else v.toString().trim()
 }
 
 /** 一屏要的一次拉齐的东西。 */
@@ -152,6 +185,103 @@ class CaptureDormBoard(private val school: School, private val session: SessionS
         return page("/app/dorm/pageStudentSignIn", code, "3")
             .filter { it.date >= today }
             .minByOrNull { it.date + it.startAt }
+    }
+
+    /**
+     * 签到详情（要动手签到的那一屏用）。
+     *
+     * 走 `getTaskInfoByDateId`，字段含混的地方照他旧项目已验证的取法：
+     * 签到范围优先取 `signinLocations[0]` 的 `lngLat`/`content`，没有再退顶层 `lng`/`lat`。
+     * 是否需要拍照只看 `signinPhoto="1"`；`signinPhotoName` 是**已签到那张图**，不是标记。
+     * 这里额外把"签到要求里写了拍照/自拍"也算作要拍照 —— 服务端字段偶尔不给，
+     * 但要求那几行是明写的，不能让用户交完才发现少一张图。
+     */
+    suspend fun taskInfo(dateId: String): Result<DormTaskInfo> {
+        if (dateId.isBlank()) return Result.failure(Exception("这一条没有 dateId，进不去详情"))
+        val root = school.postJson(
+            "$FDY/app/dorm/getTaskInfoByDateId",
+            JSONObject().put("dateId", dateId),
+        ).getOrElse { return Result.failure(it) }
+        val d = root.optJSONObject("data") ?: return Result.failure(Exception("签到详情没回数据"))
+        val base = lastTasks[dateId]
+        val firstLoc = d.optJSONArray("signinLocations")?.optJSONObject(0)
+        val requirement = d.clean("requirement")
+        val needPhoto = d.clean("signinPhoto") == "1" ||
+            d.clean("photoRequire") == "1" ||
+            requirement.contains("拍照") || requirement.contains("自拍")
+        val rangeRaw = firstLoc?.opt("content")
+            ?.takeUnless { it == JSONObject.NULL }
+            ?.toString().orEmpty()
+            .ifBlank { d.clean("locationRange") }
+        val place = firstLoc?.clean("signinLocation").orEmpty()
+            .ifBlank { firstLoc?.clean("name").orEmpty() }
+            .ifBlank { d.clean("signinPlaceName") }
+            .ifBlank { d.clean("signinPlace") }
+        return Result.success(
+            DormTaskInfo(
+                dateId = d.clean("dateId").ifBlank { dateId },
+                title = d.clean("title").ifBlank { base?.title ?: "签到任务" }.trim(),
+                date = d.clean("taskDate").ifBlank { base?.date.orEmpty() },
+                startAt = d.clean("collectionStartTime")
+                    .ifBlank { d.clean("timedStartTime").substringAfter(' ') }
+                    .ifBlank { base?.startAt.orEmpty() },
+                endAt = d.clean("collectionEndTime")
+                    .ifBlank { d.clean("timedEndTime").substringAfter(' ') }
+                    .ifBlank { base?.endAt.orEmpty() },
+                signed = d.clean("signStatus") == "1" || base?.signed == true,
+                signinAt = d.clean("signinDate"),
+                signinMode = d.clean("signinMode").ifBlank { base?.mode ?: "1" },
+                needPhoto = needPhoto,
+                placeName = place,
+                locationRange = rangeRaw,
+                requirement = requirement,
+                creator = d.clean("createName").ifBlank { base?.creator.orEmpty() },
+                unit = d.clean("createOrgName").ifBlank { base?.unit.orEmpty() },
+                photoName = d.clean("signinPhotoName"),
+                status = d.clean("status"),
+                lateReturn = d.clean("lateReturnTime"),
+                replenish = d.clean("replenish"),
+            )
+        )
+    }
+
+    /** 先传图，再把 `data.path` 填进签到表的 `signinPhoto`。 */
+    suspend fun uploadPhoto(file: File): Result<String> {
+        val root = school.postFile("$FDY/app/file/uploadFileToFastdfs", file).getOrElse {
+            return Result.failure(it)
+        }
+        val data = root.opt("data")
+        val path = when (data) {
+            is JSONObject -> listOf("path", "url", "fileUrl", "fullPath", "filePath")
+                .firstNotNullOfOrNull { data.optString(it).takeIf { s -> s.isNotBlank() } }
+                .orEmpty()
+            is String -> data
+            else -> ""
+        }
+        if (path.isBlank()) return Result.failure(Exception("照片传上去了，但没拿到路径"))
+        return Result.success(path)
+    }
+
+    /**
+     * 提交签到。字段与旧项目一致：`taskDateId` + `signinPhoto` + `signinPlace` + `latLng`（BD-09，经度在前）。
+     * 这一发是写操作 —— 界面只在用户按「提交签到」时调用，别自动发。
+     */
+    suspend fun submitSignIn(
+        dateId: String,
+        photoUrl: String,
+        place: String,
+        bdLng: Double,
+        bdLat: Double,
+    ): Result<Unit> {
+        val body = JSONObject()
+            .put("taskDateId", dateId)
+            .put("signinPhoto", photoUrl)
+            .put("signinPlace", place)
+            .put("latLng", String.format(Locale.US, "%.6f,%.6f", bdLng, bdLat))
+            .put("outSignin", "0")
+            .put("outSigninDesc", "")
+        school.postJson("$FDY/app/dorm/signIn", body).getOrElse { return Result.failure(it) }
+        return Result.success(Unit)
     }
 
     /** 任务列表那一族：数组挂根节点 `rows`，`data` 是 null。 */

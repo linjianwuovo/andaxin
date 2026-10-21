@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +40,8 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
@@ -85,7 +86,8 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         )
         busy = false
     }
-    LaunchedEffect(Unit) { reload() }
+    // 每次回到这一屏都重拉（从签到详情签完返回时，列表上的"没签"要跟着变）
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { reload() } }
 
     ScaffoldPage(title = "查寝签到", onBack = onBack, onRefresh = { reload() }) {
         val b = board
