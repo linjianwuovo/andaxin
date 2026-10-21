@@ -215,7 +215,13 @@ private fun Grid(slots: List<TimetableSlot>, today: Int, periodNow: Int?, rowH: 
                         // 现在正在上的那一节标主色
                         val on = periodNow == i + 1
                         Text("${i + 1}", fontSize = Type.micro, color = if (on) accent else ink.faint)
+                        // 左边那格把**开始和结束**都标上（他 10-21 早上要的就是这个）：
+                        // 只给一个 08:00，人还得自己知道这节课上到几点。结束时刻是按 45 分钟推的，
+                        // 接口没给过 —— 见 `Periods` 顶上那段。
                         Text(start, fontSize = Type.tinier, color = ink.ghost)
+                        Periods.endAt(i + 1)?.let { end ->
+                            Text(end, fontSize = Type.tinier, color = ink.ghost)
+                        }
                     }
                 }
             }
@@ -364,8 +370,10 @@ private fun DayList(slots: List<TimetableSlot>, today: Int) {
             RowLine(
                 title = slot.course,
                 sub = listOf(
+                    // 这一屏原来只有"第 1-2 节"，没有钟点；时间放最前面，扫一眼就是几点到几点。
+                    // 右边那句已经写了"第 1-2 节"，所以这里不再重复"N 节连排"。
+                    Periods.rangeText(slot.startPeriod, slot.periodCount).orEmpty(),
                     shortRoom(slot.room),
-                    if (slot.periodCount > 1) "${slot.periodCount} 节连排" else "",
                 ).filter { it.isNotBlank() }.joinToString(" · "),
                 right = if (slot.periodCount > 1)
                     "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
