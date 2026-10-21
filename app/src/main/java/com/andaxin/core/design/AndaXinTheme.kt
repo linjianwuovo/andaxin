@@ -157,14 +157,28 @@ fun AndaXinTheme(
         )
         MaterialTheme(
             colorScheme = scheme,
-            typography = AdxTypography,
+            typography = AdxTypography.withMiSans(),
             shapes = Shapes,
             content = {
-                // Miuix 那套组件只认 MiuixTheme 的颜色，不认 MaterialTheme。两套并着走：
-                // 已经换成 Miuix 零件的地方吃下面这份，还没换的吃上面那份。
-                // 底子是 Miuix 自带的 HyperOS 色板（浅色 primary=0xFF3482FF），
-                // 只把纸色/墨色/卡片/分隔线这几档换成我们自己的，免得一屏两副面孔。
-                MiuixTheme(colors = miuixColors(dark, accent), content = content)
+                /*
+                 * 字体走 MiSans。Material3 这边换 Typography 还不够：
+                 * 大部分 `Text` 只写了字号、没写 family，最终是从 `LocalTextStyle` 继承的，
+                 * 所以这里把当前那一档的 family 换掉，其余（字号、行高、字重）原样保留。
+                 */
+                val base = androidx.compose.material3.LocalTextStyle.current
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.material3.LocalTextStyle provides base.copy(fontFamily = MiSans),
+                ) {
+                    // Miuix 那套组件只认 MiuixTheme 的颜色，不认 MaterialTheme。两套并着走：
+                    // 已经换成 Miuix 零件的地方吃下面这份，还没换的吃上面那份。
+                    // 底子是 Miuix 自带的 HyperOS 色板（浅色 primary=0xFF3482FF），
+                    // 只把纸色/墨色/卡片/分隔线这几档换成我们自己的，免得一屏两副面孔。
+                    MiuixTheme(
+                        colors = miuixColors(dark, accent),
+                        textStyles = MiSansMiuixTextStyles,
+                        content = content,
+                    )
+                }
             },
         )
     }
