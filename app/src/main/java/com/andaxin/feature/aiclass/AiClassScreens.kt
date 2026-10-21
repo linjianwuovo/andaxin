@@ -13,6 +13,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -304,12 +311,25 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                 // 其余栏的条目没有下一步，给它们挂个不会响的 clickable 比不挂更坏（点了没反应看着像坏了）
                 val live = tab == TAB_LIVE
                 val section = tab == TAB_CHAPTER && item.extra["leaf"] == "true"
+                // 课件/其他资源：点进去看页 —— 一条 PPT 在官方那边是"一页一图"，
+                // 拿 resourceUrl 直接下载 pptx 在手机上打不开，所以走 viewCoursewareTeacher 的页图。
+                val paper = (tab == TAB_COURSEWARE || tab == TAB_OTHER) &&
+                    !item.extra["resourceId"].isNullOrBlank()
                 Sheet(
                     modifier = Modifier
                         .padding(bottom = Gap.sm)
                         .then(
                             when {
                                 live -> Modifier.pressClick { open("aiclass/play/${item.id}") }
+                                paper -> Modifier.pressClick {
+                                    val rid = item.extra["resourceId"].orEmpty()
+                                    val cid = item.extra["coursewareId"].orEmpty()
+                                    val tcid = course?.teachClassId.orEmpty()
+                                    open(
+                                        "aiclass/paper/$rid/$cid/$tcid?title=" +
+                                            android.net.Uri.encode(item.title)
+                                    )
+                                }
                                 section -> Modifier.pressClick {
                                     picked = if (picked?.id == item.id) null else item
                                     sectionItems = null
@@ -430,7 +450,63 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         )
     }
 
+    /*
+     * 签到码直接摆在这一屏上，不再点进二级页面（他 10-3x：「签到码不要搞二级界面，
+     * 我要用最少的操作步骤做最准的事」）。进 AI 课堂 → 输六位 → 按一下，就完了。
+     */
+    var code by remember { mutableStateOf("") }
+    var codeBusy by remember { mutableStateOf(false) }
+    var codeMsg by remember { mutableStateOf<String?>(null) }
+    var codeOk by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     ScaffoldPage(title = "AI 课堂", onBack = onBack) {
+        Sheet {
+            Text("签到码", fontSize = Type.title, color = ink.strong)
+            Spacer(Modifier.height(Gap.xs))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                MiuixTextField(
+                    value = code,
+                    onValueChange = { raw ->
+                        code = raw.filter { it.isDigit() }.take(6)
+                        codeMsg = null
+                    },
+                    label = "老师报的 6 位数字",
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(Gap.sm))
+                MiuixButton(
+                    onClick = {
+                        codeBusy = true
+                        codeMsg = null
+                        codeOk = false
+                        scope.launch {
+                            graph.fifApi.signByCode(code).fold(
+                                onSuccess = { codeOk = true; codeMsg = it },
+                                onFailure = { codeOk = false; codeMsg = it.message ?: "没签上" },
+                            )
+                            codeBusy = false
+                        }
+                    },
+                    enabled = !codeBusy && code.length == 6,
+                ) {
+                    Text(if (codeBusy) "签…" else "签到", fontSize = Type.body)
+                }
+            }
+            codeMsg?.let {
+                Spacer(Modifier.height(Gap.xs))
+                Text(
+                    it,
+                    fontSize = Type.meta,
+                    color = if (codeOk) (if (ink.dark) Palette.NightTeal else Palette.TealInk)
+                    else MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+        Spacer(Modifier.height(Gap.sm))
         Sheet(modifier = Modifier.pressClick { open("aiclass/scan") }) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
@@ -439,18 +515,6 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     Text("对着课堂上的二维码", fontSize = Type.meta, color = ink.muted)
                 }
                 Text("去扫码", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        Spacer(Modifier.height(Gap.sm))
-        // 签到码：跟扫码是同一件事的两种入口（老师报数字 / 屏幕出二维码）
-        Sheet(modifier = Modifier.pressClick { open("aiclass/signcode") }) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text("签到码", fontSize = Type.title, color = ink.strong)
-                    Spacer(Modifier.height(Gap.xs))
-                    Text("输老师报的 6 位数字", fontSize = Type.meta, color = ink.muted)
-                }
-                Text("去签到", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
             }
         }
         Spacer(Modifier.height(Gap.sm))

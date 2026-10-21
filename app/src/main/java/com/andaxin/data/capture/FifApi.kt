@@ -97,8 +97,11 @@ class FifApi(private val fif: FifSession) {
                 sub = listOf(o.optString("fileType"), o.optString("createTime"))
                     .filter { it.isNotBlank() }.joinToString(" · "),
                 extra = mapOf(
-                    "resourceId" to o.optString("resourceId"),
-                    "coursewareId" to o.optString("coursewareId"),
+                    "resourceId" to firstOf(o, "resourceId", "id"),
+                    // 官方那一发（C12）的入参写的是 **`courseWareId`（大写 W）**，
+                    // 列表里这个键两种拼法都见过 —— 只读小写那个，取出来是空串，
+                    // 换页图那一条就会静默回空（10-21 10:46 就是这么"没拿到页面图"的）。
+                    "coursewareId" to firstOf(o, "courseWareId", "coursewareId"),
                     "url" to o.optString("resourceUrl"),
                 ),
             )
@@ -168,6 +171,20 @@ class FifApi(private val fif: FifSession) {
      * 是一张已渲染的 minio PNG（约 400 字符直链），另有 `page:int`、`flagType`。
      * `resourceId`(32) 与 `courseWareId`(6) 是两个不同的值，缺一个换不到图。
      */
+    /**
+     * 界面那一侧只用传这三个：schoolId 是 FIF 会话里的常量，别让界面去记它。
+     * 没连上 FIF（ids 为空）时返回空表，调用方显示"还没连上"就行。
+     */
+    suspend fun coursewarePagesFor(
+        resourceId: String,
+        coursewareId: String,
+        teachClassId: String,
+    ): List<AiItem> {
+        val schoolId = fif.ids()?.schoolId.orEmpty()
+        if (schoolId.isBlank()) return emptyList()
+        return coursewarePages(resourceId, coursewareId, schoolId, teachClassId)
+    }
+
     suspend fun coursewarePages(
         resourceId: String,
         courseWareId: String,

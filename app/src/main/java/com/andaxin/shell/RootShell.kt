@@ -34,8 +34,8 @@ import com.andaxin.feature.about.AboutScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
 import com.andaxin.feature.aiclass.RecordPlayScreen
 import com.andaxin.feature.aiclass.ScanScreen
+import com.andaxin.feature.aiclass.CoursewareScreen
 import com.andaxin.feature.aiclass.QrSignScreen
-import com.andaxin.feature.aiclass.SignCodeScreen
 import com.andaxin.feature.home.HomeScreen
 import com.andaxin.feature.me.MeScreen
 import com.andaxin.feature.modules.OnboardingScreen
@@ -138,11 +138,11 @@ object Route {
     const val AICLASS = "aiclass"
     const val AICLASS_DETAIL = "aiclass/detail/{id}"
     const val AICLASS_SCAN = "aiclass/scan"
-    /** 六位签到码签到。 */
-    const val AICLASS_SIGNCODE = "aiclass/signcode"
 
     /** 扫码签到：把码里的链接交给带 FIF 会话的 WebView 打开。{u} 是整条 URL。 */
     const val AICLASS_SIGN_QR = "aiclass/signqr/{u}"
+    /** 课件预览：一页一张图。 */
+    const val AICLASS_PAPER = "aiclass/paper/{r}/{c}/{t}?title={title}"
     const val AICLASS_PLAY = "aiclass/play/{id}"
     const val OPEN_COURSE = "opencourse"
     const val OPEN_COURSE_DETAIL = "opencourse/detail/{id}"
@@ -261,13 +261,29 @@ fun RootShell() {
         }
         page(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
         page(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
-        page(Route.AICLASS_SIGNCODE) { SignCodeScreen(onBack = { nav.popBackStack() }) }
         page(
             Route.AICLASS_SIGN_QR,
             arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
         ) { e ->
             QrSignScreen(
                 url = e.arguments?.getString("u").orEmpty(),
+                onBack = { nav.popBackStack() },
+            )
+        }
+        page(
+            Route.AICLASS_PAPER,
+            arguments = listOf(
+                androidx.navigation.navArgument("r") { defaultValue = "" },
+                androidx.navigation.navArgument("c") { defaultValue = "" },
+                androidx.navigation.navArgument("t") { defaultValue = "" },
+                androidx.navigation.navArgument("title") { defaultValue = "" },
+            ),
+        ) { e ->
+            CoursewareScreen(
+                resourceId = e.arguments?.getString("r").orEmpty(),
+                coursewareId = e.arguments?.getString("c").orEmpty(),
+                teachClassId = e.arguments?.getString("t").orEmpty(),
+                title = e.arguments?.getString("title").orEmpty(),
                 onBack = { nav.popBackStack() },
             )
         }
