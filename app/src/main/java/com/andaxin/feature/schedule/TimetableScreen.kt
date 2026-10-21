@@ -347,9 +347,29 @@ private fun CourseCell(slot: TimetableSlot, span: Int, now: Boolean, rowH: Dp, s
     }
 }
 
-/** 课表那五颗实心色，顺序就是分配顺序。 */
+/**
+ * 课表色块用的十二颗实心色，白字对比度都在 4.9:1 以上（10-21 早上逐颗量过）。
+ *
+ * 为什么从五颗加到十二颗：他 10-21 09:5x 一句「每个科目不要重复一个颜色」——
+ * 五颗按课名排序轮流发，一周七门课必然有两门撞色，而撞在一起的常常还是相邻两天。
+ * 现在一门一颗，十二颗够一张课表用；真选了十几门课才会绕回来，那时候也只能绕。
+ *
+ * 顺序是故意冷暖交替的：按课名排序一路发下去，相邻两门不会一个青接一个蓝，
+ * 远看像同一门课的两个时间。
+ */
 private val COURSE_COLORS = listOf(
-    Palette.CourseTeal, Palette.CourseViolet, Palette.CourseBlue, Palette.CourseAmber, Palette.CourseSlate,
+    Color(0xFF0F766E), // 墨绿
+    Color(0xFFB45309), // 琥珀
+    Color(0xFF1D4ED8), // 蓝
+    Color(0xFFBE123C), // 玫红
+    Color(0xFF15803D), // 绿
+    Color(0xFF6D28D9), // 紫
+    Color(0xFF0E7490), // 青
+    Color(0xFFA16207), // 赭
+    Color(0xFF4338CA), // 靛
+    Color(0xFF9D174D), // 洋红
+    Color(0xFF4D7C0F), // 橄榄
+    Color(0xFF475569), // 石板
 )
 
 /**
