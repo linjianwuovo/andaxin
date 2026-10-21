@@ -144,6 +144,20 @@ class FifSession(
         ?.let { "Basic $it" }
 
     /**
+     * 把这一跳攒下来的 cookie 拼成一条 `name=value; name=value`，给 WebView 用。
+     *
+     * 为什么要这个：签到二维码解出来是个**网页**（`qrcodeV2/qrcodeHandler?token=…`），
+     * 官方是拿带着 FIF 会话的 WebView 打开它、由服务端完成签到。我们 App 里那份会话
+     * 只活在 OkHttp 的 cookie 罐里，WebView 看不到 —— 不搬过去，页面就是没登录的样子。
+     */
+    fun cookieHeader(host: String): String =
+        synchronized(jar) {
+            jar.entries.firstOrNull { it.key.endsWith(host) }?.value.orEmpty()
+                .filter { it.expiresAt > System.currentTimeMillis() }
+                .joinToString("; ") { "${it.name}=${it.value}" }
+        }
+
+    /**
      * 资源中心（`resc.fifedu.com`）那发要的是**裸 JWT**：带 `Basic ` 前缀它不认，
      * 而且不能带 `Visit-Type`。主站的习惯直接搬过去，回的是 200 + `data:null`。
      */

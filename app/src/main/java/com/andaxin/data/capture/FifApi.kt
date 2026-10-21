@@ -740,6 +740,39 @@ class FifApi(private val fif: FifSession) {
 
     /* ── 发请求与解析的小工具 ── */
 
+    /**
+     * 六位签到码签到。
+     *
+     * 【取证】**只有等级①**：读的是官方 H5 的签到码组件（`lxtmp/sign_js.txt`、`sign_flow.txt`），
+     * 它把所有内容压成一条调用 ——
+     * `aiktSignIn.checkQrcodeHandler({signId, userName, signCode})`，
+     * 而 api 定义里是
+     * `post("$api/coursecenter-interaction/qrcodeV2/checkQrcodeHandler", qs.stringify(t))`，
+     * 也就是 form-urlencoded，三个键。
+     *
+     * **零报文**：这一发在磁盘上没有一条真实请求/响应（`契约_AI课堂抓包.md` 也写着"签到提交零条"）。
+     * 所以：
+     * ① `signId` 不传 —— H5 那个组件是从路由 query 里拿的（链接带过来的），我们没有那条链接；
+     *    服务端认不认"只有码+账号"这一发，**没验过**。
+     * ② 判法照官方组件抄：**只认 `status == "error"` 为失败**，成功时不一定是 `"success"`。
+     *    别套 `passed()`（那一族把空 status 也算过，会把这个口放宽）。
+     * ③ 这是写操作，界面上由他按，不自动重试、不在后台试。
+     */
+    suspend fun signByCode(code: String): Result<String> = runCatching {
+        val who = fif.ids()?.userName
+        if (who.isNullOrBlank()) throw Exception("还没连上 AI 课堂，先去 AI 课堂那一屏点一次")
+        val body = fif.postForm(
+            "$STTP/coursecenter-interaction/qrcodeV2/checkQrcodeHandler",
+            listOf("userName" to who, "signCode" to code),
+            fif.authHeader(),
+        )
+        val root = JSONObject(body)
+        if (root.optString("status") == "error") {
+            throw Exception(root.optString("message").ifBlank { "这个签到码不对" })
+        }
+        root.optString("message").ifBlank { "签到成功" }
+    }
+
     private suspend fun get(url: String): JSONObject? =
         runCatching { fif.getJson(url) }.getOrNull()?.let { if (passed(it)) it else null }
 

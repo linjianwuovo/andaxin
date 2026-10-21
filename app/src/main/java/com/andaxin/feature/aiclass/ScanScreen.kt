@@ -61,7 +61,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * 现在扫完只会把码显示给你看，不会替你签 —— 签到是写操作。
  */
 @Composable
-fun ScanScreen(onBack: () -> Unit) {
+fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
     val context = LocalContext.current
     val ink = LocalInk.current
     var granted by remember {
@@ -97,7 +97,12 @@ fun ScanScreen(onBack: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             when {
-                granted -> CameraPreview(onCode = { code = it })
+                granted -> CameraPreview(onCode = { raw ->
+                    code = raw
+                    // 签到码扫出来是个网页链接 —— 官方就是拿带会话的 WebView 打开它完成签到。
+                    // 第一次识别到就跳过去，别让人再点一下（上课那几分钟经不起多点一次）。
+                    if (raw.startsWith("http", ignoreCase = true)) onSignUrl(raw)
+                })
                 denied -> Text("没给相机权限", fontSize = Type.body, color = Color.White)
                 else -> Text("正在要相机权限…", fontSize = Type.body, color = Color.White)
             }
