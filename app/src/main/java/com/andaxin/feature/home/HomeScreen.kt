@@ -46,6 +46,7 @@ import com.andaxin.data.capture.HomeExtras
 import com.andaxin.data.capture.SchoolService
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
+import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.MetricCell
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.SampleTag
@@ -54,6 +55,8 @@ import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.andaxin.shell.ErrorLine
 import com.andaxin.state.HomeModel
 
@@ -85,9 +88,22 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
      */
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     var extras by remember { mutableStateOf<HomeExtras?>(null) }
-    LaunchedEffect(session.generation) {
+    var extrasWhy by remember { mutableStateOf<String?>(null) }
+    var extrasTry by remember { mutableStateOf(0) }
+    // 拉得比 700ms 还久才亮"正在拉…"：快的时候不闪那一下，慢的时候下半屏不会一片白
+    var extrasSlow by remember { mutableStateOf(false) }
+    LaunchedEffect(session.generation, extrasTry) {
         extras = null
-        graph.home.load().onSuccess { extras = it }
+        extrasWhy = null
+        extrasSlow = false
+        val tick = launch {
+            delay(700)
+            extrasSlow = true
+        }
+        graph.home.load()
+            .onSuccess { extras = it }
+            .onFailure { extrasWhy = it.message ?: "没拉到" }
+        tick.cancel()
     }
 
     val d = state.data
@@ -105,8 +121,13 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 .padding(horizontal = Gap.screen),
         ) {
             Spacer(Modifier.height(Gap.md))
+            /*
+             * 问候语是服务端给的（`notReadCount.do` 的 `date`，现打对过），我们只在后面接一个名字。
+             * 名字太长（少数民族姓名、英文名）就不接：那一行会折成两行，问候语就不像问候语了。
+             */
+            val name = session.userName.trim()
             Text(
-                text = d?.greeting ?: "…",
+                text = (d?.greeting ?: "…") + if (session.loggedIn && name.length in 2..4) "，$name" else "",
                 fontSize = Type.display,
                 fontWeight = FontWeight.SemiBold,
                 color = ink.strong,
@@ -140,13 +161,19 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 Row(Modifier.fillMaxWidth()) {
                     MetricCell("今天有课", d?.todayLessons?.let { "$it" } ?: "—", "节", modifier = Modifier.weight(1f))
                     MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
+                    /*
+                     * 查寝那一格：服务端给的是 "10-21 21:00" 这种带日期的串。
+                     * 首页本来就是"今天/今晚"，日期在这儿是重复的 —— 今天那一场只留 "21:00"，
+                     * 26sp 就放得下了；不是今天的（比如已过期的上一场）才整串照搬，不替它裁。
+                     */
+                    val dormRaw = d?.dormCheckState?.trimStart('—')?.trim().orEmpty()
+                    val todayPrefix = java.text.SimpleDateFormat("MM-dd", java.util.Locale.US).format(java.util.Date())
+                    val dormToday = dormRaw.startsWith(todayPrefix)
                     MetricCell(
-                        label = "查寝",
-                        // 那一格只放时间本体（"10-20 21:00"），年份和"晚点名"三个字都不占位
-                        value = d?.dormCheckState?.trimStart('—')?.ifBlank { "—" } ?: "—",
+                        label = if (dormToday) "今晚查寝" else "查寝",
+                        value = dormRaw.removePrefix(todayPrefix).trim().ifBlank { "—" },
                         unit = "",
-                        // 那一格放的是"10-20 21:00"这种时间串，26sp 会折行；时间不是"数字"，降一档
-                        size = if ((d?.dormCheckState ?: "").length > 6) Type.title else Type.num,
+                        size = if (dormToday) Type.num else Type.title,
                         modifier = Modifier.weight(1.4f),
                     )
                 }
@@ -168,11 +195,22 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     )
                     Spacer(Modifier.weight(1f))
                 }
-                // 下一节是一句话不是数字，所以它单独占一行，不跟上面那两行格子挤
+                // 下一节是一句话不是数字，所以它单独占一行，不跟上面那两行格子挤。
+                // 右边补上"几点到几点"：服务端那句话里只有"第 3 节"，没有钟点，人还得自己去课表里换。
                 if (!d?.nextLesson.isNullOrBlank()) {
+                    val text = d!!.nextLesson!!.let { Regex("（[^）]*）").replace(it, "") }
+                    // 不用正则：句子里那句是"第 3 节"或"第 3-4 节"，数出两个数字就够了。
+                    val numStart = text.indexOf('第')
+                    val numEnd = if (numStart >= 0) text.indexOf('节', numStart + 1) else -1
+                    val span = if (numStart >= 0 && numEnd > numStart) {
+                        val parts = text.substring(numStart + 1, numEnd).trim().split('-', '–')
+                        val from = parts.firstOrNull()?.trim()?.toIntOrNull()
+                        val to = parts.getOrNull(1)?.trim()?.toIntOrNull() ?: from
+                        if (from == null) null else com.andaxin.core.schedule.Periods.rangeText(from, to!! - from + 1)
+                    } else null
                     Spacer(Modifier.height(Gap.sm))
                     Hairline()
-                    RowLine("下一节", sub = d!!.nextLesson!!.let { Regex("(（[^）]*）)").replace(it, "") })
+                    RowLine("下一节", sub = text, right = span.orEmpty())
                 }
             }
 
@@ -186,7 +224,11 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     state.today.forEachIndexed { i, slot ->
                         RowLine(
                             title = slot.course,
-                            sub = shortRoom(slot.room),
+                            // 跟课程表同一张作息表：几点到几点写在副标题最前面，教室跟在后面
+                            sub = listOf(
+                                com.andaxin.core.schedule.Periods.rangeText(slot.startPeriod, slot.periodCount).orEmpty(),
+                                shortRoom(slot.room),
+                            ).filter { it.isNotBlank() }.joinToString(" · "),
                             right = if (slot.periodCount > 1)
                             // 连堂的要写全"第 1-2 节"，只写起始节次会让人以为 9:40 就下课
                                 "第 ${slot.startPeriod}-${slot.startPeriod + slot.periodCount - 1} 节"
@@ -209,7 +251,26 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     .forEach { (name, at) -> Chip(name, picked = false) { open(at) } }
             }
 
-            extras?.let { Extras(it, open) }
+            /*
+             * 下半屏那几块（服务清单、求助电话）是另外几条接口。
+             * 拉不到时**以前整块直接消失** —— 屏幕下半截一大片白，看着像这一版做没了。
+             * 现在照样出小标题，写一句为什么，并给一颗「重试」：拿不到就说拿不到，
+             * 不留一片让人猜的空白。
+             */
+            val ex = extras
+            when {
+                ex != null -> Extras(ex, open)
+                extrasWhy != null -> {
+                    SectionBlock("校方服务清单")
+                    LoadWhy(extrasWhy, wide = false)
+                    Spacer(Modifier.height(Gap.sm))
+                    Chip("重试", picked = false) { extrasTry++ }
+                }
+                extrasSlow -> {
+                    SectionBlock("校方服务清单")
+                    Text("正在拉…", fontSize = Type.meta, color = ink.faint)
+                }
+            }
             Spacer(Modifier.height(Gap.xxl))
         }
     }
