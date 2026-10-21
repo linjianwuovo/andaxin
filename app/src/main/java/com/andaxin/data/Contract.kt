@@ -89,4 +89,7 @@ interface NoticeFeed {
 /** 首页聚合。六个来源拼一张卡，一次出，不许一路蹦着加载。 */
 interface DashboardFeed {
     suspend fun snapshot(): Result<Dashboard>
+
+    /** 上一次拿到的数字（只给冷启动垫屏用）。没有缓存就 null。 */
+    fun cached(): Dashboard? = null
 }

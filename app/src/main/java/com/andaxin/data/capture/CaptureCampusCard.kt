@@ -9,6 +9,8 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -89,6 +91,17 @@ class CampusCardClient(
         val flowWhy: String? = null,
     )
 
+    /**
+     * 后台预热：只把三步换会话跑掉，让用户点进校园卡时不用再等握手。
+     * 旧项目就是这么干的（它注释里写"首页数据加载完后在后台跑一次，出错不抛"）。
+     * 已经有可用的 token 就什么都不做。
+     */
+    suspend fun warm() {
+        if (cachedToken() != null) return
+        val id = session.identity() ?: return
+        runCatching { exchange(id.accessToken, id.userCode, id.userName, id.userType) }
+    }
+
     /** 余额 + 近 30 天流水。撞 4001 会重换一次会话。 */
     suspend fun card(): Result<Card> {
         val id = session.identity()
@@ -140,16 +153,20 @@ class CampusCardClient(
         }.getOrNull()
     }
 
-    private suspend fun attempt(token: String): Result<Card> {
-        val bal = xyk(token, "XYK_BALANCE", "{}")
-            .getOrElse { return Result.failure(it) }
-        val detail = xyk(
-            token, "XYK_TRADE_DETAIL",
-            JSONObject()
-                .put("beginIndex", 0).put("count", 200)
-                .put("beginDate", day(-29)).put("endDate", day(0))
-                .toString(),
-        )
+    private suspend fun attempt(token: String): Result<Card> = coroutineScope {
+        // 余额和流水互不相干，一起发：串行的话这一屏要多等一个来回（实测每跳几百毫秒到两秒）
+        val balTask = async { xyk(token, "XYK_BALANCE", "{}") }
+        val detailTask = async {
+            xyk(
+                token, "XYK_TRADE_DETAIL",
+                JSONObject()
+                    .put("beginIndex", 0).put("count", 200)
+                    .put("beginDate", day(-29)).put("endDate", day(0))
+                    .toString(),
+            )
+        }
+        val bal = balTask.await().getOrElse { return@coroutineScope Result.failure(it) }
+        val detail = detailTask.await()
         val rows = detail.mapCatching { it.rows() }.getOrElse { JSONArray() }
         val flows = (0 until rows.length()).mapNotNull { i ->
             val o = rows.optJSONObject(i) ?: return@mapNotNull null
@@ -163,7 +180,7 @@ class CampusCardClient(
             )
         }
         val today = day(0)
-        return Result.success(
+        Result.success(
             Card(
                 balance = bal.optString("mainFare").toDoubleOrNull() ?: 0.0,
                 subsidy = bal.optString("subsidyFare").toDoubleOrNull() ?: 0.0,
