@@ -195,8 +195,19 @@ fun ProfileScreen(onBack: () -> Unit) {
                         .background(ink.offFill, Radius.field)
                         .pressClick {
                             if (armedToQuit) {
-                                scope.launch { graph.session.signOut() }
-                                armedToQuit = false
+                                /*
+                                 * **退出登录不再把口令忘掉**（他 10-21 12:1x：
+                                 * 「退出登录后为什么要重新输入账密，不是早就让你写记住密码了吗」）。
+                                 * 他勾了记住密码，退出就只退会话；登录页那颗「用这台机器记住的口令登进去」
+                                 * 一按就回来。真想忘掉口令，去那一页把它清掉 —— 那是另一件事。
+                                 */
+                                scope.launch {
+                                    graph.session.signOut(keepPassword = true)
+                                    armedToQuit = false
+                                    // 退完要回到根：留在这一屏只会看见"未登录"和一颗没反应的「去登录」
+                                    // （Gate 在 SHELF 那一层，这一屏是它上面的独立路由）。
+                                    onBack()
+                                }
                             } else {
                                 armedToQuit = true
                             }
