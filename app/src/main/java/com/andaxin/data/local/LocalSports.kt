@@ -1,19 +1,27 @@
 package com.andaxin.data.local
 
+import com.andaxin.core.map.LatLng
+import com.andaxin.data.RouteTemplate
 import com.andaxin.data.RunDetail
 import com.andaxin.data.RunDraft
 import com.andaxin.data.RunRecord
 import com.andaxin.data.SportPlan
 import com.andaxin.data.SportSummary
 import com.andaxin.data.SportsFeed
+import java.io.File
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * 运动的占位源。记录是排版用的假数据，只负责在校方接口拉不到时撑住版面。
  *
- * 原来这里还存一份"画过的路线"（本机 JSON），是路线规划那一屏用的；
- * 10-21 他一句「运动里边怎么还有路线」，那块整段删了，文件读写也一起拆了。
+ * 画过的模拟线仍存本机 JSON；普通界面看不到它，只有「关于连点十下」打开高级模式后，
+ * 开始运动页才会出现模拟跑入口。
  */
-class LocalSports : SportsFeed {
+class LocalSports(private val routeFile: File? = null) : SportsFeed {
 
     override suspend fun summary() = Result.success(
         SportSummary(weekKm = 3.2, weekRequiredKm = 5.0, weekCount = 2, bestKm = 3.14, semesterKm = 41.6)
@@ -49,4 +57,53 @@ class LocalSports : SportsFeed {
 
     override suspend fun submit(draft: RunDraft): Result<String> =
         Result.failure(UnsupportedOperationException("上传报文还没接：这一块要等自己抓包补 CaptureSports"))
+
+    override suspend fun routes(): List<RouteTemplate> = withContext(Dispatchers.IO) { readRoutes() }
+
+    override suspend fun saveRoute(route: RouteTemplate) = withContext(Dispatchers.IO) {
+        val all = readRoutes().toMutableList()
+        all.removeAll { it.id == route.id }
+        all += route
+        writeRoutes(all)
+    }
+
+    override suspend fun deleteRoute(id: String) = withContext(Dispatchers.IO) {
+        writeRoutes(readRoutes().filterNot { it.id == id })
+    }
+
+    private fun readRoutes(): List<RouteTemplate> {
+        val file = routeFile ?: return emptyList()
+        if (!file.exists()) return emptyList()
+        return runCatching {
+            val arr = JSONArray(file.readText())
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val pts = o.getJSONArray("points")
+                RouteTemplate(
+                    id = o.getString("id"),
+                    name = o.getString("name"),
+                    points = (0 until pts.length()).map { j ->
+                        val p = pts.getJSONObject(j)
+                        LatLng(p.getDouble("lat"), p.getDouble("lng"))
+                    },
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun writeRoutes(all: List<RouteTemplate>) {
+        val file = routeFile ?: return
+        val arr = JSONArray()
+        all.forEach { r ->
+            val o = JSONObject()
+            o.put("id", r.id.ifBlank { UUID.randomUUID().toString() })
+            o.put("name", r.name)
+            o.put("points", JSONArray().apply {
+                r.points.forEach { put(JSONObject().put("lat", it.latitude).put("lng", it.longitude)) }
+            })
+            arr.put(o)
+        }
+        file.parentFile?.mkdirs()
+        file.writeText(arr.toString())
+    }
 }

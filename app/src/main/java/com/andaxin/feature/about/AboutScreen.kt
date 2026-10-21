@@ -16,9 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -39,6 +43,24 @@ import com.andaxin.core.design.Type
 @Composable
 fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
+    val graph = LocalAppGraph.current
+    val advanced by graph.advanced.state.collectAsStateWithLifecycle(initialValue = false)
+    val scope = rememberCoroutineScope()
+    /*
+     * 和旧项目一样的开法：连点十下版本号，每两下间隔超过 1.5 秒就从头数。
+     * 打开后运动页才多出模拟跑入口；关掉那一行就连着入口一起消失。
+     */
+    var taps by remember { mutableIntStateOf(0) }
+    var lastTapAt by remember { mutableLongStateOf(0L) }
+    fun registerVersionTap() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        taps = if (now - lastTapAt > 1500L) 1 else taps + 1
+        lastTapAt = now
+        if (taps >= 10) {
+            taps = 0
+            scope.launch { graph.advanced.set(true) }
+        }
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -56,7 +78,12 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.sm))
             Hairline()
             Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "版本", value = BuildConfig.VERSION_NAME)
+            // 十下开高级模式：只在版本这一行计数，别的行点了不算
+            Labeled(
+                label = "版本",
+                value = BuildConfig.VERSION_NAME,
+                modifier = Modifier.pressClick(shrink = false) { registerVersionTap() },
+            )
             Spacer(Modifier.height(Gap.sm))
             Hairline()
             Spacer(Modifier.height(Gap.sm))
@@ -66,6 +93,29 @@ fun AboutScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.sm))
             // 《MiSans 字体知识产权许可协议》要求"在软件中特别注明使用了 MiSans 字体"
             Labeled(label = "字体", value = "MiSans（小米，免费商用）")
+        }
+
+        if (advanced) {
+            Spacer(Modifier.height(Gap.xl))
+            Sheet {
+                Labeled(label = "高级模式", value = "已开启")
+                Spacer(Modifier.height(Gap.xs))
+                Text(
+                    "开始运动页会多出模拟跑入口；不需要真 GPS，提交仍要你按。",
+                    fontSize = Type.micro,
+                    lineHeight = Type.metaLine,
+                    color = ink.faint,
+                )
+                Spacer(Modifier.height(Gap.sm))
+                Text(
+                    "关掉",
+                    fontSize = Type.meta,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .pressClick(shrink = false) { scope.launch { graph.advanced.set(false) } }
+                        .padding(vertical = Gap.xs),
+                )
+            }
         }
 
         Spacer(Modifier.height(Gap.xl))

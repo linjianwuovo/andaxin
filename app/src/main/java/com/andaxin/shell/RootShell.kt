@@ -42,6 +42,7 @@ import com.andaxin.feature.modules.OnboardingScreen
 import com.andaxin.feature.message.MessageScreen
 import com.andaxin.feature.notice.NoticeScreen
 import com.andaxin.feature.schedule.TimetableScreen
+import com.andaxin.feature.sport.RoutePlannerScreen
 import com.andaxin.feature.sport.SportDetailScreen
 import com.andaxin.feature.sport.SportMaintainScreen
 import com.andaxin.feature.sport.SportRecordsScreen
@@ -108,6 +109,7 @@ object Route {
     const val SPORT_RUN = "sport/run"
     const val SPORT_RECORDS = "sport/records"
     const val SPORT_MAINTAIN = "sport/maintain"
+    const val SPORT_PLANNER = "sport/planner"
     const val SPORT_DETAIL = "sport/detail/{id}"
 
     const val WELCOME = "gate"
@@ -208,6 +210,8 @@ fun RootShell() {
             SportRecordsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() })
         }
         page(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
+        // 只有高级模式里的「新建路线」会导航到这里；普通界面没有入口
+        page(Route.SPORT_PLANNER) { RoutePlannerScreen(onBack = { nav.popBackStack() }) }
         page(
             Route.SPORT_DETAIL,
             arguments = listOf(idPattern()),

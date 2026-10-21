@@ -88,6 +88,11 @@ class AppGraph(val context: Context) {
     /** 明暗、底栏材质、四根玻璃滑杆 */
     val appearance: AppearanceStore by lazy { AppearanceStore(store) }
 
+    /** 关于页连点十下才打开的那一档；只控制运动里的模拟跑入口 */
+    val advanced: com.andaxin.core.settings.AdvancedPrefs by lazy {
+        com.andaxin.core.settings.AdvancedPrefs(store)
+    }
+
     /** 登录与 token 刷新：这是全仓第一块接上真实报文的功能 */
     val auth: AuthFeed by lazy { AuthFeed() }
 
@@ -270,7 +275,9 @@ class AppGraph(val context: Context) {
      * 上传那两条口没抓到实样，所以仍由 Local 那侧明确回失败。
      * 见 `CaptureSports` 顶上那段取证。
      */
-    private val localSports by lazy { LocalSports() }
+    private val localSports by lazy {
+        LocalSports(File(context.filesDir, "sport_routes.json"))
+    }
 
     val sports: SportsFeed by lazy { CaptureSports(school, localSports) }
 
