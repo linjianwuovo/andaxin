@@ -99,12 +99,13 @@ fun Modifier.pressClick(enabled: Boolean = true, shrink: Boolean = true, onClick
     val ink = LocalInk.current
     val amount = animateFloatAsState(
         targetValue = if (pressed) 1f else 0f,
-        // 按下去是一段贴手的 tween；松手走 spring —— 2% 的形变带一点回弹刚好，
-        // 用直线 tween 回来会像"被人按回去"（他发的那份规范里的 Spring Physics）。
+        // 按下去是一段贴手的 tween；松手走 spring 收尾。阻尼给满（1.0）——
+        // 他 10-21 发的那张参考图的 MOTION 页明确写了"不做弹性过冲"：
+        // 要的是自然的减速，不是弹一下再回来。
         animationSpec = if (pressed) {
             tween(Motion.press, easing = Motion.EaseOut)
         } else {
-            spring(dampingRatio = 0.62f, stiffness = 900f)
+            spring(dampingRatio = 1f, stiffness = 900f)
         },
         label = "press",
     )

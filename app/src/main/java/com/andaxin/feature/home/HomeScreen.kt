@@ -50,6 +50,8 @@ import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
 import com.andaxin.core.net.RemoteImage
 import com.andaxin.core.schedule.Periods
+import com.andaxin.core.settings.Appearance
+import com.andaxin.core.settings.HeroStyle
 import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.TimetableSlot
 import com.andaxin.data.capture.HomeExtras
@@ -97,6 +99,8 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
      * 而同一屏的校历是真数据 —— 看着像只接好了一半。换票之后重拉一次。
      */
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    // 首页壁纸跟着「设置 → 主题」里选的那一档走：自动/晨雾/金树/月夜
+    val look by graph.appearance.state.collectAsStateWithLifecycle(initialValue = Appearance())
     var extras by remember { mutableStateOf<HomeExtras?>(null) }
     var extrasWhy by remember { mutableStateOf<String?>(null) }
     var extrasTry by remember { mutableStateOf(0) }
@@ -221,6 +225,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 state.todayKnown && !state.firstLoad -> {
                     Spacer(Modifier.height(Gap.md))
                     HeroWallpaper(
+                        style = look.hero,
                         hadClassToday = state.today.isNotEmpty(),
                         modifier = Modifier.enterFade(session.generation),
                     )
@@ -415,12 +420,18 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
  * 白字放在任何一张图上都读得清。
  */
 @Composable
-private fun HeroWallpaper(hadClassToday: Boolean, modifier: Modifier = Modifier) {
+private fun HeroWallpaper(style: HeroStyle, hadClassToday: Boolean, modifier: Modifier = Modifier) {
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-    val picture = when (hour) {
-        in 5..11 -> R.drawable.hero_dawn
-        in 12..17 -> R.drawable.hero_dusk
-        else -> R.drawable.hero_night
+    // 自动跟一天的时段对：早上晨雾、下午金树、夜里月亮；钉死就照设置里那张。
+    val picture = when (style) {
+        HeroStyle.Dawn -> R.drawable.hero_dawn
+        HeroStyle.Dusk -> R.drawable.hero_dusk
+        HeroStyle.Night -> R.drawable.hero_night
+        HeroStyle.Auto -> when (hour) {
+            in 5..11 -> R.drawable.hero_dawn
+            in 12..17 -> R.drawable.hero_dusk
+            else -> R.drawable.hero_night
+        }
     }
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
     Box(

@@ -12,10 +12,19 @@ enum class DayNight { System, Light, Dark }
 /** 底栏那层材质。液态才吃折射/扭曲/色散三根滑杆，另外两档只吃模糊。 */
 enum class BarMaterial { Solid, Frosted, Liquid }
 
+/**
+ * 首页那张"今天没课"的壁纸。
+ *
+ * 默认 [Auto] 按一天里的时段挑（早上晨雾、下午金树、夜里月亮）；
+ * 也可以钉死一张 —— 参考图里那句"把选择权交给人"就落在这里。
+ */
+enum class HeroStyle { Auto, Dawn, Dusk, Night }
+
 @Immutable
 data class Appearance(
     val dayNight: DayNight = DayNight.System,
     val material: BarMaterial = BarMaterial.Liquid,
+    val hero: HeroStyle = HeroStyle.Auto,
     /** 0..1，四根滑杆都是这个区间，映射到像素级参数在 GlassSpec 里 */
     val blur: Float = 0.5f,
     val refraction: Float = 0.5f,
@@ -37,6 +46,7 @@ class AppearanceStore(private val store: Store) {
         Appearance(
             dayNight = parseDayNight(store.peekString(p, KEY_DAY_NIGHT)),
             material = parseMaterial(store.peekString(p, KEY_MATERIAL)),
+            hero = parseHero(store.peekString(p, KEY_HERO)),
             blur = store.peekString(p, KEY_BLUR)?.toFloatOrNull() ?: 0.5f,
             refraction = store.peekString(p, KEY_REFRACTION)?.toFloatOrNull() ?: 0.5f,
             distortion = store.peekString(p, KEY_DISTORTION)?.toFloatOrNull() ?: 0.5f,
@@ -50,6 +60,7 @@ class AppearanceStore(private val store: Store) {
         store.setMany(
             KEY_DAY_NIGHT to a.dayNight.name,
             KEY_MATERIAL to a.material.name,
+            KEY_HERO to a.hero.name,
             KEY_BLUR to a.blur.toString(),
             KEY_REFRACTION to a.refraction.toString(),
             KEY_DISTORTION to a.distortion.toString(),
@@ -61,6 +72,7 @@ class AppearanceStore(private val store: Store) {
     private companion object {
         const val KEY_DAY_NIGHT = "theme.dayNight"
         const val KEY_MATERIAL = "theme.material"
+        const val KEY_HERO = "theme.hero"
         const val KEY_BLUR = "theme.blur"
         const val KEY_REFRACTION = "theme.refraction"
         const val KEY_DISTORTION = "theme.distortion"
@@ -74,6 +86,9 @@ private fun parseDayNight(name: String?): DayNight =
 
 private fun parseMaterial(name: String?): BarMaterial =
     BarMaterial.values().firstOrNull { it.name == name } ?: BarMaterial.Liquid
+
+private fun parseHero(name: String?): HeroStyle =
+    HeroStyle.values().firstOrNull { it.name == name } ?: HeroStyle.Auto
 
 /**
  * 滑杆值 → 绘制参数。

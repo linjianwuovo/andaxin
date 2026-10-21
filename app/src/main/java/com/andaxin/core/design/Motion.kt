@@ -16,8 +16,8 @@ import androidx.compose.animation.core.CubicBezierEasing
  *    手指还没抬起来时它已经在往回走了，不用等一个完整周期。
  */
 object Motion {
-    /** 手指按下去那一下：要贴手，160ms。 */
-    const val press = 160
+    /** 手指按下去那一下：要贴手，140ms（参考图 MOTION 04 给的 140ms）。 */
+    const val press = 140
 
     /** 松手回弹：比按下去稍长，不然弹回来的那一下很硬。 */
     const val pressRelease = 220
