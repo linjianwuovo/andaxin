@@ -77,6 +77,16 @@ object Periods {
     /** 第 [period] 节的下课时刻。越界回 null。 */
     fun endAt(period: Int): String? = END_AT.getOrNull(period - 1)
 
+    /** 现在这一刻是当天第几分钟（0 点起）。首页判断"这节课过没过"用，跟课表同一张表。 */
+    fun minuteOfDay(now: Calendar = Calendar.getInstance()): Int =
+        now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+
+    /** 第 [period] 节的开始分钟数；越界 null。 */
+    fun startMinute(period: Int): Int? = START_MINUTES.getOrNull(period - 1)
+
+    /** 第 [period] 节的结束分钟数；越界 null。 */
+    fun endMinute(period: Int): Int? = END_MINUTES.getOrNull(period - 1)
+
     /**
      * 从第 [startPeriod] 节起连上 [periodCount] 节的整段时间，"08:30–10:05"。
      * 「只看今天」每一行用它 —— 只给节次不给钟点，人还是得自己换一遍。

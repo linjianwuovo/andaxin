@@ -30,6 +30,8 @@ data class HomeUiState(
     /** 屏幕上这批数字是上一份快照、正在换新的。界面据此写"更新中"，不把旧数字冒充成刚拉的。 */
     val refreshing: Boolean = false,
     val today: List<TimetableSlot> = emptyList(),
+    /** 今天这份课表拿到了没有。没拿到就别把"今天没课"的壁纸摆出来 —— 那不是"没课"，是"没拉到"。 */
+    val todayKnown: Boolean = false,
     val error: String? = null,
 )
 
@@ -74,7 +76,9 @@ class HomeModel(
             data = dash0 ?: _state.value.data,
             // 今天星期几由 Periods 说，跟周网格、首页"几节课"同一张表 —— 这儿原来写死 ==1，
             // 周一看着对，周二起就把周一的课当今天显示（10-20 上午装机读屏撞中的就是这个）。
-            today = list.filter { it.day == Periods.today() },
+            // `startPeriod >= 1` 是"这是课"的闸：校方那条 `ksjc=0` 的阳光晨跑是活动占位，不算课。
+            today = list.filter { it.day == Periods.today() && it.startPeriod >= 1 },
+            todayKnown = slots.isSuccess,
             error = (dash.exceptionOrNull() ?: slots.exceptionOrNull())?.message,
             refreshing = false,
         )

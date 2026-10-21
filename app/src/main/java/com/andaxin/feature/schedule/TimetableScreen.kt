@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
@@ -88,9 +91,12 @@ private const val HEADER_HEIGHT = 36
  * 上限 66dp：再往上拉，一格空格子会显得比课本身还重。
  * 换了字号或改了标题区，这 138dp 会跟着变，偏了的表现是"底下多一条窄白"或"贴住底栏"，
  * 都不是错位；真要跟着变，量一次这个数就行。
+ *
+ * `extraChrome` 是网格上面**这一周额外多出来的那一行**（目前只有"晨跑活动"那条：
+ * 校方给的 `ksjc=0` 占位，没节次，不能塞进格子）。它多高，就从视口里再减多高。
  */
-private fun rowHeightFor(viewport: Dp): Dp {
-    val gridRoom = viewport - 138.dp
+private fun rowHeightFor(viewport: Dp, extraChrome: Dp = 0.dp): Dp {
+    val gridRoom = viewport - 138.dp - extraChrome
     return (gridRoom / PERIOD_TIMES.size.toFloat()).coerceIn(ROW_HEIGHT.dp, 66.dp)
 }
 
@@ -152,13 +158,27 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
 
             Spacer(Modifier.height(Gap.md))
 
-            if (showDayMode) {
-                DayList(state.slots.filter { it.day == today }.ifEmpty { state.slots }, today)
-            } else {
-                Grid(state.slots, today, periodNow, rowHeightFor(viewport), state.weekOffset)
+            /*
+             * 校方课表里混着一条 `ksjc=0` 的「阳光晨跑 / 体育场」：那是"这天早上有晨跑"的占位，
+             * 没有节次也没有时间（10-21 下午拿活 token 现打第 8 周确认）。它不能进格子 ——
+             * 塞进第 1 节就是凭空多出一门 08:30 的课；但也不能悄悄扔掉，所以单独在网格上面
+             * 用一行"晨跑活动"标出来。课表上真正的课从 `startPeriod >= 1` 起算。
+             */
+            val lessons = state.slots.filter { it.startPeriod >= 1 }
+            val runs = state.slots.filter { it.startPeriod < 1 }
+            val todayRuns = runs.filter { it.day == today }
+            if (runs.isNotEmpty()) {
+                RunNote(runs)
+                Spacer(Modifier.height(Gap.sm))
             }
 
-            if (state.slots.isEmpty() && !state.firstLoad && state.error == null) {
+            if (showDayMode) {
+                DayList(lessons.filter { it.day == today }.ifEmpty { lessons }, today, todayRuns)
+            } else {
+                Grid(lessons, today, periodNow, rowHeightFor(viewport, if (runs.isEmpty()) 0.dp else 52.dp), state.weekOffset)
+            }
+
+            if (lessons.isEmpty() && !state.firstLoad && state.error == null) {
                 Spacer(Modifier.height(Gap.xl))
                 Text("这一周没有课。", fontSize = Type.body, color = ink.faint)
             }
@@ -169,6 +189,38 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.xxl))
         }
         }
+    }
+}
+
+/**
+ * 网格上面那一行「晨跑活动」。
+ *
+ * 它不是课，是校方课表里 `ksjc=0/ jsjc=0` 的占位（第 8 周真报文：`阳光晨跑 / 体育场`），
+ * 所以不能给它编一个 08:30 塞进格子。这行只回答"哪几天早上有、在哪"，
+ * 节次那一栏空着就是"校方没给时间"。
+ */
+@Composable
+private fun RunNote(runs: List<TimetableSlot>) {
+    val ink = LocalInk.current
+    val accent = MaterialTheme.colorScheme.primary
+    val days = runs.map { it.day }.distinct().sorted()
+        .joinToString("、") { DAYS.getOrElse(it - 1) { "周?" } }
+    val room = runs.firstOrNull { it.room.isNotBlank() }?.room.orEmpty()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(Radius.field)
+            .background(accent.copy(alpha = if (ink.dark) 0.14f else 0.07f))
+            .padding(horizontal = Gap.md, vertical = Gap.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(accent))
+        Spacer(Modifier.width(Gap.sm))
+        Text(
+            text = listOf("晨跑活动", days, room).filter { it.isNotBlank() }.joinToString(" · "),
+            fontSize = Type.meta,
+            color = ink.muted,
+        )
     }
 }
 
@@ -386,7 +438,7 @@ private fun coursePalette(slots: List<TimetableSlot>): Map<String, Color> =
 
 /** 「只看今天」那一档：一张卡里一行一节、中间分隔线，不再一门课一张卡。 */
 @Composable
-private fun DayList(slots: List<TimetableSlot>, today: Int) {
+private fun DayList(slots: List<TimetableSlot>, today: Int, runs: List<TimetableSlot>) {
     val ink = LocalInk.current
     val sorted = slots.sortedBy { it.startPeriod }
     Text(
@@ -395,6 +447,16 @@ private fun DayList(slots: List<TimetableSlot>, today: Int) {
         color = ink.muted,
         modifier = Modifier.padding(bottom = Gap.xs, start = Gap.xxs),
     )
+    // 今天有晨跑时，在这一档里也明说一句：它没有节次，不是"漏了一节"
+    val runRoom = runs.firstOrNull { it.room.isNotBlank() }?.room.orEmpty()
+    if (runs.isNotEmpty()) {
+        Text(
+            text = "另有晨跑活动" + if (runRoom.isNotBlank()) " · $runRoom" else "",
+            fontSize = Type.meta,
+            color = ink.faint,
+            modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
+        )
+    }
     Sheet {
         sorted.forEachIndexed { i, slot ->
             RowLine(

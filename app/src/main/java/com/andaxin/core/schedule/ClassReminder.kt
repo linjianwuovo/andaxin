@@ -91,8 +91,12 @@ object ClassReminder {
         // 连排两周：只排本周的话，周五晚上最后一颗闹钟响完就再也接不上了 ——
         // 那时候"本周剩下的课"是空的，于是取消闹钟，然后一直等到下周一有人打开 App 才恢复。
         // 那几天里上课是不会提醒的，而"我明明开了它怎么不响"是最难查的一种坏。
+        // `startPeriod = 0` 是校方那条"阳光晨跑"活动占位，不是课 —— 别给它排闹钟。
+        // 这一条 10-21 下午跟他那句"为什么课表里多了阳光晨跑"一起查出来的。
         val slots = listOf(0, 1).flatMap { off ->
-            timetable.week(off).getOrElse { emptyList() }.map { off to it }
+            timetable.week(off).getOrElse { emptyList() }
+                .filter { it.startPeriod >= 1 }
+                .map { off to it }
         }
         if (slots.isEmpty()) {
             return "课表没拉到，暂时排不上提醒（登录掉了先去登一次）。"

@@ -1,6 +1,7 @@
 package com.andaxin.feature.home
 
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -22,19 +23,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -43,7 +49,9 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
 import com.andaxin.core.net.RemoteImage
+import com.andaxin.core.schedule.Periods
 import com.andaxin.core.schedule.shortRoom
+import com.andaxin.data.TimetableSlot
 import com.andaxin.data.capture.HomeExtras
 import com.andaxin.data.capture.SchoolService
 import com.andaxin.shell.Chip
@@ -109,6 +117,33 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     }
 
     val d = state.data
+    /*
+     * 顶卡只报"今天、还没结束"的那一节。
+     *
+     * 10-21 13:3x 他打开首页，顶卡写着"下一节 高等数学 10:25–11:10"，而那节课 12:00 就上完了 ——
+     * 两个毛病叠在一起：① 数据层兜底取了"今天最后一节"，不管过没过；② 垫屏快照没带日期，
+     * 昨天存下的"下一节"今天照样上屏。现在数据层两处都堵了，这里再按真实时钟自己算一遍：
+     * 一节课都没有（今天没课 / 都上完了）就换成壁纸，不再挂着一条过去时的"下一节"。
+     *
+     * 30 秒一跳：跨过下课那一刻，卡会自己换成壁纸，不用杀进程重进。
+     */
+    var clock by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            clock++
+        }
+    }
+    val nowMin = remember(clock) { Periods.minuteOfDay() }
+    val upcoming = remember(state.today, nowMin) {
+        state.today
+            .filter { slot ->
+                val end = Periods.endMinute(slot.startPeriod + slot.periodCount - 1) ?: return@filter false
+                end > nowMin
+            }
+            .minByOrNull { Periods.startMinute(it.startPeriod) ?: Int.MAX_VALUE }
+    }
+
     // 下拉这一把手：数据只在进屏时拉一次，签完查寝、批完假之后不想杀进程重开。
     // 刷新时旧内容留在原位（不清空、不闪），新的到了再换 —— 一路加载一路蹦是他最烦的。
     // 两趟一起等：上面那一叠数和下半屏那几发不是一个来源，只等一边就是假动作。
@@ -173,10 +208,23 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 Text(extras!!.calendar, fontSize = Type.meta, color = ink.faint)
             }
 
-            // 【第一高效】下一节直接以主色卡摆在首屏：课名、教室、还有几分钟，一眼看完
-            d?.nextLesson?.takeIf { it.isNotBlank() }?.let { line ->
-                Spacer(Modifier.height(Gap.md))
-                NextClassCard(line, ink.dark, Modifier.enterFade(session.generation))
+            /*
+             * 首屏那一块：今天还有课就是主色"下一节"卡（课名、教室、还有几分钟，一眼看完）；
+             * 今天没课或者都上完了，换一张壁纸，不摆一条过去时的课。
+             * 课表还没拉到（`todayKnown=false`）时两块都不摆 —— 说"今天没课"是假话。
+             */
+            when {
+                upcoming != null -> {
+                    Spacer(Modifier.height(Gap.md))
+                    NextClassCard(upcoming, nowMin, ink.dark, Modifier.enterFade(session.generation))
+                }
+                state.todayKnown && !state.firstLoad -> {
+                    Spacer(Modifier.height(Gap.md))
+                    HeroWallpaper(
+                        hadClassToday = state.today.isNotEmpty(),
+                        modifier = Modifier.enterFade(session.generation),
+                    )
+                }
             }
 
             Spacer(Modifier.height(Gap.md))
@@ -283,40 +331,33 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 }
 
 /**
- * 「下一节」主色卡（照他发的那份规范里的 Now-Focus Card）。
+ * 「下一节 / 正在上课」主色卡（照他发的那份规范里的 Now-Focus Card）。
  *
  * 左边课名 + 教室，右边一颗小药丸写"还有 N 分钟"或这一节的起止时间。
- * 服务端给的那句话是"第3节 · 高等数学 · 博文楼S301"，钟点从 `Periods` 里按节次查 ——
- * 和课程表同一张作息表。
+ * 钟点全部从 `Periods` 那张官方作息表查，和课程表同一份；连堂按 `periodCount` 算到最后一节，
+ * 不再把 10:25–12:00 的课写成 10:25–11:10。
  */
 @Composable
-private fun NextClassCard(line: String, dark: Boolean, modifier: Modifier = Modifier) {
-    val parts = line.split("·").map { it.trim() }.filter { it.isNotBlank() }
-    val period = parts.firstOrNull()?.filter { it.isDigit() }?.toIntOrNull()
-    val course = parts.getOrNull(1).orEmpty().ifBlank { parts.firstOrNull().orEmpty() }
-    val room = parts.drop(2).joinToString(" · ")
-    val start = period?.let { com.andaxin.core.schedule.Periods.startAt(it) }
-    val span = period?.let { com.andaxin.core.schedule.Periods.rangeText(it, 1) }.orEmpty()
+private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, modifier: Modifier = Modifier) {
+    val lastPeriod = slot.startPeriod + slot.periodCount - 1
+    val startMin = Periods.startMinute(slot.startPeriod)
+    val endMin = Periods.endMinute(lastPeriod)
+        ?: startMin?.plus(45)
+        ?: 0
+    val inClass = startMin != null && nowMinute in startMin until endMin
+    val toStart = (startMin ?: 0) - nowMinute
 
-    val now = java.util.Calendar.getInstance()
-    val nowMin = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
-    val startMin = start?.let { t ->
-        val h = t.substringBefore(':').toIntOrNull()
-        val m = t.substringAfter(':').toIntOrNull()
-        if (h == null || m == null) null else h * 60 + m
-    }
     val pill = when {
-        startMin == null -> span
-        nowMin in startMin..(startMin + 45) -> "正在上课"
-        nowMin in (startMin - 30)..startMin -> "还有 ${startMin - nowMin} 分钟"
-        else -> span
+        inClass -> "还有 ${(endMin - nowMinute).coerceAtLeast(1)} 分钟下课"
+        toStart in 0..90 -> "还有 $toStart 分钟"
+        else -> Periods.rangeText(slot.startPeriod, slot.periodCount).orEmpty()
     }
 
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
     val bg = if (dark) {
-        androidx.compose.ui.graphics.Brush.linearGradient(listOf(Palette.NightCardBlue, Color(0xFF16213F)))
+        Brush.linearGradient(listOf(Palette.NightCardBlue, Color(0xFF16213F)))
     } else {
-        androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF2F6BFF), Color(0xFF1E44C9)))
+        Brush.linearGradient(listOf(Color(0xFF2F6BFF), Color(0xFF1E44C9)))
     }
     Row(
         modifier
@@ -327,19 +368,28 @@ private fun NextClassCard(line: String, dark: Boolean, modifier: Modifier = Modi
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("下一节", fontSize = Type.micro, color = Palette.Cream.copy(alpha = 0.72f))
+            Text(
+                text = if (inClass) "正在上课" else "下一节",
+                fontSize = Type.micro,
+                color = Palette.Cream.copy(alpha = 0.72f),
+            )
             Spacer(Modifier.height(Gap.xs))
             Text(
-                text = course,
+                text = slot.course,
                 fontSize = (Type.title.value + 2).sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
                 maxLines = 2,
                 lineHeight = Type.bodyLine,
             )
-            if (room.isNotBlank()) {
+            if (slot.room.isNotBlank()) {
                 Spacer(Modifier.height(2.dp))
-                Text(room, fontSize = Type.meta, color = Palette.Cream.copy(alpha = 0.82f), maxLines = 1)
+                Text(
+                    text = shortRoom(slot.room),
+                    fontSize = Type.meta,
+                    color = Palette.Cream.copy(alpha = 0.82f),
+                    maxLines = 1,
+                )
             }
         }
         if (pill.isNotBlank()) {
@@ -352,6 +402,67 @@ private fun NextClassCard(line: String, dark: Boolean, modifier: Modifier = Modi
             ) {
                 Text(pill, fontSize = Type.meta, color = Color.White, fontWeight = FontWeight.Medium)
             }
+        }
+    }
+}
+
+/**
+ * 今天没课（或者今天的课都上完了）时首屏那张壁纸。
+ *
+ * 为什么不是一块空白或者一句灰字：这一块是首页第一眼，空着整屏就塌了。
+ * 三张图按一天的时段挑 —— 早上晨雾、下午金树、夜里月亮，正好跟"现在"对得上。
+ * 图是打包进 `res/drawable-nodpi` 的（没有网络也能出），上面压一层深色渐变，
+ * 白字放在任何一张图上都读得清。
+ */
+@Composable
+private fun HeroWallpaper(hadClassToday: Boolean, modifier: Modifier = Modifier) {
+    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    val picture = when (hour) {
+        in 5..11 -> R.drawable.hero_dawn
+        in 12..17 -> R.drawable.hero_dusk
+        else -> R.drawable.hero_night
+    }
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(168.dp)
+            .clip(shape),
+    ) {
+        Image(
+            painter = painterResource(picture),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        // 下半截压暗：白字压在任何一张图上都要能读
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.35f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.58f),
+                    )
+                ),
+        )
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = Gap.lg, vertical = Gap.lg),
+        ) {
+            Text(
+                text = if (hadClassToday) "今天的课都上完了" else "今天没有课",
+                fontSize = (Type.title.value + 2).sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = if (hadClassToday) "剩下的时间，留给你自己" else "享受你的大学生活",
+                fontSize = Type.meta,
+                color = Color.White.copy(alpha = 0.82f),
+            )
         }
     }
 }
