@@ -26,7 +26,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -281,37 +283,36 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         onDispose { graph.keepAlive.consumeKicked() }
     }
     // 本机留着学号时先把账号这一格填上：会话掉了只说明那把票不作数了，账号还是那个账号，
-    // 让人把十位数再敲一遍是白折腾。**口令一格永远不预填、也不写日志。**
+    // 让人把十位数再敲一遍是白折腾。
+    //
+    // 口令这一格也填，而且填的是真从 Keystore 里解出来的那一条 —— 不是摆几个点糊弄人。
+    // 10-23 早上他对着「口令空着、勾却打着、顶上多一颗"用这台机器记住的口令登进去"」这一屏问
+    // "怎么还是没有记住密码"：机器其实记着（现读 `andaxin.preferences_pb`：`auth.pwBlob` 有值、
+    // `auth.userCode` 有值、`auth.pwWhy` 这个键不存在 = 加密那一步没报错），可这件事在屏幕上看不出来。
+    // 「记住密码」在屏幕上就该长成"账号口令都在，按一下登录"，不该是一颗没人会去按的额外键。
+    // 解出来的明文只进这个输入框的内存：不写盘、不进日志、不进上报。
+    //
+    // 原来那颗一键重登的键一并撤了：口令填进格子之后，「登录」那一颗就是它，留两颗做同一件事
+    // 只会让人猜哪颗才是正路。
     LaunchedEffect(Unit) {
         if (account.isBlank()) account = graph.session.accountNow().orEmpty()
+        if (secret.isNotBlank() || account.isBlank()) return@LaunchedEffect
+        val blob = graph.session.passwordBlob()
+        if (blob.isNullOrBlank()) return@LaunchedEffect
+        // 第一次碰 Keystore 那把密钥可能慢，别在帧里等它
+        val pw = withContext(Dispatchers.IO) { graph.vault.open(blob) }
+        if (pw.isNullOrBlank()) {
+            // 解不开就是真解不开：改过锁屏/指纹会把那把密钥带走，密文坏了同理。
+            // 留着它，每次进这一屏都白试一遍还说不出原因，所以当场忘掉并说清下一步。
+            graph.session.forgetPassword()
+            rememberPw = false
+            note = "机器上那份口令解不开了（系统那把密钥不在了），重输一次就好。"
+        } else {
+            secret = pw
+        }
     }
 
     ScaffoldPage(title = "登录", onBack = onBack) {
-        // 本机还留着能登进去的口令时，先给这一颗：会话掉了（到期、被顶号、续期那一发没赶上）
-        // 却要人把口令再输一遍，那"记住密码"就只记住了个名字。
-        // 这一颗是给人按的，不在后台偷偷登 —— 校方一个账号只留一个活会话，
-        // 悄悄抢一下就把他手上那个客户端挤下线了。
-        val saved = graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
-        // `remembered` 已经含"学号也还在"这一层（见 `Session.remembered`），所以这里只看它一个。
-        if (saved.value.remembered && !busy) {
-            MiuixButton(
-                onClick = {
-                    busy = true
-                    scope.launch {
-                        val r = graph.keepAlive.reloginNow()
-                        busy = false
-                        if (r.ok) onDone() else note = r.why
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColorsPrimary(),
-            ) {
-                Text("用这台机器记住的口令登进去", fontSize = Type.title, fontWeight = FontWeight.Medium)
-            }
-            Spacer(Modifier.height(Gap.lg))
-            Text("或者输一遍：", fontSize = Type.meta, color = ink.faint)
-            Spacer(Modifier.height(Gap.sm))
-        }
         Column(verticalArrangement = Arrangement.spacedBy(Gap.md)) {
             MiuixTextField(
                 value = account,
