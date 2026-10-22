@@ -106,6 +106,7 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Column {
                     Text(
                         card?.let { "¥ %.2f".format(it.balance) } ?: "¥ —",
+                        style = Type.tabular,
                         fontSize = Type.hero, fontWeight = FontWeight.SemiBold, color = Palette.Cream,
                     )
                     Text(

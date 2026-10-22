@@ -328,6 +328,7 @@ fun MetricCell(
                 text = value,
                 fontSize = size,
                 fontWeight = FontWeight.SemiBold,
+                style = Type.tabular,
                 color = accent ?: ink.strong,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -387,7 +388,7 @@ fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: 
 fun StatBlock(label: String, value: String, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
     Column(modifier = modifier) {
-        Text(value, fontSize = Type.num, fontWeight = FontWeight.SemiBold, color = ink.strong)
+        Text(value, style = Type.tabular, fontSize = Type.num, fontWeight = FontWeight.SemiBold, color = ink.strong)
         Spacer(Modifier.height(Gap.xxs))
         Text(label, fontSize = Type.micro, color = ink.faint)
     }

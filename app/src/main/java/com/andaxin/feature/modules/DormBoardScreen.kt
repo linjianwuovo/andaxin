@@ -193,6 +193,7 @@ private fun StatCell(label: String, value: Int, color: Color, modifier: Modifier
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = "$value",
+            style = Type.tabular,
             fontSize = if ("$value".length > 5) Type.title else Type.num,
             fontWeight = FontWeight.SemiBold,
             color = color,

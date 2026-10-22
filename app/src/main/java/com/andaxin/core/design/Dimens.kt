@@ -1,6 +1,7 @@
 package com.andaxin.core.design
 
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +68,18 @@ object Type {
     val tinyLine = 12.sp
     val tinier = 8.5.sp
     val hero = 30.sp
+
+    /**
+     * 数字走等宽字形。
+     *
+     * 为什么专门立这一条：MiSans 默认的数字是**比例宽度** —— 现拆这个字体本体量过，
+     * upem 1000 下「1」是 403、「0」是 634，差一半多。所以余额从 11.11 跳到 88.88、
+     * 跑步时长每一分钟一跳，整行字都会左右挪。挂上 OpenType 的 tnum 之后十个数字同宽。
+     *
+     * 只给"会变、要看数"的位置用（数字格、余额、配速、时长、倒计时、节次时间）；
+     * 正文里偶尔出现的数字不用管，等宽反而显得松。
+     */
+    val tabular = TextStyle(fontFeatureSettings = "tnum")
 
     /** 行高跟着字号走，别默认挤在一起。 */
     val bodyLine = 21.sp
