@@ -22,8 +22,8 @@ android {
         applicationId = "com.andaxin"
         minSdk = 26
         targetSdk = 35
-        versionCode = 50
-        versionName = "0.8.8"
+        versionCode = 51
+        versionName = "0.8.9"
 
         // 只出 arm64：装机就是米11 和那台 OPPO，多一套 abi 只是让包胖 30%
         ndk { abiFilters += "arm64-v8a" }
@@ -130,6 +130,5 @@ dependencies {
     implementation(libs.miuix.icons)
     implementation(libs.haze)
     implementation(libs.haze.materials)
-    implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
 }

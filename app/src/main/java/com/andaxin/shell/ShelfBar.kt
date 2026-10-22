@@ -35,10 +35,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -58,17 +59,6 @@ import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.shapes.Capsule
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -77,14 +67,20 @@ import kotlin.math.abs
 import kotlin.math.sign
 
 /*
- * 底栏那层液态玻璃。
+ * 底栏：两层分开的玻璃。
  *
- * 玻璃的做法出处：Kyant0/AndroidLiquidGlass 官方示例 LiquidBottomTabs（Apache-2.0，tag 2.0.0，
- * 与我们依赖的 io.github.kyant0:backdrop:2.0.0 同源）。数值沿用官方那组基准：
- * 栏体 vibrancy + blur 8dp + lens 24dp，球 lens 10dp/14dp、按住鼓到 78/56。
- * 代码是本仓自己写的，署名记在这里。
+ * 他要的是"底栏一层效果、水滴一层效果，两个分开"（10-22 晚那句），参照酷安那种底栏：
+ * 一条糊的轨道 + 轨道上一颗自己的水珠。所以这两层是**两个独立节点、各自一套 haze 参数**，
+ * 不是在一层玻璃上画个圈：
  *
- * 拖拽与形变的出处：引擎是 core/design/DampedDrag.kt 的 DampedDragAnimation
+ *   ① 栏体  hazeEffect(blur = spec.blur, 底色 = surface)                     ← 整条轨道
+ *   ② 水滴  hazeEffect(blur = 轨道×(1−0.9×折射), 底色 = pillFill, 自带边光和投影)  ← 一颗独立玻璃
+ *
+ * 两层各采各的背景（同一个 hazeSource = 那一页），所以水滴里的糊**和轨道里的糊不一样**，
+ * 这才叫两层。水滴走比轨道小的模糊，观感就是"磨砂玻璃上滴了一滴清水"：
+ * 折射度拉到 0 两层一样糊 → 水滴看不出来（他现在抱怨的就是这个状态）；拉到 1 水滴几乎全清 → 最分明。
+ *
+ * 形状/形变的出处：引擎是 core/design/DampedDrag.kt 的 DampedDragAnimation
  * （Miuix 官方示例的 Apache-2.0 逐字副本，出处链条见那个文件顶部）。
  * 为什么不自己手搓 pointerInput：水球那口气全在引擎的参数里 ——
  * 形变吃的是 velocity（真速度，不是累计位移）、scaleX/scaleY 是两根阻尼不同的弹簧（1f/0.6f/0.7f），
@@ -93,33 +89,38 @@ import kotlin.math.sign
  *
  * 换页时机：保持"抬手那一刻换页"（旧仓真机验收过的手感），不是上游的"球先弹到位再换页"。
  *
- * 四条是踩过才知道的，别再踩一遍：
- * 1. 按压缩放只能写进 drawBackdrop 的 layerBlock。库采样背景时会对 layerBlock 做一次逆仿射，
- *    写在外面那层 graphicsLayer 没有这次逆运算，球里就全是放大的字 —— 变成放大镜。
- * 2. 球必须是栏体的兄弟节点，不然被栏体那层 clip 剪住，鼓不出栏外。
+ * 七条是踩过才知道的，别再踩一遍：
+ * 1. 按压缩放只能写进 drawBackdrop 的 layerBlock —— 那是还在用 kyant 折射时的规矩（库采样背景时
+ *    会对 layerBlock 做一次逆仿射，写在外面那层 graphicsLayer 球里就全是放大的字，变成放大镜）。
+ *    现在水滴走 haze，它自己那层 graphicsLayer 就是最终像素，scale 反而必须写在这里。
+ * 2. 水滴必须是栏体的兄弟节点，不然被栏体那层 clip 剪住，鼓不出栏外。
  * 3. 判"手指在哪一格"用 floor，不能用 roundToInt：round 会把格心右侧每个点都算到下一格，
  *    表现成"按住首页球往右飘"。
  * 4. 玻璃栏里不能留触摸水波纹：那层约 10% 黑的圆角矩形叠在折射上就是"点哪哪发灰"。
  * 5. drawBackdrop 不写 highlight 就是吃 `Highlight.Default` —— 实测是一圈纯白硬边，
  *    绕整圈，看着就是"栏子被一个矩形框着"（0.8.2 前那版真机像素：栏外 234、栏内 244、中间 3px 是 255）。
+ *    haze 这边同一个坑是 `hazeEffect` 不 clip 就是一整条通栏矩形：两层都得先 clip(Capsule())。
  * 6. 玻璃得有东西可糊。页面要是被挡在栏子上方（pager 自己 padding 掉 92dp），
  *    栏子采的那一层永远是一片空底色，模糊再大糊出来也是纯色 —— 他 10-22 那句"背景都是纯色"是这条，
  *    不是模糊参数不够。整页铺到底、各屏尾部留 ShelfTail，玻璃才成立。
+ * 7. kyant 那套 backdrop 在这台机上采到的是**空的**：四种探法都验过（撤 hazeSource、撤每页那层
+ *    不透明底、effects 只留 blur(40)、把 layerBackdrop 挪到外面包的 Box 上），栏底下那行字始终清清楚楚，
+ *    一点没糊；而同一屏切到「毛玻璃」那一档，haze 当场就糊了。所以栏体和水滴都不再走 drawBackdrop，
+ *    折射/lens 这一档能力暂时没有了，那三根滑杆改成管 haze 管得到的三件事（见 GlassSpec）。
  */
 
 private const val BAR_HEIGHT = 64f
 private const val PILL_HEIGHT = 56f
-private const val PRESSED_SCALE = 78f / 56f
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
-/** 栏体按压缩放的量：上游是 lerp(1f, 1f + 16dp / width, pressProgress) */
-private val BAR_PRESS_GROW = 16.dp
+/** 水滴鼓起幅度：扭曲度 0→1 映射到 1.15→1.50 倍（原来写死 78/56 = 1.393） */
+private const val PILL_BULGE_MIN = 1.15f
+private const val PILL_BULGE_SPAN = 0.35f
 
-/** 水球的折射带 / 位移量（上游 10dp·p、14dp·p）和内阴影（上游 8dp·p） */
-private val PILL_LENS_SIZE = 10.dp
-private val PILL_LENS_STRENGTH = 14.dp
-private const val PILL_INNER_SHADOW_DP = 8f
+/** 水滴投影：静止 2dp、按住鼓到 8dp。酷安那颗珠子"浮"在轨道上靠的就是这一下 */
+private const val PILL_SHADOW_REST = 2f
+private const val PILL_SHADOW_PRESS = 8f
 
 @Composable
 fun ShelfBar(
@@ -128,7 +129,6 @@ fun ShelfBar(
     onSelect: (Int) -> Unit,
     material: BarMaterial,
     spec: GlassSpec,
-    pageBackdrop: Backdrop,
     hazeState: HazeState,
     labels: List<String>,
     icons: List<Int>,
@@ -162,17 +162,33 @@ fun ShelfBar(
     val frostTint = if (isDark) Palette.NightCream.copy(alpha = 0.66f) else Palette.Paper.copy(alpha = 0.58f)
     val accent = MaterialTheme.colorScheme.primary
 
-    // 水球要连图标和文字一起折：标签那一层自己录进 labelLayer，球采的是"页面 + 标签"。
-    // 上游是再画一份 alpha=0 的隐形副本来录，我们不用 —— 标签已经单独成层，直接录它，
-    // 也就没有两份标签错开成重影的可能。
-    val labelLayer = rememberLayerBackdrop()
-    val pillBackdrop = rememberCombinedBackdrop(pageBackdrop, labelLayer)
-    val blurPx = with(density) { spec.blur.toPx() }
-    val lensSizePx = with(density) { spec.lensSize.toPx() }
-    val lensStrengthPx = with(density) { spec.lensStrength.toPx() }
-    val pillLensPx = with(density) { PILL_LENS_SIZE.toPx() }
-    val pillAmountPx = with(density) { PILL_LENS_STRENGTH.toPx() }
-    val barPressGrowPx = with(density) { BAR_PRESS_GROW.toPx() }
+    /*
+     * 第二层玻璃的三样东西。都从滑杆来，所以拖动它们时栏体不动、只有水珠在变 ——
+     * 两层要让人看出是两层，参数就得各管一头。
+     *
+     * pillBlur：水珠自己的模糊。折射度 0 → 和轨道一样糊（水珠隐形），1 → 只剩轨道的一成，
+     * 里面几乎看得清，就是"磨砂上的一滴清水"。默认 0.5 落在一半出头。
+     * pillFill：水珠底色。白天用近白的那张卡（Card #FFFFFF），轨道是 34% 的奶油，
+     * 一深一浅才分得开；夜里轨道是 12% 的墨，水珠抬到 22% —— 它就是该比轨道亮，
+     * 因为它标的是"你在哪一格"。
+     * pillRim：水珠边光。色散为 0 时是一圈冷白细边；越大越往两端分（左青右暖），
+     * 这就是那根"色散"滑杆现在唯一还管得到的事 —— 真的分光做不了了（顶上第 7 条）。
+     */
+    val pillBlur = spec.blur * (1f - 0.9f * spec.refraction)
+    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.22f) else Palette.Card.copy(alpha = 0.62f)
+    val rimAlpha = 0.30f + spec.dispersion * 0.55f
+    val pillRim: Brush = if (spec.dispersion <= 0.02f) {
+        SolidColor(if (isDark) Color.White.copy(alpha = rimAlpha) else Color.White.copy(alpha = rimAlpha))
+    } else {
+        Brush.horizontalGradient(
+            listOf(
+                Color(0xFF9FD8FF).copy(alpha = rimAlpha),   // 冷端
+                Color(0xFFFFE7C7).copy(alpha = rimAlpha),   // 暖端
+            ),
+        )
+    }
+    // 按住时水珠鼓多少：引擎那两根弹簧的终点，静止 1f → 按下 pillBulge
+    val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
 
     BoxWithConstraints(
@@ -215,14 +231,14 @@ fun ShelfBar(
         // 且阻尼不同（1.0 / 0.6 / 0.7），按住时横纵不同步地涨，就是水滴被捏一下。
         // onDragStarted 里把 value 移到手指那一格，所以按在远处那格球是带速度弹过去的。
         // 拖动途中页面不动，换页只在抬手那一刻。
-        val drag = remember(scope, pageCount, density, ltr, cellWidth) {
+        val drag = remember(scope, pageCount, density, ltr, cellWidth, pillBulge) {
             DampedDragAnimation(
                 animationScope = scope,
                 initialValue = current.toFloat(),
                 valueRange = 0f..(pageCount - 1).toFloat(),
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
-                pressedScale = PRESSED_SCALE,
+                pressedScale = pillBulge,
                 canDrag = { offset -> offset.x in 0f..barWidth },
                 onDragStarted = { position -> updateValue(indexAt(position.x).toFloat()) },
                 onDragStopped = {
@@ -268,12 +284,9 @@ fun ShelfBar(
         // pressProgress 每帧都在变，包成 lambda 传下去，别引起整排格 recompose
         val press = { drag.pressProgress }
 
-        // ── ① 栏体玻璃底板（只有底板，标签在第 ② 层）──
-        // 为什么不和标签放在一起：水球画在最上面，会把自己采到的"页面 + 标签"重画一遍盖上来，
-        // 图标和文字就是在这一步被折射带弯到的。底板和标签拆两层，标签层才好整层录给水球。
-        //
-        // drawBackdrop 排在 height/fillMaxWidth 之前：玻璃层是 64dp，内容区被最后那个
-        // padding(4dp) 收成 56dp，按压缩放时才有 4dp 余量、不会被自己剪到。
+        // ── ① 栏体：第一层玻璃（轨道）──
+        // 这一层只管"整条轨道糊成什么样"：模糊吃 spec.blur，底色吃 surface，别的不沾。
+        // 水珠是第 ② 层，自己的模糊、自己的底色、自己的边光和投影，两层参数互不共用。
         Box(
             Modifier
                 .graphicsLayer { translationX = panelShift }
@@ -281,16 +294,9 @@ fun ShelfBar(
                     when (material) {
                         /*
                          * 栏体这一档 10-22 从 drawBackdrop 换成了 haze。原因不是口味：
-                         * 那层 kyant 的采集在这台机上**一直是空的** —— 四种探法都验过
-                         * （撤 hazeSource、撤每页那层不透明底、effects 只留 blur(40)、
-                         * 把 layerBackdrop 挪到外面包的 Box 上），栏底下那行字始终清清楚楚，
-                         * 一点没糊；而同一屏切到「毛玻璃」那一档，haze 当场就糊了。
+                         * 那层 kyant 的采集在这台机上**一直是空的**（顶部第 7 条），
                          * 也就是说以前这层"液态玻璃"根本没采到背景，只是蒙了张 34% 的奶白 ——
-                         * 他那句"背景都是纯色"从头到尾说的就是这件事，我第一轮只把内容放到栏底下，
-                         * 没去验糊没糊，所以到今晚才认出来。
-                         *
-                         * 水球那一层还留在 drawBackdrop 上：它静止时只画自己那层灰，
-                         * 折射要按住才看得见，等采集修好再一起换。
+                         * 他那句"背景都是纯色"从头到尾说的就是这件事。
                          */
                         BarMaterial.Liquid -> Modifier
                             .clip(Capsule())
@@ -316,17 +322,67 @@ fun ShelfBar(
                 .fillMaxWidth(),
         ) {}
 
-        // ──  标签层 ──
+        // ── ② 水滴：第二层玻璃，画在标签底下 ──
+        // 从"最上面"挪到标签底下是照酷安那套的位置来的：图标该是清楚的，珠子是它身下那滴玻璃。
+        // 压在图标上就等于给选中那一枚蒙了层雾，反而最花。
+        // 位移和形变都写在这层自己的 graphicsLayer 里 —— 它现在走 haze 不走 backdrop，
+        // 采到的糊已经在这层之内，缩放就是这颗珠子整体在鼓，没有逆仿射那回事（顶部第 1 条）。
+        Box(
+            Modifier
+                .padding(horizontal = INSET.dp)
+                .graphicsLayer {
+                    translationX =
+                        if (ltr) drag.value * cellWidth + panelShift
+                        else barWidth - (drag.value + 1f) * cellWidth + panelShift
+                    val p = press()
+                    // X/Y 是引擎里两根不同阻尼的弹簧，不同步地涨才有被捏的味道；
+                    // 形变量吃的是 velocity（每帧由 VelocityTracker 算出来的真速度），
+                    // 不是累计位移 —— 捏一下就有、慢慢拖不会一直鼓着。
+                    val velocity = drag.velocity / 10f
+                    scaleX = drag.scaleX / (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
+                    scaleY = drag.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+                    // 投影挂在这层自己的 outline 上：给了 shape 但不开 clip，
+                    // 于是珠子鼓出栏外那几 dp 不会被自己剪掉，影照样投在轨道上。
+                    shape = Capsule()
+                    clip = false
+                    shadowElevation =
+                        (PILL_SHADOW_REST + (PILL_SHADOW_PRESS - PILL_SHADOW_REST) * p).dp.toPx()
+                }
+                .then(
+                    when (material) {
+                        BarMaterial.Liquid -> Modifier
+                            .clip(Capsule())
+                            .hazeEffect(state = hazeState) {
+                                blurRadius = pillBlur
+                                noiseFactor = 0.02f
+                                backgroundColor = pillFill
+                            }
+                        BarMaterial.Frosted -> Modifier
+                            .clip(Capsule())
+                            .hazeEffect(state = hazeState) {
+                                blurRadius = pillBlur
+                                noiseFactor = 0.10f
+                                backgroundColor =
+                                    if (isDark) Palette.NightCream.copy(alpha = 0.86f)
+                                    else Palette.Card.copy(alpha = 0.80f)
+                            }
+                        BarMaterial.Solid -> Modifier.background(accent.copy(alpha = 0.15f), Capsule())
+                    },
+                )
+                // 水珠自己一圈边光：少了它，两层同色同质就糊成一块了
+                .border(1.dp, pillRim, Capsule())
+                .height(PILL_HEIGHT.dp)
+                .fillMaxWidth(1f / pageCount),
+        ) {}
+
+        // ── ③ 标签层，画在最上面 ──
         // 手势挂在这一层而不是球上。上游是把 pointerInput 挂在 pill 上的，那样只有"按在球上"
         // 才有反馈；要的是"手按在哪滑块跟着去哪"，所以整条栏收事件。
         // 引擎走 PointerEventPass.Initial 且不消费，所以每格自己的 clickable 照旧管点按。
-        //
-        // layerBackdrop 把这一层自己录进去给水球采样：水球画在它上面，图标和文字才会被折射。
         Row(
             Modifier
                 .graphicsLayer { translationX = panelShift }
                 .then(drag.modifier)
-                .layerBackdrop(labelLayer)
                 .height(BAR_HEIGHT.dp)
                 .fillMaxWidth()
                 .padding(INSET.dp),
@@ -346,76 +402,6 @@ fun ShelfBar(
                 )
             }
         }
-
-        // ── ③ 水球，画在最上面 ──
-        // 位移走 graphicsLayer（绘制阶段每帧读，不会慢一格），形变走 layerBlock（会被逆仿射，
-        // 背景不跟着放大）。形状是 Capsule 不是 CircleShape：一格宽、56dp 高、两端半圆。
-        // 阴影/内阴影/高光都是 drawBackdrop 的参数，库自己 clip，不用再加 .clip/.shadow。
-        Box(
-            Modifier
-                .padding(horizontal = INSET.dp)
-                .graphicsLayer {
-                    translationX =
-                        if (ltr) drag.value * cellWidth + panelShift
-                        else barWidth - (drag.value + 1f) * cellWidth + panelShift
-                }
-                .then(
-                    when (material) {
-                        BarMaterial.Liquid -> Modifier.drawBackdrop(
-                            backdrop = pillBackdrop,
-                            shape = { Capsule() },
-                            effects = {
-                                // 上游：球只有 lens，不 blur、不 vibrancy。静止时 p=0
-                                // → refractionHeight/Amount <= 0 → lens 自己 return，
-                                // 所以 press=0 的观感和改动前一致。
-                                val p = press()
-                                lens(
-                                    pillLensPx * p,
-                                    pillAmountPx * p,
-                                    chromaticAberration = spec.chromatic,
-                                )
-                            },
-                            highlight = { Highlight.Default.copy(alpha = press()) },
-                            shadow = { Shadow(alpha = press()) },
-                            innerShadow = {
-                                InnerShadow(
-                                    radius = PILL_INNER_SHADOW_DP.dp * press(),
-                                    alpha = press(),
-                                )
-                            },
-                            layerBlock = {
-                                // X/Y 是引擎里两根不同阻尼的弹簧，不同步地涨才有被捏的味道；
-                                // 形变量吃的是 velocity（每帧由 VelocityTracker 算出来的真速度），
-                                // 不是累计位移 —— 捏一下就有、慢慢拖不会一直鼓着。
-                                scaleX = drag.scaleX
-                                scaleY = drag.scaleY
-                                val velocity = drag.velocity / 10f
-                                scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
-                                scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
-                            },
-                            onDrawSurface = {
-                                val p = press()
-                                drawRect(
-                                    if (!isDark) Color.Black.copy(alpha = 0.1f)
-                                    else Color.White.copy(alpha = 0.1f),
-                                    alpha = 1f - p,
-                                )
-                                drawRect(Color.Black.copy(alpha = 0.03f * p))
-                            },
-                        )
-                        BarMaterial.Frosted -> Modifier
-                            .hazeEffect(state = hazeState) {
-                                blurRadius = spec.blur
-                                noiseFactor = 0.14f
-                                backgroundColor = frostTint
-                            }
-                            .background(Color.Black.copy(alpha = 0.07f), Capsule())
-                        BarMaterial.Solid -> Modifier.background(accent.copy(alpha = 0.15f), Capsule())
-                    },
-                )
-                .height(PILL_HEIGHT.dp)
-                .fillMaxWidth(1f / pageCount),
-        ) {}
     }
 }
 
