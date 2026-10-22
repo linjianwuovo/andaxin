@@ -93,33 +93,33 @@ private fun parseHero(name: String?): HeroStyle =
 /**
  * 滑杆值 → 绘制参数。
  *
- * 区间基准来自 Kyant 官方示例那组写死值（vibrancy + blur 8dp + lens 24dp），
- * 滑杆中点大致落在那儿：模糊 2..12dp、折射带 14..28dp、位移 0..24dp；
- * 毛玻璃走 Haze 的 6..30dp。色散是开关，>0 就开。
+ * 底栏是**两层玻璃**，四根滑杆一边管一层，别混：
+ * - [blur] 是**栏体**那一层的模糊。区间 6..30dp 是 10-22 真机定下来的：
+ *   低于 6dp 底下的字还能读出来，就不算糊；高于 30dp 整屏的字全化了，反而看不出玻璃。
+ * - [refraction] 是**水滴**和栏体的差 —— 水滴自己的模糊 = 栏体 × (1 − 0.9×这根)。
+ *   拉到 0 两层一样糊（等于没有水滴），拉到 1 水滴里几乎是清的，就是玻璃上滴了一滴清水。
+ * - [distortion] 是按住时水滴**鼓起来的幅度**（1.15..1.50 倍）。
+ * - [dispersion] 是水滴那一圈**边光的彩度**：0 是白边，越大越往冷/暖两头分。
+ *
+ * 为什么不写成 lensSize/lensStrength 那种像素值：那套是给 kyant 的折射效果喂参数的，
+ * 而它的采集在这台机上一直是空的（见 ShelfBar 顶上第 7 条），折射做不出来。
+ * 现在这三根直接是 0..1 的档位，屏幕上滑到哪、底栏就变到哪，没有中间换算好蒙人。
  */
 @Immutable
 data class GlassSpec(
     val blur: Dp,
-    val lensSize: Dp,
-    val lensStrength: Dp,
-    val chromatic: Boolean,
-    val vibrancy: Boolean,
+    val refraction: Float,
+    val distortion: Float,
+    val dispersion: Float,
 )
 
 fun Appearance.spec(): GlassSpec = when (material) {
-    BarMaterial.Solid -> GlassSpec(0.dp, 0.dp, 0.dp, chromatic = false, vibrancy = false)
-    BarMaterial.Frosted -> GlassSpec(
+    // 实心那一档不给玻璃留任何参数：一层都不糊，水滴就是一块纯色
+    BarMaterial.Solid -> GlassSpec(0.dp, 0f, 0f, 0f)
+    BarMaterial.Frosted, BarMaterial.Liquid -> GlassSpec(
         blur = (6f + blur.coerceIn(0f, 1f) * 24f).dp,
-        lensSize = 0.dp,
-        lensStrength = 0.dp,
-        chromatic = false,
-        vibrancy = true,
-    )
-    BarMaterial.Liquid -> GlassSpec(
-        blur = (6f + blur.coerceIn(0f, 1f) * 24f).dp,
-        lensSize = (14f + refraction.coerceIn(0f, 1f) * 14f).dp,
-        lensStrength = (distortion.coerceIn(0f, 1f) * 24f).dp,
-        chromatic = dispersion > 0f,
-        vibrancy = true,
+        refraction = refraction.coerceIn(0f, 1f),
+        distortion = distortion.coerceIn(0f, 1f),
+        dispersion = dispersion.coerceIn(0f, 1f),
     )
 }

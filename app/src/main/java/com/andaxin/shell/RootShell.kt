@@ -75,8 +75,6 @@ import com.andaxin.feature.modules.RepairListScreen
 import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.web.WebScreen
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
@@ -420,7 +418,6 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val pager = rememberPagerState(initialPage = Shelf.Home.ordinal) { Shelf.entries.size }
     val scope = rememberCoroutineScope()
     val haze = remember { HazeState() }
-    val pageBackdrop = rememberLayerBackdrop()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
     val icons = Shelf.entries.map { it.iconRes }
     val iconsAccent = Shelf.entries.map { it.iconAccentRes }
@@ -442,8 +439,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                  * 现在整页铺到屏幕底，内容从栏底下滚过去，折射和模糊才有东西可吃；
                  * 各屏尾部那条 ShelfTail 负责让最后一条停在栏子上沿之上。
                  */
-                .hazeSource(haze)
-                .layerBackdrop(pageBackdrop),
+                .hazeSource(haze),
         ) { index ->
             when (Shelf.entries[index]) {
                 Shelf.Home -> HomeScreen(open = open)
@@ -460,7 +456,6 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             onSelect = { scope.launch { pager.animateScrollToPage(it) } },
             material = appearance.material,
             spec = appearance.spec(),
-            pageBackdrop = pageBackdrop,
             hazeState = haze,
             labels = labels,
             icons = icons,
