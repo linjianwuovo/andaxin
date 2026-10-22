@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
+import com.andaxin.shell.rememberArmConfirm
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.Type
@@ -391,7 +392,7 @@ fun SportRunScreen(onBack: () -> Unit) {
     val state by graph.engine.state.collectAsStateWithLifecycle()
     val mockOn by (graph.debug?.mock?.isOn ?: com.andaxin.core.debug.DebugKit.off)
         .collectAsStateWithLifecycle()
-    var confirmStop by remember { mutableStateOf(false) }
+    val stopArm = rememberArmConfirm()
     var draft by remember { mutableStateOf<RunDraft?>(null) }
     var submitting by remember { mutableStateOf(false) }
     var submitWhy by remember { mutableStateOf<String?>(null) }
@@ -587,13 +588,13 @@ fun SportRunScreen(onBack: () -> Unit) {
                     graph.debug?.mock?.paused = true
                 }
             }
-            HalfButton(if (confirmStop) "再点一次确认结束" else "结束") {
-                if (!confirmStop) {
-                    confirmStop = true
+            HalfButton(if (stopArm.armed) "再点一次确认结束 ${stopArm.countdown}s" else "结束") {
+                if (!stopArm.armed) {
+                    stopArm.arm()
                 } else {
                     draft = graph.engine.finish()
                     graph.debug?.mock?.stop()
-                    confirmStop = false
+                    stopArm.disarm()
                 }
             }
         }

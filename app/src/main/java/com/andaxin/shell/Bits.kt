@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,7 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
 import com.andaxin.data.brief.Flag
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
@@ -563,3 +565,43 @@ fun LoadWhy(why: String?, modifier: Modifier = Modifier, wide: Boolean = true) {
         }
     }
 }
+
+/* ───────────── 二次确认：举着的那一下要自己放下 ───────────── */
+
+/**
+ * 二次确认的开关。
+ *
+ * 为什么单独立一个：以前「再点一次确认结束」和「再点一次就退出」都是点第一下就永久 armed，
+ * 界面一直停在"再按一下就没了"那个样子。跑步时手是抖的、口袋里也会误触，
+ * 误触一下就得自己记得回来把它取消，不然下一次按就是真按下去了（他 10-22 那句
+ * 「点一次就不会复原了如果误触就不好了」）。所以给一个窗口：[seconds] 秒内按第二下才算确认，
+ * 过了自己回到没 armed。
+ *
+ * 倒计时写进按钮文字里，让人看得见它会在几秒后自己放下 —— 不写的话突然变回原样更像坏了。
+ */
+@Composable
+fun rememberArmConfirm(seconds: Int = 4): ArmConfirm {
+    var armed by remember { mutableStateOf(false) }
+    var countdown by remember { mutableStateOf(0) }
+    LaunchedEffect(armed) {
+        if (!armed) {
+            countdown = 0
+            return@LaunchedEffect
+        }
+        for (s in seconds downTo 1) {
+            countdown = s
+            delay(1000)
+        }
+        armed = false
+    }
+    return ArmConfirm(armed, countdown, { armed = true }, { armed = false })
+}
+
+/** [armed]=false 时按第一下走 [arm]；已经 armed 就按 [disarm] 或按确认那一路。 */
+@Immutable
+class ArmConfirm(
+    val armed: Boolean,
+    val countdown: Int,
+    val arm: () -> Unit,
+    val disarm: () -> Unit,
+)
