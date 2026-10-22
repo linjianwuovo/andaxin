@@ -116,7 +116,7 @@ fun Appearance.spec(): GlassSpec = when (material) {
         vibrancy = true,
     )
     BarMaterial.Liquid -> GlassSpec(
-        blur = (2f + blur.coerceIn(0f, 1f) * 10f).dp,
+        blur = (6f + blur.coerceIn(0f, 1f) * 24f).dp,
         lensSize = (14f + refraction.coerceIn(0f, 1f) * 14f).dp,
         lensStrength = (distortion.coerceIn(0f, 1f) * 24f).dp,
         chromatic = dispersion > 0f,

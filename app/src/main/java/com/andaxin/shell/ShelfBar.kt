@@ -292,30 +292,13 @@ fun ShelfBar(
                          * 水球那一层还留在 drawBackdrop 上：它静止时只画自己那层灰，
                          * 折射要按住才看得见，等采集修好再一起换。
                          */
-                        BarMaterial.Liquid -> Modifier.drawBackdrop(
-                            backdrop = pageBackdrop,
-                            shape = { Capsule() },
-                            effects = {
-                                if (spec.vibrancy) vibrancy()
-                                if (blurPx > 0f) blur(blurPx)
-                                if (lensStrengthPx > 0f) {
-                                    lens(lensSizePx, lensStrengthPx, spec.chromatic)
-                                }
-                            },
-                            /*
-                             * 这一行是被他那句"还有一大块矩形框着那意义何在"逼出来的。
-                             * `drawBackdrop` 不传 highlight 时吃的是库的 `Highlight.Default`，
-                             * 画出来是一圈 1dp（3.5px）的**纯白硬边**（真机像素：栏外 234、栏内 244、
-                             * 中间 3px 是 255）。关成 0，边缘交给下面那圈 1dp 发丝线。
-                             */
-                            highlight = { Highlight.Default.copy(alpha = 0f) },
-                            layerBlock = {
-                                val s = lerp(1f, 1f + barPressGrowPx / size.width, press())
-                                scaleX = s
-                                scaleY = s
-                            },
-                            onDrawSurface = { drawRect(surface) },
-                        )
+                        BarMaterial.Liquid -> Modifier
+                            .clip(Capsule())
+                            .hazeEffect(state = hazeState) {
+                                blurRadius = spec.blur
+                                noiseFactor = 0.05f
+                                backgroundColor = surface
+                            }
                         BarMaterial.Frosted -> Modifier
                             .clip(Capsule())
                             .hazeEffect(state = hazeState) {
