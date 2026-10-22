@@ -67,13 +67,10 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
 import com.kyant.shapes.Capsule
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
+import com.andaxin.core.design.lens
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.blur
+import top.yukonga.miuix.kmp.blur.drawBackdrop
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.launch
@@ -173,7 +170,7 @@ fun ShelfBar(
     material: BarMaterial,
     spec: GlassSpec,
     hazeState: HazeState,
-    pageBackdrop: com.kyant.backdrop.Backdrop,
+    pageBackdrop: Backdrop,
     labels: List<String>,
     icons: List<Int>,
     /** 未选中那枚的"点睛"层（跟着强调色），和 [icons] 一一对位；没有就不叠 */
@@ -263,8 +260,16 @@ fun ShelfBar(
     val pillBlurPx = with(density) { (spec.blur * 0.34f).toPx() }
     // 带厚收到外缘 8-10%。上一版 16dp 占 54dp 珠子的 30%，两条位移区几乎顶到中间，
     // 验收 agent 判「珠内背景被整体放大 15-20% = 放大镜，不合格」—— 中心必须严格 1:1
-    val lensBandPx = with(density) { (3.dp + 7.dp * spec.refraction).toPx() }
-    val lensAmountPx = with(density) { (12.dp * spec.distortion).toPx() }
+    // 默认档要一眼看得出不是一颗"磨圆角的气泡"：带厚给到 6..24dp、位移给到 0..34dp。
+    // 再厚就会退回放大镜那个毛病（带两边顶到中心），24dp 带 + 中心 30dp 不动是实测的边界。
+    val lensBandPx = with(density) { (6.dp + 18.dp * spec.refraction).toPx() }
+    val lensAmountPx = with(density) { (34.dp * spec.distortion).toPx() }
+    /*
+     * 液态玻璃要 API 33 —— miuix-blur 那个包自己就是这么声明的（清单里用 overrideLibrary
+     * 放行了合并，所以闸门必须写在这儿）。33 以下 `liquidGlass` 为假，折射那几行根本不会执行，
+     * 水珠退回下面那颗 haze 的。我们不支持为了玻璃把 minSdk 抬到 33：那等于砍掉一堆同学的旧手机。
+     */
+    val liquidGlass = material == BarMaterial.Liquid && android.os.Build.VERSION.SDK_INT >= 33
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
 
     BoxWithConstraints(
@@ -440,14 +445,13 @@ fun ShelfBar(
                         (PILL_SHADOW_REST + (PILL_SHADOW_PRESS - PILL_SHADOW_REST) * press()).dp.toPx()
                 }
                 .then(
-                    when (material) {
+                    when {
                         // 水珠 = 采到的那一页，自己糊一层 + 只在边缘一条带里折射。
                         // 带厚吃折射度、位移吃扭曲度、色散开关吃色散度 —— 三根滑杆各管一头。
-                        BarMaterial.Liquid -> Modifier.drawBackdrop(
+                        material == BarMaterial.Liquid && liquidGlass -> Modifier.drawBackdrop(
                             backdrop = pageBackdrop,
                             shape = { Capsule() },
                             effects = {
-                                vibrancy()
                                 blur(pillBlurPx)
                                 lens(
                                     lensBandPx,
@@ -455,18 +459,24 @@ fun ShelfBar(
                                     chromaticAberration = spec.dispersion > 0.6f,
                                 )
                             },
-                            // 库那三样先压成 0：上缘受光、下沿内阴影、投影都由我们自己画。
-                            // 不然 Highlight.Default 那圈 1dp 纯白硬边会把「栏子被矩形框着」复发
-                            highlight = { Highlight.Default.copy(alpha = 0f) },
-                            shadow = { Shadow(alpha = 0f) },
-                            innerShadow = { InnerShadow(alpha = 0f) },
+                            // 不传 highlight：kyant 那版不传会吃 Highlight.Default，实测是一圈
+                            // 1dp 纯白硬边（就是「栏子被矩形框着」那个 bug）。Miuix 这版默认 null，
+                            // 正好 —— 上缘受光、下沿内阴影、投影全由我们自己画。
                         )
                             // 这一层底色以前漏了：drawBackdrop 那一路没人叠 pillFill，
                             // 结果 vibrancy 把页面压暗之后就直接上屏 —— 真机量到珠子里 199-205、
                             // 轨道 245，整颗是**灰的**，看着像金属按钮不像水珠。
                             // 水珠必须比轨道**亮**（酷安那颗就是亮出来的），所以这层白要给足。
                             .background(pillFill, Capsule())
-                        BarMaterial.Frosted -> Modifier
+                        // 液态但机器不给（API < 33）：还是那颗 haze 珠子，只是不折射
+                        material == BarMaterial.Liquid -> Modifier
+                            .clip(Capsule())
+                            .hazeEffect(state = hazeState) {
+                                blurRadius = pillBlur
+                                noiseFactor = 0.02f
+                                backgroundColor = pillFill
+                            }
+                        material == BarMaterial.Frosted -> Modifier
                             .clip(Capsule())
                             .hazeEffect(state = hazeState) {
                                 blurRadius = pillBlur
@@ -475,7 +485,7 @@ fun ShelfBar(
                                     if (isDark) Palette.NightCream.copy(alpha = 0.86f)
                                     else Palette.Card.copy(alpha = 0.80f)
                             }
-                        BarMaterial.Solid -> Modifier.background(accent.copy(alpha = 0.15f), Capsule())
+                        else -> Modifier.background(accent.copy(alpha = 0.15f), Capsule())
                     },
                 )
                 /*

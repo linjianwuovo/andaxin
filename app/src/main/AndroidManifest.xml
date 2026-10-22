@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+     * top.yukonga.miuix.kmp:miuix-blur 自己声明 minSdk 33（RuntimeShader 那条链它按 33 打的），
+     * 我们不支持把底线抬到 33 —— 同学们一堆旧手机会被砍掉。所以这里放行清单合并，
+     * 真正的闸门写在调用点：ShelfBar 里 liquidGlass = SDK_INT >= 33，
+     * 33 以下自动退回 haze 那颗糊珠子，一行折射代码都不会去碰。
+     * 动了这行必须同时动那个判断，否则低版本上是启动崩。
+     -->
+    <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur, top.yukonga.miuix.kmp.shader" />
 
     <!-- 骨架阶段只带网络；定位、通知、相机等等到对应批次再声明，
          声明一条就要在界面上解释一条，别提前要权限。 -->

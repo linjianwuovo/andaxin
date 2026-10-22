@@ -77,8 +77,8 @@ import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.web.WebScreen
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -421,7 +421,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val haze = remember { HazeState() }
     // 诊断：kyant 的采集层，和 hazeSource 挂在同一个 pager 上
-    val pageBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val pageBackdrop = rememberLayerBackdrop()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
     val icons = Shelf.entries.map { it.iconRes }
     val iconsAccent = Shelf.entries.map { it.iconAccentRes }
