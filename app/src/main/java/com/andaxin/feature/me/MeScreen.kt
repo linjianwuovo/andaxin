@@ -197,13 +197,6 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         SectionTitle("功能")
         EntryGrid(ENTRIES, open)
 
-        SectionTitle("本机")
-        Sheet {
-            // 宿舍、登录口令这两格都撤了（10-21 09:2x / 09:3x 他两句话）。
-            // 记住口令是登录那一屏的勾选，状态不该在本机设置里再复述一遍。
-            ReminderRow()
-        }
-
         ShelfTail()
     }
 }
@@ -252,91 +245,5 @@ private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
             }
             if (rowIdx != entries.chunked(3).lastIndex) Hairline()
         }
-    }
-}
-
-/**
- * 上课提醒那一行。三句话得说明白，少一句都会让人误解它，但**不摆在大路上**：
- * ① 节次时间是我们自己排的那张表，校方没有一条接口给过；
- * ② 它用系统闹钟那条路，状态栏会亮一个闹钟图标；
- * ③ 重启之后能不能自己排回去，看的是 ROM 的"自启动"，那个开关我们碰不到。
- */
-@Composable
-private fun ReminderRow() {
-    val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
-    val ink = LocalInk.current
-    var on by remember { mutableStateOf(false) }
-    var lead by remember { mutableStateOf(com.andaxin.core.schedule.ClassReminder.DEFAULT_LEAD) }
-    var status by remember { mutableStateOf("正在看本机存了什么…") }
-
-    var needPermission by remember { mutableStateOf(false) }
-    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        needPermission = false
-        if (granted) status = "通知权限有了，下一节开始前会提醒一次。"
-    }
-
-    LaunchedEffect(Unit) {
-        val p = graph.store.snapshot()
-        on = com.andaxin.core.schedule.ClassReminder.isOn(p, graph.store)
-        lead = com.andaxin.core.schedule.ClassReminder.leadOf(p, graph.store)
-        status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable)
-    }
-
-    fun write(nv: Boolean, nLead: Int) {
-        on = nv; lead = nLead
-        scope.launch {
-            graph.store.setMany(
-                com.andaxin.core.schedule.ClassReminder.KEY_ON to if (nv) "1" else "0",
-                com.andaxin.core.schedule.ClassReminder.KEY_LEAD to nLead.toString(),
-            )
-            status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable)
-        }
-        if (nv && !androidx.core.app.NotificationManagerCompat.from(graph.context).areNotificationsEnabled()) {
-            needPermission = true
-            ask.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
-
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = Gap.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("上课提醒", fontSize = Type.title, fontWeight = FontWeight.Medium, color = ink.strong)
-            Spacer(Modifier.height(1.dp))
-            Text(
-                text = if (on) "开 · 每节课开始前 $lead 分钟响一次" else "没开",
-                fontSize = Type.meta,
-                color = if (needPermission) MaterialTheme.colorScheme.error else ink.muted,
-            )
-        }
-        top.yukonga.miuix.kmp.basic.Switch(
-            checked = on,
-            onCheckedChange = { write(it, lead) },
-            // Miuix 的"关"那一档默认拿 secondary（我们这儿是青绿）当轨道色 —— 白钮停在左边、
-            // 轨道却是饱和的青绿，看着像开着。他 10-20 深夜定过一条：关闭态给灰底。
-            colors = top.yukonga.miuix.kmp.basic.SwitchDefaults.switchColors(
-                uncheckedTrackColor = ink.offFill,
-            ),
-        )
-    }
-    if (on) {
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-        ) {
-            com.andaxin.core.schedule.ClassReminder.LEADS.forEach { n ->
-                Chip("$n 分", n == lead) { write(on, n) }
-            }
-        }
-    }
-    // 状态那句和上面那行副标题是两套话（一个说开关、一个说排程结果），
-    // 撞车的时候（两边都是"没开"）就别重复印两遍 —— 装机读屏看到的就是连着两行"没开"
-    if (status.isNotBlank() && !(status.startsWith("没开") && !on)) {
-        Spacer(Modifier.height(Gap.xs))
-        Text(status, fontSize = Type.micro, color = ink.faint)
     }
 }

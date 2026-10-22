@@ -68,6 +68,7 @@ import com.andaxin.feature.modules.LaborListScreen
 import com.andaxin.feature.me.ProfileScreen
 import com.andaxin.feature.modules.LoginScreen
 import com.andaxin.feature.modules.MoreScreen
+import com.andaxin.feature.notify.NotifyScreen
 import com.andaxin.feature.modules.RepairDetailScreen
 import com.andaxin.feature.modules.RepairFormScreen
 import com.andaxin.feature.modules.RepairListScreen
@@ -116,6 +117,7 @@ object Route {
 
     const val WELCOME = "gate"
     const val MORE = "more"
+    const val NOTIFY = "notify"
     const val CARD = "card"
     const val CARD_FLOWS = "card/flows"
     const val LOGIN = "login"
@@ -248,6 +250,7 @@ fun RootShell() {
         }
 
         page(Route.MORE) { MoreScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.NOTIFY) { NotifyScreen(onBack = { nav.popBackStack() }) }
         page(Route.CARD) { CampusCardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
         page(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
