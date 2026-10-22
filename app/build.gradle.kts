@@ -131,5 +131,5 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.haze.materials)
     implementation(libs.kyant.shapes)
-    implementation(libs.kyant.backdrop)
+    implementation(libs.miuix.blur)
 }
