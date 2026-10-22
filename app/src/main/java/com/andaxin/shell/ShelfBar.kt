@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -112,23 +113,33 @@ import kotlin.math.sign
  *    不透明底、effects 只留 blur(40)、把 layerBackdrop 挪到外面包的 Box 上），栏底下那行字始终清清楚楚，
  *    一点没糊；而同一屏切到「毛玻璃」那一档，haze 当场就糊了。所以栏体和水滴都不再走 drawBackdrop，
  *    折射/lens 这一档能力暂时没有了，那三根滑杆改成管 haze 管得到的三件事（见 GlassSpec）。
+ * 8. 10-22 顺着酷安逆向过一条路（APK 里捞到它自己的 AGSL：圆角矩形 SDF + 梯度法线 +
+ *    只在边缘一条带里位移），接上来发现**折射不了**：haze 的背板走它自己那层合成、
+ *    drawLayer 画进来的子层也绕过祖先 graphicsLayer 的 renderEffect —— 诊断版里给栏体
+ *    挂一个夸张的折射，栏子直接消失而不是起波浪，就是这个原因。
+ *    酷安自己能成是因为它不走 Compose 这层采集：它有 `LiquidGlassToolbarActivity.createLiquidGlassHostView`
+ *    那套自己的宿主 View 采集。**要真折射就得先把采集换成那条路**，别在这条链上再试第二次。
  */
 
 private const val BAR_HEIGHT = 64f
 /*
- * 水珠 48dp、轨道 64dp。原来那档是 56dp，静止时它上下各只留 4dp，
- * 于是左右两端的半圆会**戳到轨道的圆角外面去**（轨道端头那 32dp 半径往里收，
- * 水珠的 28dp 半径不收）—— 第一格和最后一格看着像"珠子漏出栏子一截"。
- * 收到 48dp 后静止时整颗在轨道里，不会顶到栏子外面；拖动途中被甩扁也还在轨道内。
- * （原来静止 56dp + 按住鼓到 1.393 倍那套已经撤了 —— 他要的是点按不放大。）
+ * 水珠 72dp、轨道 64dp，再往上抬 6dp —— 珠子"坐"在轨道上：上沿露出一截、下沿还在栏子里。
+ * 照的是酷安那颗：一格宽 ~74dp × 72dp 高，几乎是个圆。之前 48/56dp 那两档是
+ * "轨道里嵌了块糖"，不是水滴（他 10-22 甩过来那两张截图就是这个区别）。
+ * 抬 6dp 而不是居中溢出：居中会上下各露一半，看着像珠子掉出去了。
  */
-private const val PILL_HEIGHT = 48f
+private const val PILL_HEIGHT = 72f
+private const val PILL_LIFT = 6f
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
-/** 水珠按住鼓多少：扭曲度 0→1 映射到 1.15→1.50 倍（0.8.8 之前写死 78/56 = 1.393） */
-private const val PILL_BULGE_MIN = 1.15f
-private const val PILL_BULGE_SPAN = 0.35f
+/** 按住鼓多少：72dp 的底子已经大，倍数收着给（1.06..1.32，默认 1.19 ≈ 86dp） */
+private const val PILL_BULGE_MIN = 1.06f
+private const val PILL_BULGE_SPAN = 0.26f
+
+/** 上缘镜面高光的强度：白天吃得住，夜里压到四分之一 */
+private const val SPEC_LIGHT = 0.62f
+private const val SPEC_DARK = 0.26f
 
 /** 水滴投影：静止 2dp、按住鼓到 8dp。酷安那颗珠子"浮"在轨道上靠的就是这一下 */
 private const val PILL_SHADOW_REST = 2f
@@ -187,21 +198,27 @@ fun ShelfBar(
      * 这就是那根"色散"滑杆现在唯一还管得到的事 —— 真的分光做不了了（顶上第 7 条）。
      */
     val pillBlur = spec.blur * (1f - 0.9f * spec.refraction)
-    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.22f) else Palette.Card.copy(alpha = 0.42f)
+    /*
+     * 白天这一档从 0.42 压到 0.16：珠子里面要看得见**背景本身**，玻璃才成立。
+     * 0.42 是把珠子涂白 —— 涂白的东西不需要折射也看不出是玻璃，他那句
+     * "有折射有高亮还有大水滴，你什么都没有"，第一条病根就是这层白浆。
+     */
+    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.16f)
+    val specular = if (isDark) SPEC_DARK else SPEC_LIGHT
     // 夜里这一档没跟着降：0.22 是 0.8.8 就在的值，今晚这台机器的深色模式没能真切出来
     // （cmd uimode night yes 报 yes、dumpsys 也说 mComputedNightMode=true，界面还是浅色），
     // 没验过的数不敢动。白天那档是从 0.62 降到 0.42 的，理由是真机截图里水珠白得像颗蛋。
-    val rimAlpha = 0.18f + spec.dispersion * 0.34f
-    val pillRim: Brush = if (spec.dispersion <= 0.02f) {
-        SolidColor(if (isDark) Color.White.copy(alpha = rimAlpha) else Color.White.copy(alpha = rimAlpha))
-    } else {
-        Brush.horizontalGradient(
-            listOf(
-                Color(0xFF9FD8FF).copy(alpha = rimAlpha),   // 冷端
-                Color(0xFFFFE7C7).copy(alpha = rimAlpha),   // 暖端
-            ),
-        )
-    }
+    /*
+     * 边光：一整圈**上亮下暗**（受光面朝上），这才是玻璃珠的边。
+     * 色散 >0 就把上端偏冷、下端偏暖 —— 真·分光在这条路上做不了（顶部第 7 条），
+     * 这是那根滑杆现在唯一还管得到的事。
+     */
+    val rimTop = (if (isDark) 0.42f else 0.95f) * (0.45f + spec.dispersion * 0.55f)
+    val pillRim: Brush = Brush.verticalGradient(
+        0f to (if (spec.dispersion > 0.02f) Color(0xFFBFE4FF) else Color.White).copy(alpha = rimTop),
+        0.55f to Color.White.copy(alpha = rimTop * 0.20f),
+        1f to (if (spec.dispersion > 0.02f) Color(0xFFFFE2C0) else Color.White).copy(alpha = rimTop * 0.55f),
+    )
     // 按住鼓到的倍数：引擎那两根不同阻尼弹簧的终点，静止 1f → 按下 pillBulge
     val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
@@ -349,6 +366,9 @@ fun ShelfBar(
                     translationX =
                         if (ltr) drag.value * cellWidth + panelShift
                         else barWidth - (drag.value + 1f) * cellWidth + panelShift
+                    // 抬 6dp：珠子上沿露出轨道。别在这块 lambda 里写 with(density) ——
+                    // GraphicsLayerScope 自己有个叫 density 的 Float，会遮住外层那个 LocalDensity
+                    translationY = -PILL_LIFT.dp.toPx()
                 }
                 .height(PILL_HEIGHT.dp)
                 .fillMaxWidth(1f / pageCount)
@@ -395,8 +415,28 @@ fun ShelfBar(
                         BarMaterial.Solid -> Modifier.background(accent.copy(alpha = 0.15f), Capsule())
                     },
                 )
+                /*
+                 * 两笔光。上缘接光、下沿吃进自己的影 —— 这两笔才是"玻璃"和
+                 * "一块半透明圆角矩形"的区别，模糊本身给不出来。
+                 */
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.White.copy(alpha = specular),
+                            0.16f to Color.White.copy(alpha = specular * 0.30f),
+                            0.46f to Color.White.copy(alpha = 0f),
+                        ),
+                    )
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0.52f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = if (isDark) 0.30f else 0.11f),
+                        ),
+                    )
+                }
                 // 水珠自己一圈边光：少了它，两层同色同质就糊成一块了
-                .border(1.dp, pillRim, Capsule()),
+                .border(1.5.dp, pillRim, Capsule()),
         ) {}
 
         // ── ③ 标签层，画在最上面 ──
