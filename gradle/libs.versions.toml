@@ -14,6 +14,8 @@ coil = "3.0.4"
 # 外观三件套：他定的样子，留着
 miuix = "0.9.4"
 haze = "1.6.6"
+# backdrop 必须 2.0.0：2.0.1 用 Kotlin 2.4.10 编，元数据版本读不了
+backdrop = "2.0.0"
 kyant-shapes = "1.2.0"
 camerax = "1.5.0-alpha06"
 mlkit-barcode = "17.3.0"
@@ -44,6 +46,7 @@ miuix-icons = { group = "top.yukonga.miuix.kmp", name = "miuix-icons", version.r
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 haze-materials = { group = "dev.chrisbanes.haze", name = "haze-materials", version.ref = "haze" }
 kyant-shapes = { group = "io.github.kyant0", name = "shapes", version.ref = "kyant-shapes" }
+kyant-backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
 
 # 扫码签到：CameraX 出帧 + ML Kit 识码，不接任何厂商扫码 SDK
 camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }

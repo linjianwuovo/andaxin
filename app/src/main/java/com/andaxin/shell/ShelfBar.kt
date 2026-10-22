@@ -63,6 +63,13 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
 import com.kyant.shapes.Capsule
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.launch
@@ -109,16 +116,17 @@ import kotlin.math.sign
  * 6. 玻璃得有东西可糊。页面要是被挡在栏子上方（pager 自己 padding 掉 92dp），
  *    栏子采的那一层永远是一片空底色，模糊再大糊出来也是纯色 —— 他 10-22 那句"背景都是纯色"是这条，
  *    不是模糊参数不够。整页铺到底、各屏尾部留 ShelfTail，玻璃才成立。
- * 7. kyant 那套 backdrop 在这台机上采到的是**空的**：四种探法都验过（撤 hazeSource、撤每页那层
- *    不透明底、effects 只留 blur(40)、把 layerBackdrop 挪到外面包的 Box 上），栏底下那行字始终清清楚楚，
- *    一点没糊；而同一屏切到「毛玻璃」那一档，haze 当场就糊了。所以栏体和水滴都不再走 drawBackdrop，
- *    折射/lens 这一档能力暂时没有了，那三根滑杆改成管 haze 管得到的三件事（见 GlassSpec）。
- * 8. 10-22 顺着酷安逆向过一条路（APK 里捞到它自己的 AGSL：圆角矩形 SDF + 梯度法线 +
- *    只在边缘一条带里位移），接上来发现**折射不了**：haze 的背板走它自己那层合成、
- *    drawLayer 画进来的子层也绕过祖先 graphicsLayer 的 renderEffect —— 诊断版里给栏体
- *    挂一个夸张的折射，栏子直接消失而不是起波浪，就是这个原因。
- *    酷安自己能成是因为它不走 Compose 这层采集：它有 `LiquidGlassToolbarActivity.createLiquidGlassHostView`
- *    那套自己的宿主 View 采集。**要真折射就得先把采集换成那条路**，别在这条链上再试第二次。
+ * 7. 栏体那一路当时采到的是**空的**：四种探法都验过（撤 hazeSource、撤每页那层不透明底、
+ *    effects 只留 blur(40)、把 layerBackdrop 挪到外面包的 Box 上），栏底下那行字始终清清楚楚；
+ *    而同一屏切到「毛玻璃」那一档，haze 当场就糊了 —— 所以**栏体走 haze**，这条到今天没变。
+ * 8. 但"kyant 整条都不行"是我说过头的一句，10-22 深夜推翻：水珠这一路直接
+ *    `drawBackdrop(backdrop = pageBackdrop)` + `blur(80f)`，珠子底下那行字当场糊开，采集是满的。
+ *    区别在消费者是谁 —— 栏体那一路当时叠了 combinedBackdrop（页面 + 标签层），水珠这一路只采页面。
+ *    所以折射靠库的 `lens` 做，不用自己写 AGSL；自己写那条路撞的是另一堵墙：
+ *    `graphicsLayer.renderEffect` 吃不到 hazeEffect 的背板、也吃不到 `drawLayer` 画进来的子层
+ *    （诊断版给栏体挂夸张折射，栏子直接消失而不是起波浪，就是这个）。
+ *    另：**每帧在 draw 里新建 RenderEffect 会把整个窗口画黑**，效果对象必须建一次只改 uniform。
+
  */
 
 private const val BAR_HEIGHT = 64f
@@ -153,6 +161,7 @@ fun ShelfBar(
     material: BarMaterial,
     spec: GlassSpec,
     hazeState: HazeState,
+    pageBackdrop: com.kyant.backdrop.Backdrop,
     labels: List<String>,
     icons: List<Int>,
     /** 未选中那枚的"点睛"层（跟着强调色），和 [icons] 一一对位；没有就不叠 */
@@ -221,6 +230,16 @@ fun ShelfBar(
     )
     // 按住鼓到的倍数：引擎那两根不同阻尼弹簧的终点，静止 1f → 按下 pillBulge
     val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
+    /*
+     * 水珠那三层参数。模糊取轨道那一档的一半（两层要看得出是两层，
+     * 但珠子也不能全清，全清了就没有「磨砂上的一颗水珠」那个关系）；
+     * 折射带多厚吃折射度，带里最多弯多少像素吃扭曲度，色散是开关。
+     */
+    // 真机第一版三档都开太满：珠子糊到字完全化开、色散那圈彩虹抢过栏子。
+    // 模糊压到轨道的三分之一（水珠要比轨道清楚才像一滴清水），带厚和位移各收一档。
+    val pillBlurPx = with(density) { (spec.blur * 0.34f).toPx() }
+    val lensBandPx = with(density) { (8.dp + 16.dp * spec.refraction).toPx() }
+    val lensAmountPx = with(density) { (18.dp * spec.distortion).toPx() }
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
 
     BoxWithConstraints(
@@ -396,13 +415,26 @@ fun ShelfBar(
                 }
                 .then(
                     when (material) {
-                        BarMaterial.Liquid -> Modifier
-                            .clip(Capsule())
-                            .hazeEffect(state = hazeState) {
-                                blurRadius = pillBlur
-                                noiseFactor = 0.02f
-                                backgroundColor = pillFill
-                            }
+                        // 水珠 = 采到的那一页，自己糊一层 + 只在边缘一条带里折射。
+                        // 带厚吃折射度、位移吃扭曲度、色散开关吃色散度 —— 三根滑杆各管一头。
+                        BarMaterial.Liquid -> Modifier.drawBackdrop(
+                            backdrop = pageBackdrop,
+                            shape = { Capsule() },
+                            effects = {
+                                vibrancy()
+                                blur(pillBlurPx)
+                                lens(
+                                    lensBandPx,
+                                    lensAmountPx,
+                                    chromaticAberration = spec.dispersion > 0.35f,
+                                )
+                            },
+                            // 库那三样先压成 0：上缘受光、下沿内阴影、投影都由我们自己画。
+                            // 不然 Highlight.Default 那圈 1dp 纯白硬边会把「栏子被矩形框着」复发
+                            highlight = { Highlight.Default.copy(alpha = 0f) },
+                            shadow = { Shadow(alpha = 0f) },
+                            innerShadow = { InnerShadow(alpha = 0f) },
+                        )
                         BarMaterial.Frosted -> Modifier
                             .clip(Capsule())
                             .hazeEffect(state = hazeState) {
