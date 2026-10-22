@@ -186,7 +186,10 @@ fun ShelfBar(
      * 这就是那根"色散"滑杆现在唯一还管得到的事 —— 真的分光做不了了（顶上第 7 条）。
      */
     val pillBlur = spec.blur * (1f - 0.9f * spec.refraction)
-    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.17f) else Palette.Card.copy(alpha = 0.42f)
+    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.22f) else Palette.Card.copy(alpha = 0.42f)
+    // 夜里这一档没跟着降：0.22 是 0.8.8 就在的值，今晚这台机器的深色模式没能真切出来
+    // （cmd uimode night yes 报 yes、dumpsys 也说 mComputedNightMode=true，界面还是浅色），
+    // 没验过的数不敢动。白天那档是从 0.62 降到 0.42 的，理由是真机截图里水珠白得像颗蛋。
     val rimAlpha = 0.18f + spec.dispersion * 0.34f
     val pillRim: Brush = if (spec.dispersion <= 0.02f) {
         SolidColor(if (isDark) Color.White.copy(alpha = rimAlpha) else Color.White.copy(alpha = rimAlpha))
