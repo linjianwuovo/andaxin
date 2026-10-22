@@ -60,7 +60,8 @@ float circleMap(float x) {
 }
 """
 
-private const val REFRACT = """
+/** 不带色散的那条 shader 留着当参照，运行时不再走它（见上面「不许换 key」那条）*/
+private const val REFRACT_UNUSED = """
 uniform shader content;
 
 uniform float2 size;
@@ -103,6 +104,10 @@ uniform float refractionHeight;
 uniform float refractionAmount;
 uniform float depthEffect;
 uniform float chromaticAberration;
+// 背板那一层在屏幕上的可用范围，写在水珠自己的坐标系里（xy=左上、zw=右下，可以负）。
+// 珠子盖到栏子外面那几 dp 时，折射带再往外取就出了录下来的那层 —— 取到的是黑的，
+// 松手那一下珠子最大、黑得最明显（他 10-22 深夜说的「松手会闪一下」就是这坨黑）。
+uniform float4 bounds;
 
 $SDF
 
@@ -129,12 +134,17 @@ half4 main(float2 coord) {
     //  那一项正好是 0 —— 也就是**珠子最该出彩边的地方恰好没有色散**，
     //  他那句"色散低了"就是这个。系数也从写死的 1f 改成了滑杆给的量。）
     float2 off = d * grad;
-    float2 rp = off * (1.0 + chromaticAberration);
-    float2 bp = off * (1.0 - chromaticAberration);
+    // 采样点钉回可用范围里：出去的那一段改成贴边取，宁可得一条边也不能糊一坨黑
+    float2 rp = clamp(off * (1.0 + chromaticAberration) + coord, bounds.xy, bounds.zw) - coord;
+    float2 bp = clamp(off * (1.0 - chromaticAberration) + coord, bounds.xy, bounds.zw) - coord;
+    float2 gp = clamp(off + coord, bounds.xy, bounds.zw) - coord;
     half4 r = content.eval(coord + rp);
-    half4 g = content.eval(coord + off);
+    half4 g = content.eval(coord + gp);
     half4 b = content.eval(coord + bp);
-    return half4(r.r, g.g, b.b, 1.0);
+    // 透明度跟着采样走，**不许写死 1.0**：珠子按住时上下各探出轨道 ~9dp，那几行的采样
+    // 落在录下来那层的外面 = 全透明，写死 1.0 就是把透明当黑色画上去 ——
+    // 实测珠子下沿一条 42px 宽、值 (106,106,107) 的死灰带，就是它（他说的「松手会闪一下」）
+    return half4(r.r, g.g, b.b, g.a);
 }
 """
 
@@ -149,11 +159,15 @@ fun BackdropEffectScope.lens(
     refractionAmount: Float,
     depthEffect: Boolean = false,
     chromaticAberration: Float = 0f,
+    /** 背板可用范围，**设备像素**、水珠自己坐标系里的左上/右下；不给就是不夹 */
+    bounds: (() -> FloatArray)? = null,
 ) {
     if (!isRuntimeShaderSupported()) return
     if (refractionHeight <= 0f || refractionAmount <= 0f) return
 
     val dispersion = chromaticAberration.coerceIn(0f, 1.5f)
+    // 注意：这里**不许**再按 dispersion 换 shader / 换 key。换 key = 缓存重建，
+    // 松手那一下按下的进度会路过阈值，那一刻闪一帧（10-22 深夜他抓到的「松手会闪」）
     // 珠子会自己往外吃一条带，采集的内缩跟着收
     if (padding > 0f) padding = (padding - refractionHeight).fastCoerceAtLeast(0f)
 
@@ -167,8 +181,8 @@ fun BackdropEffectScope.lens(
     val radii = floatArrayOf(r, r, r, r)
 
     runtimeShaderEffect(
-        key = if (dispersion > 0.02f) "AndaXinLensDispersion" else "AndaXinLens",
-        shaderString = if (dispersion > 0.02f) REFRACT_DISPERSION else REFRACT,
+        key = "AndaXinLens",
+        shaderString = REFRACT_DISPERSION,
         uniformShaderName = "content",
         block = {
             setFloatUniform("size", w, h)
@@ -178,7 +192,13 @@ fun BackdropEffectScope.lens(
             // 负号是上游的约定：正数会弯成凹面（顶上第 2 条）
             setFloatUniform("refractionAmount", -refractionAmount / sf)
             setFloatUniform("depthEffect", if (depthEffect) 1f else 0f)
-            if (dispersion > 0.02f) setFloatUniform("chromaticAberration", dispersion)
+            setFloatUniform("chromaticAberration", dispersion)
+            val b = bounds?.invoke()
+            setFloatUniform(
+                "bounds",
+                if (b != null && b.size == 4) floatArrayOf(b[0] / sf, b[1] / sf, b[2] / sf, b[3] / sf)
+                else floatArrayOf(-1e6f, -1e6f, 1e6f, 1e6f),
+            )
         },
     )
 }
