@@ -223,11 +223,16 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     Spacer(Modifier.height(Gap.md))
                     NextClassCard(upcoming, nowMin, ink.dark, Modifier.enterFade(session.generation))
                 }
-                state.todayKnown && !state.firstLoad -> {
+                else -> {
+                    // 这一格以前要等课表回来（todayKnown）才摆 —— 每次进应用，第一张卡片
+                    // 都空着等一会儿再"闪"出来（他 10-23 报的就是这个）。现在卡片**第一帧就在**，
+                    // 课表还没到只是把上面那两行换成时段问候 + 一句"还在拉"，
+                    // 不替学校宣布你今天有没有课。
                     Spacer(Modifier.height(Gap.md))
                     HeroWallpaper(
                         style = look.hero,
                         hadClassToday = state.today.isNotEmpty(),
+                        known = state.todayKnown && !state.firstLoad,
                         modifier = Modifier.enterFade(session.generation),
                     )
                 }
@@ -421,7 +426,7 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
  * 白字放在任何一张图上都读得清。
  */
 @Composable
-private fun HeroWallpaper(style: HeroStyle, hadClassToday: Boolean, modifier: Modifier = Modifier) {
+private fun HeroWallpaper(style: HeroStyle, hadClassToday: Boolean, known: Boolean, modifier: Modifier = Modifier) {
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
     // 自动跟一天的时段对：早上晨雾、下午金树、夜里月亮；钉死就照设置里那张。
     val picture = when (style) {
@@ -464,14 +469,28 @@ private fun HeroWallpaper(style: HeroStyle, hadClassToday: Boolean, modifier: Mo
                 .padding(horizontal = Gap.lg, vertical = Gap.lg),
         ) {
             Text(
-                text = if (hadClassToday) "今天的课都上完了" else "今天没有课",
+                text = when {
+                    // 还不知道今天有没有课：只报时辰，不替学校下结论
+                    !known -> when (hour) {
+                        in 5..11 -> "早上好"
+                        in 12..17 -> "下午好"
+                        in 18..22 -> "晚上好"
+                        else -> "夜深了"
+                    }
+                    hadClassToday -> "今天的课都上完了"
+                    else -> "今天没有课"
+                },
                 fontSize = (Type.title.value + 2).sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = if (hadClassToday) "剩下的时间，留给你自己" else "享受你的大学生活",
+                text = when {
+                    !known -> "课表还在拉，稍等一下"
+                    hadClassToday -> "剩下的时间，留给你自己"
+                    else -> "享受你的大学生活"
+                },
                 fontSize = Type.meta,
                 color = Color.White.copy(alpha = 0.82f),
             )
