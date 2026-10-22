@@ -40,6 +40,7 @@ import com.andaxin.feature.home.HomeScreen
 import com.andaxin.feature.me.MeScreen
 import com.andaxin.feature.modules.OnboardingScreen
 import com.andaxin.feature.message.MessageScreen
+import com.andaxin.feature.notice.NoticeDetailScreen
 import com.andaxin.feature.notice.NoticeScreen
 import com.andaxin.feature.schedule.TimetableScreen
 import com.andaxin.feature.sport.SportDetailScreen
@@ -157,6 +158,8 @@ object Route {
     const val OPEN_COURSE = "opencourse"
     const val OPEN_COURSE_DETAIL = "opencourse/detail/{id}"
     const val GROUP = "group"
+    /** 公告详情：{id} 进来时已 Uri.encode 过（校方那批 id 里带斜杠）。 */
+    const val NOTICE_DETAIL = "notice/detail/{id}"
 
     /**
      * 自带 WebView。参数是 **URL-safe Base64**（无填充）后的地址：
@@ -295,6 +298,9 @@ fun RootShell() {
             AffairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
         page(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
+        page(Route.NOTICE_DETAIL, arguments = listOf(idPattern())) { e ->
+            NoticeDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+        }
         page(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(
             Route.AICLASS_SIGN_QR,
@@ -445,7 +451,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 Shelf.Home -> HomeScreen(open = open)
                 Shelf.Timetable -> TimetableScreen()
                 Shelf.Message -> MessageScreen()
-                Shelf.Notice -> NoticeScreen()
+                Shelf.Notice -> NoticeScreen(open = open)
                 Shelf.Me -> MeScreen(open = open)
             }
         }

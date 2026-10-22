@@ -178,7 +178,6 @@ class MessageModel(private val feed: MessageFeed) : ViewModel() {
 data class NoticeUiState(
     val firstLoad: Boolean = true,
     val items: List<NoticeItem> = emptyList(),
-    val open: NoticeBody? = null,
     val error: String? = null,
 )
 
@@ -204,14 +203,7 @@ class NoticeModel(private val feed: NoticeFeed) : ViewModel() {
         )
     }
 
-    fun open(id: String) {
-        viewModelScope.launch {
-            val r = try { feed.detail(id) } catch (e: Exception) { Result.failure(e) }
-            _state.value = _state.value.copy(open = r.getOrNull())
-        }
-    }
-
-    fun close() {
-        _state.value = _state.value.copy(open = null)
-    }
+    // 详情不再挂在这份状态上：10-22 深夜那条「公告点进去、系统返回手势把整个应用退了」
+    // 就是因为详情是列表页就地换内容，导航栈里没有第二页可弹。
+    // 现在详情走 Route.NOTICE_DETAIL，自己按 id 取正文（NoticeDetailScreen）。
 }
