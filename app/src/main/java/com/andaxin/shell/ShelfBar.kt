@@ -140,8 +140,13 @@ private const val BAR_HEIGHT = 64f
  * 按住鼓 1.19 倍 = 64dp，正好齐平轨道，不再顶出去。
  */
 private const val PILL_HEIGHT = 54f
-/** 真机实测珠心比轨道中心低 10px（约 3dp）：抬 3dp 对齐，不是让它溢出去 */
-private const val PILL_LIFT = 3f
+/*
+ * 抬升 0 —— 这里曾经填过 3f，是个错判。
+ * 10-22 我拿"珠心比轨道中心低 10px"当依据抬了 3dp，那个 10px 是把水珠**下沿那道内阴影**
+ * 当成珠子边界量出来的；换成按胶囊弧心算（在左帽那根竖线上取上下突变的中点）之后实测
+ * 轨道中心 2975、珠心 2961 —— 本来就居中，是我抬出来的 14px。
+ * 容器 contentAlignment 已经把 54dp 的珠子在 64dp 轨道里上下各留 5dp，别再手动挪。
+ */
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
@@ -416,9 +421,6 @@ fun ShelfBar(
                     translationX =
                         if (ltr) drag.value * cellWidth + panelShift
                         else barWidth - (drag.value + 1f) * cellWidth + panelShift
-                    // 别在这块 lambda 里写 with(density)：GraphicsLayerScope 自己有个
-                    // 叫 density 的 Float（它是 Density），会遮住外层那个 LocalDensity
-                    translationY = -PILL_LIFT.dp.toPx()
                 }
                 .height(PILL_HEIGHT.dp)
                 .fillMaxWidth(1f / pageCount)
