@@ -250,6 +250,13 @@ fun ShelfBar(
      * 夜里轨道是 Paper@0.12，水珠给 0.20，同样是往上亮。
      */
     val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.13f) else Color.White.copy(alpha = 0.28f)
+    /*
+     * 静止时那颗淡淡的灰。这台机上直接读酷安量的：珠子内部众数 (226,226,226)、
+     * 同一栏子没珠子的地方 (252,252,252) —— 珠子比轨道**暗约 10% 黑**，是一颗灰胶囊，
+     * 按住才变清水。所以这一层跟着按下的进度退掉：press=1 时完全不铺。
+     * 夜里那档没验过（这台机 cmd uimode 切不动深色），给的是同量的反向 —— 抬亮 10%。
+     */
+    val restTint = (if (isDark) Palette.Paper else Color.Black).copy(alpha = 0.10f)
     val specular = if (isDark) SPEC_DARK else SPEC_LIGHT
     // 夜里这一档没跟着降：0.22 是 0.8.8 就在的值，今晚这台机器的深色模式没能真切出来
     // （cmd uimode night yes 报 yes、dumpsys 也说 mComputedNightMode=true，界面还是浅色），
@@ -557,6 +564,11 @@ fun ShelfBar(
                             // 轨道 245，整颗是**灰的**，看着像金属按钮不像水珠。
                             // 水珠必须比轨道**亮**（酷安那颗就是亮出来的），所以这层白要给足。
                             .background(pillFill, Capsule())
+                            // 静止那颗的灰，见上面 restTint 那段量的数
+                            .background(
+                                restTint.copy(alpha = restTint.alpha * (1f - press())),
+                                Capsule(),
+                            )
                         // 液态但机器不给（API < 33）：还是那颗 haze 珠子，只是不折射
                         material == BarMaterial.Liquid -> Modifier
                             .clip(Capsule())
