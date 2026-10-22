@@ -110,7 +110,14 @@ import kotlin.math.sign
  */
 
 private const val BAR_HEIGHT = 64f
-private const val PILL_HEIGHT = 56f
+/*
+ * 水珠 48dp、轨道 64dp。原来那档是 56dp，静止时它上下各只留 4dp，
+ * 于是左右两端的半圆会**戳到轨道的圆角外面去**（轨道端头那 32dp 半径往里收，
+ * 水珠的 28dp 半径不收）—— 第一格和最后一格看着像"珠子漏出栏子一截"。
+ * 收到 48dp 后静止时整颗在轨道里，按住鼓到 1.325 倍正好齐平轨道、再往上才出栏外，
+ * 那一下才是"水滴鼓起来"，而不是一直顶着框。
+ */
+private const val PILL_HEIGHT = 48f
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
@@ -175,8 +182,8 @@ fun ShelfBar(
      * 这就是那根"色散"滑杆现在唯一还管得到的事 —— 真的分光做不了了（顶上第 7 条）。
      */
     val pillBlur = spec.blur * (1f - 0.9f * spec.refraction)
-    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.22f) else Palette.Card.copy(alpha = 0.62f)
-    val rimAlpha = 0.30f + spec.dispersion * 0.55f
+    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.17f) else Palette.Card.copy(alpha = 0.42f)
+    val rimAlpha = 0.18f + spec.dispersion * 0.34f
     val pillRim: Brush = if (spec.dispersion <= 0.02f) {
         SolidColor(if (isDark) Color.White.copy(alpha = rimAlpha) else Color.White.copy(alpha = rimAlpha))
     } else {
