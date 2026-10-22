@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -47,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.util.fastCoerceIn
@@ -90,10 +92,12 @@ import kotlin.math.sign
  * 换页时机：保持"抬手那一刻换页"（旧仓真机验收过的手感），不是上游的"球先弹到位再换页"。
  *
  * 七条是踩过才知道的，别再踩一遍：
- * 1. 水滴**点按不放大**（他 10-22 令）。引擎的 pressedScale 钉在 1f，形变只留"拖动途中被速度
- *    甩扁"这一种。以前那套按压缩放必须写进 drawBackdrop 的 layerBlock 的规矩，是给 kyant 折射
- *    用的（库采样背景时会对 layerBlock 做一次逆仿射，写在外面的话球里全是放大的字，变放大镜）；
- *    现在走 haze、水珠自己那层就是最终像素，真要恢复按压鼓包，写在这层的 graphicsLayer 就行。
+ * 1. 水珠鼓起来**只能改尺寸，不能写 graphicsLayer 的 scaleX/scaleY**（他 10-22 那句
+ *    "水滴内的放大效果调低"就是这条）。haze 是在这层的**布局边界**上采背景的，采完才轮到
+ *    graphicsLayer 整体放大 —— 缩放的话珠子一鼓，里面那团糊跟着被一起拉大，等于拿放大镜贴玻璃上看字。
+ *    改尺寸（见下面 pillBulge）才是让 haze 按新的那块屏幕区域重新采一遍：珠子大了，里面尺度不变。
+ *     kyant 那套的对应规矩是"缩放必须写进 layerBlock"，库在里面做逆仿射；换成 haze 没有那个逆运算，
+ *    所以坑从"写在外面"变成了"根本不能用外面的缩放"。
  * 2. 水滴必须是栏体的兄弟节点，不然被栏体那层 clip 剪住，鼓不出栏外。
  * 3. 判"手指在哪一格"用 floor，不能用 roundToInt：round 会把格心右侧每个点都算到下一格，
  *    表现成"按住首页球往右飘"。
@@ -122,12 +126,9 @@ private const val PILL_HEIGHT = 48f
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
-/**
- * 水滴的形变只在**拖动途中**发生（被速度甩扁一点），点按不放大 —— 他 10-22 那句
- * "水滴点按不要有放大效果"。所以引擎的 pressedScale 钉在 1f，扭曲度这根滑杆
- * 改成管下面那个甩扁系数：0 → 一点不甩，1 → 甩两倍那么狠，默认 0.5 就是原样。
- */
-private const val PILL_SQUASH_AT_HALF = 1f
+/** 水珠按住鼓多少：扭曲度 0→1 映射到 1.15→1.50 倍（0.8.8 之前写死 78/56 = 1.393） */
+private const val PILL_BULGE_MIN = 1.15f
+private const val PILL_BULGE_SPAN = 0.35f
 
 /** 水滴投影：静止 2dp、按住鼓到 8dp。酷安那颗珠子"浮"在轨道上靠的就是这一下 */
 private const val PILL_SHADOW_REST = 2f
@@ -201,8 +202,8 @@ fun ShelfBar(
             ),
         )
     }
-    // 拖动时被甩扁的幅度系数（点按不放大，见上面 PILL_SQUASH_AT_HALF 那段）
-    val squashGain = spec.distortion * 2f * PILL_SQUASH_AT_HALF
+    // 按住鼓到的倍数：引擎那两根不同阻尼弹簧的终点，静止 1f → 按下 pillBulge
+    val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
 
     BoxWithConstraints(
@@ -245,15 +246,14 @@ fun ShelfBar(
         // 且阻尼不同（1.0 / 0.6 / 0.7），按住时横纵不同步地涨，就是水滴被捏一下。
         // onDragStarted 里把 value 移到手指那一格，所以按在远处那格球是带速度弹过去的。
         // 拖动途中页面不动，换页只在抬手那一刻。
-        val drag = remember(scope, pageCount, density, ltr, cellWidth) {
+        val drag = remember(scope, pageCount, density, ltr, cellWidth, pillBulge) {
             DampedDragAnimation(
                 animationScope = scope,
                 initialValue = current.toFloat(),
                 valueRange = 0f..(pageCount - 1).toFloat(),
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
-                // 1f = 按住不鼓。要手感回来只改这一个数，但那是他明确不要的放大效果。
-                pressedScale = 1f,
+                pressedScale = pillBulge,
                 canDrag = { offset -> offset.x in 0f..barWidth },
                 onDragStarted = { position -> updateValue(indexAt(position.x).toFloat()) },
                 onDragStopped = {
@@ -340,8 +340,8 @@ fun ShelfBar(
         // ── ② 水滴：第二层玻璃，画在标签底下 ──
         // 从"最上面"挪到标签底下是照酷安那套的位置来的：图标该是清楚的，珠子是它身下那滴玻璃。
         // 压在图标上就等于给选中那一枚蒙了层雾，反而最花。
-        // 位移和形变都写在这层自己的 graphicsLayer 里 —— 它现在走 haze 不走 backdrop，
-        // 采到的糊已经在这层之内，缩放就是这颗珠子整体在鼓，没有逆仿射那回事（顶部第 1 条）。
+        // 滑动挂外层 graphicsLayer，鼓挂 pillBulge（改尺寸）—— 两层各干一件事，
+        // 形变绝对不能回到外层的 scaleX/scaleY 上，那正是"水珠里变放大镜"的来路（顶部第 1 条）。
         Box(
             Modifier
                 .padding(horizontal = INSET.dp)
@@ -349,21 +349,30 @@ fun ShelfBar(
                     translationX =
                         if (ltr) drag.value * cellWidth + panelShift
                         else barWidth - (drag.value + 1f) * cellWidth + panelShift
-                    val p = press()
-                    // 只吃 velocity（每帧由 VelocityTracker 算出来的真速度），不吃累计位移：
-                    // 拖起来那一下珠子被甩成横的，停手立刻回圆；站着不动按住 = 一点不变。
-                    // drag.scaleX/scaleY 那两根按压弹簧现在是 1f，读它只是留着以后想调的口子。
-                    val velocity = drag.velocity / 10f
-                    val stretch = ((velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)) * squashGain
-                    val squeeze = ((velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)) * squashGain
-                    scaleX = drag.scaleX / (1f - stretch)
-                    scaleY = drag.scaleY * (1f - squeeze)
-                    // 投影挂在这层自己的 outline 上：给了 shape 但不开 clip，
-                    // 于是珠子鼓出栏外那几 dp 不会被自己剪掉，影照样投在轨道上。
+                }
+                .height(PILL_HEIGHT.dp)
+                .fillMaxWidth(1f / pageCount)
+                // X/Y 是引擎里两根不同阻尼的弹簧，不同步地涨才有被捏的味道；
+                // 再叠一层 velocity（每帧由 VelocityTracker 算的真速度，不是累计位移）：
+                // 拖起来那一下被甩成横的，停手立刻回圆，慢慢拖不会一直鼓着。
+                .pillBulge(
+                    scaleX = {
+                        val v = drag.velocity / 10f
+                        drag.scaleX / (1f - (v * 0.75f).fastCoerceIn(-0.2f, 0.2f))
+                    },
+                    scaleY = {
+                        val v = drag.velocity / 10f
+                        drag.scaleY * (1f - (v * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+                    },
+                )
+                // 投影挂在**里层** graphicsLayer 上：这层的边界才是鼓起来之后的实际大小。
+                // 挂外层的话 outline 还停在"一格 × 48dp"那个槽位上，珠子鼓出去就没影了。
+                // shape 给了、clip 不开 —— 鼓出栏外那几 dp 不被自己剪掉，影照样投在轨道上。
+                .graphicsLayer {
                     shape = Capsule()
                     clip = false
                     shadowElevation =
-                        (PILL_SHADOW_REST + (PILL_SHADOW_PRESS - PILL_SHADOW_REST) * p).dp.toPx()
+                        (PILL_SHADOW_REST + (PILL_SHADOW_PRESS - PILL_SHADOW_REST) * press()).dp.toPx()
                 }
                 .then(
                     when (material) {
@@ -387,9 +396,7 @@ fun ShelfBar(
                     },
                 )
                 // 水珠自己一圈边光：少了它，两层同色同质就糊成一块了
-                .border(1.dp, pillRim, Capsule())
-                .height(PILL_HEIGHT.dp)
-                .fillMaxWidth(1f / pageCount),
+                .border(1.dp, pillRim, Capsule()),
         ) {}
 
         // ── ③ 标签层，画在最上面 ──
@@ -421,6 +428,34 @@ fun ShelfBar(
         }
     }
 }
+
+/**
+ * 水珠的"鼓"：把 [scaleX]/[scaleY] 落到**尺寸**上，而不是 graphicsLayer 的缩放。
+ *
+ * 为什么非得这样：hazeEffect 是按这层的布局边界去 hazeSource 那块屏幕上采样的，
+ * 采完才是 graphicsLayer 变换。用缩放鼓珠子的话，采到那一小块会被整体拉大 ——
+ * 珠子越大、里面的字越清楚越大，成了一颗放大镜（他 10-22 骂的就是这个）。
+ * 改尺寸则是重新按新边界采一遍：珠子大了，里面背景的尺度不变。
+ *
+ * 报给父级的仍然是"一格 × [PILL_HEIGHT]"那个槽位，所以鼓到 1.5 倍也不会把整条栏顶高，
+ * 多出来的部分是居中往外溢的（水珠是栏体的兄弟节点、栏子那层不 clip，见顶部第 2 条）。
+ * 读 state 写在 measure 里：只重测这一个节点，不会把整排格带着 recompose。
+ */
+private fun Modifier.pillBulge(scaleX: () -> Float, scaleY: () -> Float): Modifier =
+    layout { measurable, constraints ->
+        val slotW = constraints.maxWidth
+        val slotH = constraints.maxHeight
+        if (slotW == Constraints.Infinity || slotH == Constraints.Infinity) {
+            val plain = measurable.measure(constraints)
+            layout(plain.width, plain.height) { plain.place(0, 0) }
+        } else {
+            // 上下限放宽到三倍：鼓出去的部分不受槽位约束
+            val w = (slotW * scaleX()).fastRoundToInt().coerceIn(1, slotW * 3)
+            val h = (slotH * scaleY()).fastRoundToInt().coerceIn(1, slotH * 3)
+            val placeable = measurable.measure(Constraints.fixed(w, h))
+            layout(slotW, slotH) { placeable.place((slotW - w) / 2, (slotH - h) / 2) }
+        }
+    }
 
 /**
  * 底栏一格：图标 + 文字。[scale] 收 lambda 而不是 Float：pressProgress 每帧都在变，
