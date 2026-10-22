@@ -272,7 +272,10 @@ fun ShelfBar(
      * （常态不给彩虹）、描边收到 1dp。
      */
     val rimTop = (if (isDark) 0.40f else 0.85f) * (0.55f + spec.dispersion * 0.45f)
-    val chromaOn = spec.dispersion > 0.6f
+    // 门槛从 0.6 降到 0.3：默认那根滑杆在 0.5，以前要推过一大半才见彩，
+    // 静止那颗的边光就一直是纯白的。酷安静止那颗边上本来就带一点冷/暖，
+    // 这一档只管**描边**的颜色，不动折射 —— 静止仍然没有透镜效果。
+    val chromaOn = spec.dispersion > 0.3f
     val pillRim: Brush = Brush.verticalGradient(
         0f to (if (chromaOn) Color(0xFFD6ECFF) else Color.White).copy(alpha = rimTop),
         0.55f to Color.White.copy(alpha = rimTop * 0.28f),
@@ -558,7 +561,7 @@ fun ShelfBar(
                                 lens(
                                     lensBandPx,
                                     lensAmountPx * p,
-                                    chromaticAberration = 0.34f * spec.dispersion * p,
+                                    chromaticAberration = 0.52f * spec.dispersion * p,
                                     bounds = lensBounds,
                                 )
                             },
