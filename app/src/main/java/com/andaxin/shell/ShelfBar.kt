@@ -400,14 +400,12 @@ fun ShelfBar(
         val press = { drag.pressProgress }
 
         /*
-         * 水珠此刻压在哪一格 —— 10-22 深夜定的规格：实心图、放大、盖在珠子上面那份清楚副本，
-         * 全部跟着**水珠**走，不再跟着页面走（`current` 是 pager.currentPage，换页才翻）。
-         * 必须走 derivedStateOf：drag.value 是每帧都在动的浮点，直接读会让五格每帧重组一次；
-         * 取整之后只有"越过格与格之间那条中线"的那一帧才变，重组也就只在那一下。
+         * 水珠压住第 index 格有多少：1 = 正中心，0 = 差一整格 —— 10-22 深夜最后定的规格是
+         * 「要覆盖哪就填充哪，实时的那种」，所以这里给**连续值**，不是取整后跳一档。
+         * 只能以 lambda 往下传、在 graphicsLayer 里读：drag.value 每帧都动，当参数传出去
+         * 就是整排格每帧重组一次。取整那版（derivedStateOf）也一并换掉，现在一次重组都没有。
          */
-        val dropIndex by remember {
-            derivedStateOf { drag.value.fastRoundToInt().fastCoerceIn(0, pageCount - 1) }
-        }
+        val cellFill: (Int) -> Float = { index -> 1f - abs(drag.value - index).coerceIn(0f, 1f) }
 
         // 珠子鼓到多大：pillBulge 用它算尺寸，下面算「折射能往哪儿取」也用它，两边必须同一个式子
         val bulgeX = {
@@ -508,11 +506,11 @@ fun ShelfBar(
                 iconsAccent = iconsAccent,
                 iconsOn = iconsOn,
                 badges = badges,
-                activeIndex = dropIndex,
-                cursor = dropIndex,
+                inkStrong = ink.strong,
                 accent = accent,
+                fill = cellFill,
+                spotlight = false,
                 press = press,
-                onlyIndex = null,
                 interactive = true,
                 modifier = Modifier.graphicsLayer { translationX = panelShift }.then(drag.modifier),
                 onSelect = onSelect,
@@ -644,11 +642,11 @@ fun ShelfBar(
             iconsAccent = iconsAccent,
             iconsOn = iconsOn,
             badges = emptyList(),
-            activeIndex = dropIndex,
-            cursor = dropIndex,
+            inkStrong = ink.strong,
             accent = accent,
+            fill = cellFill,
+            spotlight = true,
             press = press,
-            onlyIndex = dropIndex,
             interactive = false,
             modifier = Modifier.graphicsLayer { translationX = panelShift },
             onSelect = {},
@@ -687,8 +685,9 @@ private fun Modifier.pillBulge(scaleX: () -> Float, scaleY: () -> Float): Modifi
 /**
  * 一整排 tab 格子。底栏要用它两次：
  * ② 那一整排在水珠**底下**（收事件、管点按、和栏体一起录进珠子的背板，所以图标会被弯）；
- * ④ 那一份只画选中那一枚、盖在水珠**上面**（不收事件），选中那枚才不会被珠子里那片白页面糊掉。
- * 两次的几何完全一样：每格都是 weight(1f)，空位用同宽度的 Spacer 占住，所以副本不会错位。
+ * ④ 那一份盖在水珠**上面**（不收事件），靠 [spotlight] 只把水珠正压着那一格照亮 ——
+ * 不然选中那枚会被珠子里那片页面糊掉（10-22 深夜真机：首页那枚直接看不见）。
+ * 两次的几何、缩放、着色完全一样：每格 weight(1f)，所以副本不会错位。
  */
 @Composable
 private fun ShelfLabels(
@@ -698,12 +697,12 @@ private fun ShelfLabels(
     iconsAccent: List<Int>,
     iconsOn: List<Int>,
     badges: List<Int>,
-    /** 该上实心图的那一格（= 水珠现在压着的那格，不是 pager 那一页） */
-    activeIndex: Int,
-    cursor: Int,
+    inkStrong: Color,
     accent: Color,
+    /** 水珠压住这一格多少：1 = 正中心，0 = 差一整格。只在绘制期读，不进组合期 */
+    fill: (Int) -> Float,
+    spotlight: Boolean,
     press: () -> Float,
-    onlyIndex: Int?,
     interactive: Boolean,
     modifier: Modifier,
     onSelect: (Int) -> Unit,
@@ -716,46 +715,49 @@ private fun ShelfLabels(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(pageCount) { index ->
-            if (onlyIndex != null && index != onlyIndex) {
-                Spacer(Modifier.weight(1f).fillMaxHeight())
-            } else {
-                ShelfCell(
-                    label = labels.getOrElse(index) { "?" },
-                    iconRes = icons.getOrElse(index) { 0 },
-                    iconAccentRes = iconsAccent.getOrElse(index) { 0 },
-                    iconOnRes = iconsOn.getOrElse(index) { 0 },
-                    active = index == activeIndex,
-                    accent = accent,
-                    badge = badges.getOrElse(index) { 0 },
-                    scale = { if (index == cursor) lerp(1f, 1.2f, press()) else 1f },
-                    interactive = interactive,
-                    onClick = { onSelect(index) },
-                )
-            }
+            ShelfCell(
+                label = labels.getOrElse(index) { "?" },
+                iconRes = icons.getOrElse(index) { 0 },
+                iconAccentRes = iconsAccent.getOrElse(index) { 0 },
+                iconOnRes = iconsOn.getOrElse(index) { 0 },
+                inkStrong = inkStrong,
+                accent = accent,
+                fill = { fill(index) },
+                cellAlpha = { if (spotlight) fill(index) else 1f },
+                scale = { lerp(1f, 1f + 0.2f * press(), fill(index)) },
+                badge = badges.getOrElse(index) { 0 },
+                interactive = interactive,
+                onClick = { onSelect(index) },
+            )
         }
     }
 }
 
-
 /**
- * 底栏一格：图标 + 文字。[scale] 收 lambda 而不是 Float：pressProgress 每帧都在变，
- * 传裸值（或在组合期读它）会让整排格跟着 recompose —— 所以只在 graphicsLayer 里读。
+ * 底栏一格：图标 + 文字。
+ *
+ * [fill] 是"水珠压住这一格多少"的连续值，**只当 lambda 传进来、只在 graphicsLayer 里读**：
+ * 它每帧都在变，当参数传就会带着整排格每帧重组。10-22 深夜他最后定的规格是「要覆盖哪就填充哪，
+ * 实时的那种」，所以是连续染过去，不是越过中线一跳（取整那版已经换掉，现在一次重组都没有）。
+ * 一枚格子因此画三层：描边主笔 alpha=1−f、点睛那笔 alpha=1−f、实心整枚 alpha=f；
+ * 文字两份叠着淡入淡出，连字重（Medium→SemiBold）也是一起淡过去的，不会"啪"地换粗。
  */
 @Composable
 private fun RowScope.ShelfCell(
     label: String,
     iconRes: Int,
-    active: Boolean,
+    inkStrong: Color,
     accent: Color,
+    fill: () -> Float,
+    /** 整格透明度。名字不能叫 alpha —— 进了 graphicsLayer 裸写 alpha= 会被这个入参挡住（val 不可赋值） */
+    cellAlpha: () -> Float,
     scale: () -> Float,
     onClick: () -> Unit,
     iconAccentRes: Int = 0,
     iconOnRes: Int = 0,
     badge: Int = 0,
-    /** 盖在珠子上面那份副本只要画面、不收手：false 就不挂 clickable */
     interactive: Boolean = true,
 ) {
-    val ink = LocalInk.current
     // 玻璃底栏切 tab 也给一下触感：这一下是"换了一屏"，值得一个实心反馈
     val view = LocalView.current
     Column(
@@ -768,6 +770,8 @@ private fun RowScope.ShelfCell(
                 val s = scale()
                 scaleX = s
                 scaleY = s
+                // 盖在珠子上面那份副本靠这一项做聚光：只有水珠正压着的那格不透明
+                alpha = cellAlpha()
             }
             .then(
                 if (interactive) {
@@ -782,37 +786,49 @@ private fun RowScope.ShelfCell(
                         },
                     )
                 } else {
-                    // 第 ④ 块那份清楚副本走这里：它盖在珠子之上，再收一次事件就会把
+                    // 第 ④ 块那份聚光副本走这里：它盖在珠子之上，再收一次事件就会把
                     // 底下真正那一格的点按吃掉，点首页反而没反应
                     Modifier
                 },
-            )
+            ),
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
             /*
-             * 一枚 tab 图标分两层画：主笔上墨色，点睛那一小笔上强调色。
+             * 一枚 tab 图标三层：描边主笔、点睛那一小笔（跟着强调色）、实心整枚。
              * 颜色不写死在 vector 里 —— 本仓的夜间模式是 Compose 层切的（没有 values-night），
              * 资源里写死深碳灰到夜里就是一片看不见；强调色又是「主题」里能改的。
-             * 选中那枚换成实心图，整枚只上强调色，深浅靠 vector 自己那两层 alpha。
              */
             Box(Modifier.size(22.dp)) {
                 Image(
-                    painter = painterResource(if (active && iconOnRes != 0) iconOnRes else iconRes),
+                    painter = painterResource(iconRes),
                     contentDescription = label,
                     modifier = Modifier
                         .matchParentSize()
                         .graphicsLayer {
-                            val tint = if (active) accent else ink.strong
-                            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint)
+                            alpha = 1f - fill()
+                            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(inkStrong)
                         },
                 )
-                if (!active && iconAccentRes != 0) {
+                if (iconAccentRes != 0) {
                     Image(
                         painter = painterResource(iconAccentRes),
                         contentDescription = null,
                         modifier = Modifier
                             .matchParentSize()
                             .graphicsLayer {
+                                alpha = 1f - fill()
+                                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(accent)
+                            },
+                    )
+                }
+                if (iconOnRes != 0) {
+                    Image(
+                        painter = painterResource(iconOnRes),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer {
+                                alpha = fill()
                                 colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(accent)
                             },
                     )
@@ -836,11 +852,23 @@ private fun RowScope.ShelfCell(
             }
         }
         Spacer(modifier = Modifier.height(3.dp))
-        Text(
-            text = label,
-            fontSize = Type.micro,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (active) accent else ink.strong,
-        )
+        // 两份文字叠着淡入淡出：字重不一样，直接改 fontWeight 会跳，淡过去就不跳
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                fontSize = Type.micro,
+                fontWeight = FontWeight.Medium,
+                color = inkStrong,
+                modifier = Modifier.graphicsLayer { alpha = 1f - fill() },
+            )
+            Text(
+                text = label,
+                fontSize = Type.micro,
+                fontWeight = FontWeight.SemiBold,
+                color = accent,
+                modifier = Modifier.graphicsLayer { alpha = fill() },
+            )
+        }
     }
 }
+
