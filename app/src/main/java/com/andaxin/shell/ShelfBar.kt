@@ -68,7 +68,8 @@ import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
 import com.kyant.shapes.Capsule
 import com.andaxin.core.design.lens
-import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
 import dev.chrisbanes.haze.HazeState
@@ -84,10 +85,15 @@ import kotlin.math.sign
  * 一条糊的轨道 + 轨道上一颗自己的水珠。所以这两层是**两个独立节点、各自一套 haze 参数**，
  * 不是在一层玻璃上画个圈：
  *
- *   ① 栏体  hazeEffect(blur = spec.blur, 底色 = surface)                     ← 整条轨道
- *   ② 水滴  hazeEffect(blur = 轨道×(1−0.9×折射), 底色 = pillFill, 自带边光和投影)  ← 一颗独立玻璃
+ *   ① 栏体  hazeEffect(blur = spec.blur, 底色 = surface)                      ← 整条轨道
+ *   ② 标签  五格图标文字         ｝①②合成一层 layerBackdrop，就是水珠的背板
+ *   ③ 水滴  drawBackdrop(那一层) + blur + lens(折射带+色散)，盖在图标前面        ← 一颗独立玻璃
+ *   ④ 副本  再画一遍选中那一枚，盖在水珠上面 —— 不然选中那枚会被珠子里那片页面糊掉
  *
- * 两层各采各的背景（同一个 hazeSource = 那一页），所以水滴里的糊**和轨道里的糊不一样**，
+ * 静止（没按）的时候 ③ 那两层效果全关：糊、折射、彩边都排在 press()>0.02 那道闸后面，
+ * 珠子只剩一颗底色 + 一圈边光 + 一点投影。他 10-22 深夜两句：「不触摸没效果」「色散太高」。
+ *
+ * 两层各糊各的（同一个 hazeSource = 那一页），所以水滴里的糊**和轨道里的糊不一样**，
  * 这才叫两层。水滴走比轨道小的模糊，观感就是"磨砂玻璃上滴了一滴清水"：
  * 折射度拉到 0 两层一样糊 → 水滴看不出来（他现在抱怨的就是这个状态）；拉到 1 水滴几乎全清 → 最分明。
  *
@@ -127,6 +133,10 @@ import kotlin.math.sign
  *    `graphicsLayer.renderEffect` 吃不到 hazeEffect 的背板、也吃不到 `drawLayer` 画进来的子层
  *    （诊断版给栏体挂夸张折射，栏子直接消失而不是起波浪，就是这个）。
  *    另：**每帧在 draw 里新建 RenderEffect 会把整个窗口画黑**，效果对象必须建一次只改 uniform。
+ * 9. 水珠盖到图标前面（他 10-22 深夜挑的那一种）之后，背板不能再是页面那一层，得是
+ *    「栏体+标签」这一整层，珠子才弯得到图标。这一层要自己写死 64dp 高：外层
+ *    BoxWithConstraints 没写高度、全靠子节点撑，这里写成 matchParentSize 就不参与定尺寸，
+ *    整条栏当场塌成 0 高。
 
  */
 
@@ -150,9 +160,17 @@ private const val PILL_HEIGHT = 54f
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
-/** 按住鼓多少：54dp 的底子，默认 1.19 倍正好鼓到齐平轨道（64dp），不再溢出去 */
-private const val PILL_BULGE_MIN = 1.06f
-private const val PILL_BULGE_SPAN = 0.26f
+/**
+ * 按住鼓多少。10-22 深夜他给了那张酷安按下的截图当规格：
+ * 轨道 190px、那颗珠子 240px 高 —— **高/轨 = 1.26**，宽 340px（对一格 75dp 是 1.29 倍）。
+ * 照这个数落到我们 64dp 的轨道上：默认档要鼓到 81dp 高、96dp 宽，上下各顶出轨道 ~9dp。
+ * 54dp 的底子 → 纵向倍数 1.51，横向另乘 [PILL_ASPECT_X] 收到 1.29。
+ * 「鼓到齐平轨道就不再大」是上一版的判读，那张图推翻它了：人家就是要溢出去一颗。
+ */
+private const val PILL_BULGE_MIN = 1.32f
+private const val PILL_BULGE_SPAN = 0.38f
+/** 横向只鼓纵向的 0.855 倍：珠子是竖着顶出轨道的，不是整颗等比放大 */
+private const val PILL_ASPECT_X = 0.855f
 
 /** 上缘那条细亮弧的亮度。验收 agent 判上一版「只有一片弥散白雾、没有亮边线」，
  * 所以这次亮度给足、宽度收到 2dp —— 是一条弧，不是一片雾 */
@@ -164,8 +182,8 @@ private const val FOG_LIGHT = 0.14f
 private const val FOG_DARK = 0.07f
 
 /** 水滴投影：静止 2dp、按住鼓到 8dp。酷安那颗珠子"浮"在轨道上靠的就是这一下 */
-private const val PILL_SHADOW_REST = 2f
-private const val PILL_SHADOW_PRESS = 8f
+private const val PILL_SHADOW_REST = 1.5f
+private const val PILL_SHADOW_PRESS = 4f
 
 @Composable
 fun ShelfBar(
@@ -175,7 +193,6 @@ fun ShelfBar(
     material: BarMaterial,
     spec: GlassSpec,
     hazeState: HazeState,
-    pageBackdrop: Backdrop,
     labels: List<String>,
     icons: List<Int>,
     /** 未选中那枚的"点睛"层（跟着强调色），和 [icons] 一一对位；没有就不叠 */
@@ -231,7 +248,7 @@ fun ShelfBar(
      * 白天白 0.55 压在 vibrancy 之后的页面上，实测珠子亮度才越过轨道那档；
      * 夜里轨道是 Paper@0.12，水珠给 0.20，同样是往上亮。
      */
-    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.55f)
+    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.13f) else Color.White.copy(alpha = 0.28f)
     val specular = if (isDark) SPEC_DARK else SPEC_LIGHT
     // 夜里这一档没跟着降：0.22 是 0.8.8 就在的值，今晚这台机器的深色模式没能真切出来
     // （cmd uimode night yes 报 yes、dumpsys 也说 mComputedNightMode=true，界面还是浅色），
@@ -262,7 +279,7 @@ fun ShelfBar(
      */
     // 真机第一版三档都开太满：珠子糊到字完全化开、色散那圈彩虹抢过栏子。
     // 模糊压到轨道的三分之一（水珠要比轨道清楚才像一滴清水），带厚和位移各收一档。
-    val pillBlurPx = with(density) { (spec.blur * 0.34f).toPx() }
+    val pillBlurPx = with(density) { (spec.blur * 0.20f).toPx() }
     // 带厚收到外缘 8-10%。上一版 16dp 占 54dp 珠子的 30%，两条位移区几乎顶到中间，
     // 验收 agent 判「珠内背景被整体放大 15-20% = 放大镜，不合格」—— 中心必须严格 1:1
     // 默认档要一眼看得出不是一颗"磨圆角的气泡"：带厚给到 6..24dp、位移给到 0..34dp。
@@ -276,7 +293,12 @@ fun ShelfBar(
      */
     val liquidGlass = material == BarMaterial.Liquid && android.os.Build.VERSION.SDK_INT >= 33
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
-
+    /*
+     * 水珠采的那一层 = 栏体 + 五格标签。10-22 深夜他把这条定成「珠子盖到图标前面」，
+     * 背板就不能再是整页 —— 珠子要弯的是它身子底下真的显示着的那一团，图标才算被弯到。
+     * 选中那一枚另外有一份清楚副本盖在珠子上面（见下面第 ④ 块），不然会被珠子里那片白页面糊掉。
+     */
+    val shelfBackdrop = rememberLayerBackdrop()
     BoxWithConstraints(
         modifier = modifier
             .navigationBarsPadding()
@@ -370,50 +392,85 @@ fun ShelfBar(
         // pressProgress 每帧都在变，包成 lambda 传下去，别引起整排格 recompose
         val press = { drag.pressProgress }
 
-        // ── ① 栏体：第一层玻璃（轨道）──
-        // 这一层只管"整条轨道糊成什么样"：模糊吃 spec.blur，底色吃 surface，别的不沾。
-        // 水珠是第 ② 层，自己的模糊、自己的底色、自己的边光和投影，两层参数互不共用。
+        /*
+         * ① 两层包在一起，整体录成水珠的背板。
+         * 这里必须给死高度、不能用 matchParentSize：外层 BoxWithConstraints 自己没写高度，
+         * 它的 64dp 就是被栏体和标签那两层撑出来的 —— 换成 matchParentSize 就不参与定尺寸，
+         * 整条栏会当场塌成 0 高。
+         */
         Box(
             Modifier
-                .graphicsLayer { translationX = panelShift }
-                .then(
-                    when (material) {
-                        /*
-                         * 栏体这一档 10-22 从 drawBackdrop 换成了 haze。原因不是口味：
-                         * 那层 kyant 的采集在这台机上**一直是空的**（顶部第 7 条），
-                         * 也就是说以前这层"液态玻璃"根本没采到背景，只是蒙了张 34% 的奶白 ——
-                         * 他那句"背景都是纯色"从头到尾说的就是这件事。
-                         */
-                        BarMaterial.Liquid -> Modifier
-                            .clip(Capsule())
-                            .hazeEffect(state = hazeState) {
-                                blurRadius = spec.blur
-                                // 0.05 那档噪点在真机上看得见面（agent：网点噪点可见、酷安干净）
-                                noiseFactor = 0.02f
-                                backgroundColor = surface
-                            }
-                        BarMaterial.Frosted -> Modifier
-                            .clip(Capsule())
-                            .hazeEffect(state = hazeState) {
-                                blurRadius = spec.blur
-                                noiseFactor = 0.14f
-                                backgroundColor = frostTint
-                            }
-                        BarMaterial.Solid -> Modifier.background(Palette.Paper, Capsule())
-                    },
-                )
-                // 一圈 1dp 描边：底栏底下常压着白卡片、玻璃本身也是白的，没有这圈线
-                // 就成了一块"纯色圆角块"（他 11:38 那句"tab 怎么不是悬浮的"说的就是这个）。
-                .border(1.dp, ink.hairline, Capsule())
                 .height(BAR_HEIGHT.dp)
-                .fillMaxWidth(),
-        ) {}
+                .fillMaxWidth()
+                .layerBackdrop(shelfBackdrop),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // ── ① 栏体：第一层玻璃（轨道）──
+            // 这一层只管"整条轨道糊成什么样"：模糊吃 spec.blur，底色吃 surface，别的不沾。
+            // 水珠是它上面那一层，自己的模糊、自己的底色、自己的边光和投影，两层参数互不共用。
+            Box(
+                Modifier
+                    .graphicsLayer { translationX = panelShift }
+                    .then(
+                        when (material) {
+                            /*
+                             * 栏体这一档 10-22 从 drawBackdrop 换成了 haze。原因不是口味：
+                             * 那层 kyant 的采集在这台机上**一直是空的**（顶部第 7 条），
+                             * 也就是说以前这层"液态玻璃"根本没采到背景，只是蒙了张 34% 的奶白 ——
+                             * 他那句"背景都是纯色"从头到尾说的就是这件事。
+                             */
+                            BarMaterial.Liquid -> Modifier
+                                .clip(Capsule())
+                                .hazeEffect(state = hazeState) {
+                                    blurRadius = spec.blur
+                                    // 0.05 那档噪点在真机上看得见面（agent：网点噪点可见、酷安干净）
+                                    noiseFactor = 0.02f
+                                    backgroundColor = surface
+                                }
+                            BarMaterial.Frosted -> Modifier
+                                .clip(Capsule())
+                                .hazeEffect(state = hazeState) {
+                                    blurRadius = spec.blur
+                                    noiseFactor = 0.14f
+                                    backgroundColor = frostTint
+                                }
+                            BarMaterial.Solid -> Modifier.background(Palette.Paper, Capsule())
+                        },
+                    )
+                    // 一圈 1dp 描边：底栏底下常压着白卡片、玻璃本身也是白的，没有这圈线
+                    // 就成了一块"纯色圆角块"（他 11:38 那句"tab 怎么不是悬浮的"说的就是这个）。
+                    .border(1.dp, ink.hairline, Capsule())
+                    .height(BAR_HEIGHT.dp)
+                    .fillMaxWidth(),
+            ) {}
+            // ── ② 标签层：和栏体一起录成水珠的背板 ──
+            // 手势挂在这一层而不是球上。上游是把 pointerInput 挂在 pill 上的，那样只有"按在球上"
+            // 才有反馈；要的是"手按在哪滑块跟着去哪"，所以整条栏收事件。
+            // 引擎走 PointerEventPass.Initial 且不消费，所以每格自己的 clickable 照旧管点按。
+            ShelfLabels(
+                pageCount = pageCount,
+                labels = labels,
+                icons = icons,
+                iconsAccent = iconsAccent,
+                iconsOn = iconsOn,
+                badges = badges,
+                current = current,
+                cursor = cursor,
+                accent = accent,
+                press = press,
+                onlyIndex = null,
+                interactive = true,
+                modifier = Modifier.graphicsLayer { translationX = panelShift }.then(drag.modifier),
+                onSelect = onSelect,
+            )
+        }
 
-        // ── ② 水滴：第二层玻璃，画在标签底下 ──
-        // 从"最上面"挪到标签底下是照酷安那套的位置来的：图标该是清楚的，珠子是它身下那滴玻璃。
-        // 压在图标上就等于给选中那一枚蒙了层雾，反而最花。
+        // ── ③ 水滴：第三层，盖在图标前面 ──
+        // 10-22 深夜他挑的是「珠子盖到图标前面」这一种：水珠从标签底下挪到标签上面，
+        // 背板也从「整页」换成 ①② 那一层（轨道+五格），所以珠子弯的是它身子底下真的显示着的那一团，
+        // 隔壁那格的图标被珠子扫过时也会跟着弯。
         // 滑动挂外层 graphicsLayer，鼓挂 pillBulge（改尺寸）—— 两层各干一件事，
-        // 形变绝对不能回到外层的 scaleX/scaleY 上，那正是"水珠里变放大镜"的来路（顶部第 1 条）。
+        // 形变绝对不能回到外层的 scaleX/scaleY 上，那正是「水珠里变放大镜」的来路（顶部第 1 条）。
         Box(
             Modifier
                 .padding(horizontal = INSET.dp)
@@ -430,11 +487,15 @@ fun ShelfBar(
                 .pillBulge(
                     scaleX = {
                         val v = drag.velocity / 10f
-                        drag.scaleX / (1f - (v * 0.75f).fastCoerceIn(-0.2f, 0.2f))
+                        drag.scaleX / (1f - (v * 0.75f).fastCoerceIn(-0.2f, 0.2f)) *
+                            (1f - (1f - PILL_ASPECT_X) * press())
                     },
                     scaleY = {
                         val v = drag.velocity / 10f
-                        drag.scaleY * (1f - (v * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+                        // 速度只许把珠子往下压扁，不许往上顶高：顶高那次实测 54dp 鼓到 97dp，
+                        // 珠子盖掉半条栏，就是他那句「你自己看你做的什么垃圾」的画面
+                        (drag.scaleY * (1f - (v * 0.25f).fastCoerceIn(-0.12f, 0f)))
+                            .coerceAtMost(pillBulge)
                     },
                 )
                 // 投影挂在**里层** graphicsLayer 上：这层的边界才是鼓起来之后的实际大小。
@@ -448,22 +509,30 @@ fun ShelfBar(
                 }
                 .then(
                     when {
-                        // 水珠 = 采到的那一页，自己糊一层 + 只在边缘一条带里折射。
-                        // 带厚吃折射度、位移吃扭曲度、色散开关吃色散度 —— 三根滑杆各管一头。
+                        // 水珠 = 采到的那层（轨道+五格），自己糊一层 + 只在边缘一条带里折射。
+                        // 带厚吃折射度、位移吃扭曲度、色散强度吃色散度 —— 三根滑杆各管一头。
                         material == BarMaterial.Liquid && liquidGlass -> Modifier.drawBackdrop(
-                            backdrop = pageBackdrop,
+                            backdrop = shelfBackdrop,
                             shape = { Capsule() },
                             effects = {
-                                blur(pillBlurPx)
-                                lens(
-                                    lensBandPx,
-                                    lensAmountPx,
-                                    chromaticAberration = spec.dispersion > 0.6f,
-                                )
+                                // 不触摸 = 一点效果都不给（糊、折射、彩边全在这道闸后面（他 10-22 深夜这句「我要求不触摸没效果」）。
+                                // 静止时珠子就是一颗比轨道清楚的胶囊，按下去那一下才长出一条折射带
+                                // 和彩边 —— 酷安那颗就是这个关系：平时安安静静，按住才是玻璃。
+                                // 静止时背板原样透过去，珠子就只剩一颗底色 + 一圈边光 + 一点投影。
+                                val p = press()
+                                if (p > 0.02f) {
+                                    blur(pillBlurPx * p)
+                                    lens(
+                                        lensBandPx,
+                                        lensAmountPx * p,
+                                        chromaticAberration = 0.34f * spec.dispersion * p,
+                                    )
+                                }
                             },
                             // 不传 highlight：kyant 那版不传会吃 Highlight.Default，实测是一圈
                             // 1dp 纯白硬边（就是「栏子被矩形框着」那个 bug）。Miuix 这版默认 null，
-                            // 正好 —— 上缘受光、下沿内阴影、投影全由我们自己画。
+                            // 正好 —— 上缘受光那条弧和投影由我们自己画（下沿那道内阴影 10-22 深夜删了：
+                            // 它描在胶囊底边上就是一坨灰，他那句「底下这坨阴影也去掉」就是这个）。
                         )
                             // 这一层底色以前漏了：drawBackdrop 那一路没人叠 pillFill，
                             // 结果 vibrancy 把页面压暗之后就直接上屏 —— 真机量到珠子里 199-205、
@@ -491,8 +560,8 @@ fun ShelfBar(
                     },
                 )
                 /*
-                 * 两笔光。上缘接光、下沿吃进自己的影 —— 这两笔才是"玻璃"和
-                 * "一块半透明圆角矩形"的区别，模糊本身给不出来。
+                 * 上缘接光那一笔 —— 它是"玻璃"和"一块半透明圆角矩形"的区别，模糊本身给不出来。
+                 * 原来下沿还配了一道吃进去的影，10-22 深夜按他那句「底下这坨阴影也去掉」删了。
                  */
                 .drawWithContent {
                     drawContent()
@@ -518,50 +587,32 @@ fun ShelfBar(
                         cornerRadius = CornerRadius(arcSize.height / 2f),
                         style = Stroke(width = arcW),
                     )
-                    // 下沿一道内阴影。上一版从 45% 就开始压、压到 0.20，agent 判
-                    // "成了一条 40dp 宽的实心底带，像脏印" —— 收到只贴最底一窄条
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            0.78f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = if (isDark) 0.26f else 0.10f),
-                        ),
-                        topLeft = arcShift,
-                        size = arcSize,
-                        cornerRadius = CornerRadius(arcSize.height / 2f),
-                        style = Stroke(width = arcW),
-                    )
                 }
                 // 水珠自己一圈边光：少了它，两层同色同质就糊成一块了
                 .border(1.dp, pillRim, Capsule()),
         ) {}
 
-        // ── ③ 标签层，画在最上面 ──
-        // 手势挂在这一层而不是球上。上游是把 pointerInput 挂在 pill 上的，那样只有"按在球上"
-        // 才有反馈；要的是"手按在哪滑块跟着去哪"，所以整条栏收事件。
-        // 引擎走 PointerEventPass.Initial 且不消费，所以每格自己的 clickable 照旧管点按。
-        Row(
-            Modifier
-                .graphicsLayer { translationX = panelShift }
-                .then(drag.modifier)
-                .height(BAR_HEIGHT.dp)
-                .fillMaxWidth()
-                .padding(INSET.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            repeat(pageCount) { index ->
-                ShelfCell(
-                    label = labels.getOrElse(index) { "?" },
-                    iconRes = icons.getOrElse(index) { 0 },
-                    iconAccentRes = iconsAccent.getOrElse(index) { 0 },
-                    iconOnRes = iconsOn.getOrElse(index) { 0 },
-                    active = index == current,
-                    accent = accent,
-                    badge = badges.getOrElse(index) { 0 },
-                    scale = { if (index == cursor) lerp(1f, 1.2f, press()) else 1f },
-                    onClick = { onSelect(index) },
-                )
-            }
-        }
+        // ──  选中那一枚的清楚副本，盖在水珠上面 ──
+        // 为什么要有这一份：珠子盖到图标前面之后，它采的是身子底下那一层，
+        // 于是选中那枚图标被珠子里那片白页面糊住了（10-22 深夜真机：整枚 首页 直接看不见）。
+        // 酷安那颗也是这个关系 —— 玻璃在身下，选中那枚永远是清楚的。
+        // 所以：隔壁那几枚归珠子弯（这才叫「效果对图标生效」），选中这枚自己盖回去。
+        ShelfLabels(
+            pageCount = pageCount,
+            labels = labels,
+            icons = icons,
+            iconsAccent = iconsAccent,
+            iconsOn = iconsOn,
+            badges = emptyList(),
+            current = current,
+            cursor = cursor,
+            accent = accent,
+            press = press,
+            onlyIndex = current,
+            interactive = false,
+            modifier = Modifier.graphicsLayer { translationX = panelShift },
+            onSelect = {},
+        )
     }
 }
 
@@ -594,6 +645,58 @@ private fun Modifier.pillBulge(scaleX: () -> Float, scaleY: () -> Float): Modifi
     }
 
 /**
+ * 一整排 tab 格子。底栏要用它两次：
+ * ② 那一整排在水珠**底下**（收事件、管点按、和栏体一起录进珠子的背板，所以图标会被弯）；
+ * ④ 那一份只画选中那一枚、盖在水珠**上面**（不收事件），选中那枚才不会被珠子里那片白页面糊掉。
+ * 两次的几何完全一样：每格都是 weight(1f)，空位用同宽度的 Spacer 占住，所以副本不会错位。
+ */
+@Composable
+private fun ShelfLabels(
+    pageCount: Int,
+    labels: List<String>,
+    icons: List<Int>,
+    iconsAccent: List<Int>,
+    iconsOn: List<Int>,
+    badges: List<Int>,
+    current: Int,
+    cursor: Int,
+    accent: Color,
+    press: () -> Float,
+    onlyIndex: Int?,
+    interactive: Boolean,
+    modifier: Modifier,
+    onSelect: (Int) -> Unit,
+) {
+    Row(
+        modifier
+            .height(BAR_HEIGHT.dp)
+            .fillMaxWidth()
+            .padding(INSET.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(pageCount) { index ->
+            if (onlyIndex != null && index != onlyIndex) {
+                Spacer(Modifier.weight(1f).fillMaxHeight())
+            } else {
+                ShelfCell(
+                    label = labels.getOrElse(index) { "?" },
+                    iconRes = icons.getOrElse(index) { 0 },
+                    iconAccentRes = iconsAccent.getOrElse(index) { 0 },
+                    iconOnRes = iconsOn.getOrElse(index) { 0 },
+                    active = index == current,
+                    accent = accent,
+                    badge = badges.getOrElse(index) { 0 },
+                    scale = { if (index == cursor) lerp(1f, 1.2f, press()) else 1f },
+                    interactive = interactive,
+                    onClick = { onSelect(index) },
+                )
+            }
+        }
+    }
+}
+
+
+/**
  * 底栏一格：图标 + 文字。[scale] 收 lambda 而不是 Float：pressProgress 每帧都在变，
  * 传裸值（或在组合期读它）会让整排格跟着 recompose —— 所以只在 graphicsLayer 里读。
  */
@@ -608,6 +711,8 @@ private fun RowScope.ShelfCell(
     iconAccentRes: Int = 0,
     iconOnRes: Int = 0,
     badge: Int = 0,
+    /** 盖在珠子上面那份副本只要画面、不收手：false 就不挂 clickable */
+    interactive: Boolean = true,
 ) {
     val ink = LocalInk.current
     // 玻璃底栏切 tab 也给一下触感：这一下是"换了一屏"，值得一个实心反馈
@@ -623,16 +728,24 @@ private fun RowScope.ShelfCell(
                 scaleX = s
                 scaleY = s
             }
-            .clickable(
-                // 玻璃栏里绝不能有触摸水波纹：indication 是一层约 10% 黑的灰色圆角矩形，
-                // 叠在折射上就变成"点哪一格哪一格发灰"，且部分机型按下后不会自动清掉。
-                interactionSource = remember(label) { MutableInteractionSource() },
-                indication = null,
-                onClick = {
-                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                    onClick()
+            .then(
+                if (interactive) {
+                    Modifier.clickable(
+                        // 玻璃栏里绝不能有触摸水波纹：indication 是一层约 10% 黑的灰色圆角矩形，
+                        // 叠在折射上就变成"点哪一格哪一格发灰"，且部分机型按下后不会自动清掉。
+                        interactionSource = remember(label) { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                            onClick()
+                        },
+                    )
+                } else {
+                    // 第 ④ 块那份清楚副本走这里：它盖在珠子之上，再收一次事件就会把
+                    // 底下真正那一格的点按吃掉，点首页反而没反应
+                    Modifier
                 },
-            ),
+            )
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
             /*

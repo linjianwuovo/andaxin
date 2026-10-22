@@ -122,20 +122,25 @@ half4 main(float2 coord) {
     float2 grad = normalize(
         gradSdRoundedRect(centered, halfSize, gradRadius) + depthEffect * normalize(centered + float2(0.0001))
     );
-    // 色散：按像素在第几象限给一个正负号，让 R/B 两个通道往相反方向偏，
-    // 于是珠缘一侧偏冷一侧偏暖 —— 真玻璃边缘就是这么分光的
-    float dispersion = chromaticAberration * ((centered.x * centered.y) / (halfSize.x * halfSize.y));
+    // 色散：R 沿着位移多走一点、B 少走一点 —— 也就是同一颗珠子的折射带里
+    // 三个通道各弯各的，边上看得到一条彩边。位移本身在带内边缘是 0，所以彩边
+    // 自然跟着从 0 长到最外缘最大，不用另外做衰减。
+    // （上一版是 `off * (cx*cy)/(hx*hy)` 那个象限乘积：在上下两条直边的正中
+    //  那一项正好是 0 —— 也就是**珠子最该出彩边的地方恰好没有色散**，
+    //  他那句"色散低了"就是这个。系数也从写死的 1f 改成了滑杆给的量。）
     float2 off = d * grad;
-    float2 dispersed = off * dispersion;
-    half4 r = content.eval(coord + off + dispersed);
+    float2 rp = off * (1.0 + chromaticAberration);
+    float2 bp = off * (1.0 - chromaticAberration);
+    half4 r = content.eval(coord + rp);
     half4 g = content.eval(coord + off);
-    half4 b = content.eval(coord + off - dispersed);
+    half4 b = content.eval(coord + bp);
     return half4(r.r, g.g, b.b, 1.0);
 }
 """
 
 /**
  * 水珠折射。[refractionHeight] 是折射带厚度、[refractionAmount] 是带里最大位移，都是**像素**。
+ * [chromaticAberration] 是色散强度（0 = 不给彩边，1 = R/B 各偏到位移的一倍），不再是开关。
  *
  * 只在 `drawBackdrop { effects = { ... } }` 里调用；先 `blur()` 再 `lens()`（糊过的底再弯）。
  */
@@ -143,11 +148,12 @@ fun BackdropEffectScope.lens(
     refractionHeight: Float,
     refractionAmount: Float,
     depthEffect: Boolean = false,
-    chromaticAberration: Boolean = false,
+    chromaticAberration: Float = 0f,
 ) {
     if (!isRuntimeShaderSupported()) return
     if (refractionHeight <= 0f || refractionAmount <= 0f) return
 
+    val dispersion = chromaticAberration.coerceIn(0f, 1.5f)
     // 珠子会自己往外吃一条带，采集的内缩跟着收
     if (padding > 0f) padding = (padding - refractionHeight).fastCoerceAtLeast(0f)
 
@@ -161,8 +167,8 @@ fun BackdropEffectScope.lens(
     val radii = floatArrayOf(r, r, r, r)
 
     runtimeShaderEffect(
-        key = if (chromaticAberration) "AndaXinLensDispersion" else "AndaXinLens",
-        shaderString = if (chromaticAberration) REFRACT_DISPERSION else REFRACT,
+        key = if (dispersion > 0.02f) "AndaXinLensDispersion" else "AndaXinLens",
+        shaderString = if (dispersion > 0.02f) REFRACT_DISPERSION else REFRACT,
         uniformShaderName = "content",
         block = {
             setFloatUniform("size", w, h)
@@ -172,7 +178,7 @@ fun BackdropEffectScope.lens(
             // 负号是上游的约定：正数会弯成凹面（顶上第 2 条）
             setFloatUniform("refractionAmount", -refractionAmount / sf)
             setFloatUniform("depthEffect", if (depthEffect) 1f else 0f)
-            if (chromaticAberration) setFloatUniform("chromaticAberration", 1f)
+            if (dispersion > 0.02f) setFloatUniform("chromaticAberration", dispersion)
         },
     )
 }
