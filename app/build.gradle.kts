@@ -22,8 +22,8 @@ android {
         applicationId = "com.andaxin"
         minSdk = 26
         targetSdk = 35
-        versionCode = 58
-        versionName = "0.8.16"
+        versionCode = 59
+        versionName = "0.8.17"
 
         // 只出 arm64：装机就是米11 和那台 OPPO，多一套 abi 只是让包胖 30%
         ndk { abiFilters += "arm64-v8a" }
