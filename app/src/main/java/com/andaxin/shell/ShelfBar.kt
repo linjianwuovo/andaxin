@@ -70,7 +70,6 @@ import com.kyant.shapes.Capsule
 import com.andaxin.core.design.lens
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.blur.blur
 import top.yukonga.miuix.kmp.blur.drawBackdrop
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -181,9 +180,11 @@ private const val ARC_LIGHT = 2f
 private const val FOG_LIGHT = 0.14f
 private const val FOG_DARK = 0.07f
 
-/** 水滴投影：静止 2dp、按住鼓到 8dp。酷安那颗珠子"浮"在轨道上靠的就是这一下 */
-private const val PILL_SHADOW_REST = 1.5f
-private const val PILL_SHADOW_PRESS = 4f
+/** 投影这两个数已经没人用了：10-22 深夜他说「把阴影去了」，那颗珠子改由边光和上缘高光浮起来 */
+@Suppress("unused")
+private const val PILL_SHADOW_REST = 0f
+@Suppress("unused")
+private const val PILL_SHADOW_PRESS = 0f
 
 @Composable
 fun ShelfBar(
@@ -279,7 +280,6 @@ fun ShelfBar(
      */
     // 真机第一版三档都开太满：珠子糊到字完全化开、色散那圈彩虹抢过栏子。
     // 模糊压到轨道的三分之一（水珠要比轨道清楚才像一滴清水），带厚和位移各收一档。
-    val pillBlurPx = with(density) { (spec.blur * 0.20f).toPx() }
     // 带厚收到外缘 8-10%。上一版 16dp 占 54dp 珠子的 30%，两条位移区几乎顶到中间，
     // 验收 agent 判「珠内背景被整体放大 15-20% = 放大镜，不合格」—— 中心必须严格 1:1
     // 默认档要一眼看得出不是一颗"磨圆角的气泡"：带厚给到 6..24dp、位移给到 0..34dp。
@@ -392,6 +392,39 @@ fun ShelfBar(
         // pressProgress 每帧都在变，包成 lambda 传下去，别引起整排格 recompose
         val press = { drag.pressProgress }
 
+        // 珠子鼓到多大：pillBulge 用它算尺寸，下面算「折射能往哪儿取」也用它，两边必须同一个式子
+        val bulgeX = {
+            val v = drag.velocity / 10f
+            drag.scaleX / (1f - (v * 0.75f).fastCoerceIn(-0.2f, 0.2f)) *
+                (1f - (1f - PILL_ASPECT_X) * press())
+        }
+        val bulgeY = {
+            val v = drag.velocity / 10f
+            // 速度只许把珠子往下压扁，不许往上顶高：顶高那次实测 54dp 鼓到 97dp，
+            // 珠子盖掉半条栏，就是他那句「你自己看你做的什么垃圾」的画面
+            (drag.scaleY * (1f - (v * 0.25f).fastCoerceIn(-0.12f, 0f))).coerceAtMost(pillBulge)
+        }
+        val barHPx = with(density) { BAR_HEIGHT.dp.toPx() }
+        val slotHPx = with(density) { PILL_HEIGHT.dp.toPx() }
+        /*
+         * 折射能取样的范围 = 录下来那一层（栏体+五格）的矩形，换算到珠子自己的坐标系。
+         * 珠子按住时上下各探出栏子 ~9dp，折射带再往外取就出了这层 —— 取回来是黑的，
+         * 松手那一下珠子最大、黑得最像"闪一下"（10-22 深夜）。夹回边上一像素就不黑了。
+         * 只按 LTR 算：这应用没有右到左的界面，RTL 那条路宁可退化成不夹。
+         */
+        val lensBounds = {
+            val w = cellWidth * bulgeX()
+            val h = slotHPx * bulgeY()
+            val left = padPx + drag.value * cellWidth + panelShift + (cellWidth - w) / 2f
+            val top = (barHPx - slotHPx) / 2f + (slotHPx - h) / 2f
+            // 再往里让 10dp：贴着栏子边那一圈是 1dp 的墨色描边，夹到边上等于把那条边
+            // 拉成一条灰带子（10-22 深夜那版夹完，珠子下沿就是一圈灰）。让开描边，
+            // 带子里取到的就是栏子内部的糊字 —— 那才是折射该弯的东西
+            val m = with(density) { 10.dp.toPx() }
+            if (ltr) floatArrayOf(-left + m, -top + m, barWidth - left - m, barHPx - top - m)
+            else floatArrayOf(-1e6f, -1e6f, 1e6f, 1e6f)
+        }
+
         /*
          * ① 两层包在一起，整体录成水珠的背板。
          * 这里必须给死高度、不能用 matchParentSize：外层 BoxWithConstraints 自己没写高度，
@@ -488,29 +521,7 @@ fun ShelfBar(
                 // X/Y 是引擎里两根不同阻尼的弹簧，不同步地涨才有被捏的味道；
                 // 再叠一层 velocity（每帧由 VelocityTracker 算的真速度，不是累计位移）：
                 // 拖起来那一下被甩成横的，停手立刻回圆，慢慢拖不会一直鼓着。
-                .pillBulge(
-                    scaleX = {
-                        val v = drag.velocity / 10f
-                        drag.scaleX / (1f - (v * 0.75f).fastCoerceIn(-0.2f, 0.2f)) *
-                            (1f - (1f - PILL_ASPECT_X) * press())
-                    },
-                    scaleY = {
-                        val v = drag.velocity / 10f
-                        // 速度只许把珠子往下压扁，不许往上顶高：顶高那次实测 54dp 鼓到 97dp，
-                        // 珠子盖掉半条栏，就是他那句「你自己看你做的什么垃圾」的画面
-                        (drag.scaleY * (1f - (v * 0.25f).fastCoerceIn(-0.12f, 0f)))
-                            .coerceAtMost(pillBulge)
-                    },
-                )
-                // 投影挂在**里层** graphicsLayer 上：这层的边界才是鼓起来之后的实际大小。
-                // 挂外层的话 outline 还停在"一格 × 48dp"那个槽位上，珠子鼓出去就没影了。
-                // shape 给了、clip 不开 —— 鼓出栏外那几 dp 不被自己剪掉，影照样投在轨道上。
-                .graphicsLayer {
-                    shape = Capsule()
-                    clip = false
-                    shadowElevation =
-                        (PILL_SHADOW_REST + (PILL_SHADOW_PRESS - PILL_SHADOW_REST) * press()).dp.toPx()
-                }
+                .pillBulge(scaleX = bulgeX, scaleY = bulgeY)
                 .then(
                     when {
                         // 水珠 = 采到的那层（轨道+五格），自己糊一层 + 只在边缘一条带里折射。
@@ -522,16 +533,19 @@ fun ShelfBar(
                                 // 不触摸 = 一点效果都不给（糊、折射、彩边全在这道闸后面（他 10-22 深夜这句「我要求不触摸没效果」）。
                                 // 静止时珠子就是一颗比轨道清楚的胶囊，按下去那一下才长出一条折射带
                                 // 和彩边 —— 酷安那颗就是这个关系：平时安安静静，按住才是玻璃。
-                                // 静止时背板原样透过去，珠子就只剩一颗底色 + 一圈边光 + 一点投影。
-                                val p = press()
-                                if (p > 0.02f) {
-                                    blur(pillBlurPx * p)
-                                    lens(
-                                        lensBandPx,
-                                        lensAmountPx * p,
-                                        chromaticAberration = 0.34f * spec.dispersion * p,
-                                    )
-                                }
+                                // 静止时背板原样透过去，珠子就只剩一颗底色加一圈边光。
+                                // 但**不能整条摘掉效果**：摘/挂这一切换的是库的渲染路径，
+                                // 松手动画路过那一刻就闪一帧（他 10-22 深夜那句「按了松手会闪一下」）。
+                                // 所以永远挂着，只把幅度按按下进度压到 2% 的底。
+                                val p = 0.02f + 0.98f * press()
+                                // 水珠不给模糊，只给折射（他 10-22 深夜最后一句）：
+                                // 酷安那颗本来就是清水，弯是弯、糊是不糊，糊会把底下的图标抹掉。
+                                lens(
+                                    lensBandPx,
+                                    lensAmountPx * p,
+                                    chromaticAberration = 0.34f * spec.dispersion * p,
+                                    bounds = lensBounds,
+                                )
                             },
                             // 不传 highlight：kyant 那版不传会吃 Highlight.Default，实测是一圈
                             // 1dp 纯白硬边（就是「栏子被矩形框着」那个 bug）。Miuix 这版默认 null，
