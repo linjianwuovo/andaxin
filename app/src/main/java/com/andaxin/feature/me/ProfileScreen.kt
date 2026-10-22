@@ -44,6 +44,7 @@ import com.andaxin.shell.LoadWhy
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.pressClick
+import com.andaxin.shell.rememberArmConfirm
 import kotlinx.coroutines.launch
 
 /**
@@ -67,7 +68,7 @@ fun ProfileScreen(onBack: () -> Unit) {
     var profile by remember { mutableStateOf<com.andaxin.data.capture.Profile?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var armedToQuit by remember { mutableStateOf(false) }
+    val quitArm = rememberArmConfirm()
     var avatarNote by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(session.generation, session.loggedIn) {
@@ -199,7 +200,7 @@ fun ProfileScreen(onBack: () -> Unit) {
                         .height(48.dp)
                         .background(ink.offFill, Radius.field)
                         .pressClick {
-                            if (armedToQuit) {
+                            if (quitArm.armed) {
                                 /*
                                  * **退出登录不再把口令忘掉**（他 10-21 12:1x：
                                  * 「退出登录后为什么要重新输入账密，不是早就让你写记住密码了吗」）。
@@ -210,19 +211,19 @@ fun ProfileScreen(onBack: () -> Unit) {
                                     graph.session.signOut(keepPassword = true)
                                     // 学院/班级那两份是内存里的，人退了就把上一位的资料一起放掉
                                     graph.who.clear()
-                                    armedToQuit = false
+                                    quitArm.disarm()
                                     // 退完要回到根：留在这一屏只会看见"未登录"和一颗没反应的「去登录」
                                     // （Gate 在 SHELF 那一层，这一屏是它上面的独立路由）。
                                     onBack()
                                 }
                             } else {
-                                armedToQuit = true
+                                quitArm.arm()
                             }
                         },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (armedToQuit) "再点一次就退出" else "退出登录",
+                        text = if (quitArm.armed) "再点一次就退出 ${quitArm.countdown}s" else "退出登录",
                         fontSize = Type.body,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.error,
