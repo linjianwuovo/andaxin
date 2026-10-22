@@ -48,6 +48,10 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -131,23 +135,31 @@ import kotlin.math.sign
 
 private const val BAR_HEIGHT = 64f
 /*
- * 水珠 72dp、轨道 64dp，再往上抬 6dp —— 珠子"坐"在轨道上：上沿露出一截、下沿还在栏子里。
- * 照的是酷安那颗：一格宽 ~74dp × 72dp 高，几乎是个圆。之前 48/56dp 那两档是
- * "轨道里嵌了块糖"，不是水滴（他 10-22 甩过来那两张截图就是这个区别）。
- * 抬 6dp 而不是居中溢出：居中会上下各露一半，看着像珠子掉出去了。
+ * 水珠 54dp、轨道 64dp —— 珠高÷轨高 = 0.84。
+ *
+ * 这组数是 10-22 验收 agent 对着酷安截图判出来的：人家那颗是**待在轨道里的胶囊**（比值 ~0.85），
+ * 上一版 72dp + 抬 6dp 是个溢出栏子的正圆（比值 1.14），它的判词是"不是小，是偏大且形状不对，
+ * 溢出破坏了'槽中水珠'那个语言"。所以这版收进轨道里、取消抬升。
+ * 按住鼓 1.19 倍 = 64dp，正好齐平轨道，不再顶出去。
  */
-private const val PILL_HEIGHT = 72f
-private const val PILL_LIFT = 6f
+private const val PILL_HEIGHT = 54f
+/** 真机实测珠心比轨道中心低 10px（约 3dp）：抬 3dp 对齐，不是让它溢出去 */
+private const val PILL_LIFT = 3f
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
-/** 按住鼓多少：72dp 的底子已经大，倍数收着给（1.06..1.32，默认 1.19 ≈ 86dp） */
+/** 按住鼓多少：54dp 的底子，默认 1.19 倍正好鼓到齐平轨道（64dp），不再溢出去 */
 private const val PILL_BULGE_MIN = 1.06f
 private const val PILL_BULGE_SPAN = 0.26f
 
-/** 上缘镜面高光的强度：白天吃得住，夜里压到四分之一 */
-private const val SPEC_LIGHT = 0.62f
-private const val SPEC_DARK = 0.26f
+/** 上缘那条细亮弧的亮度。验收 agent 判上一版「只有一片弥散白雾、没有亮边线」，
+ * 所以这次亮度给足、宽度收到 2dp —— 是一条弧，不是一片雾 */
+private const val SPEC_LIGHT = 0.95f
+private const val SPEC_DARK = 0.34f
+/** 高光弧的宽度（约珠高 4%）；顶雾单独一档，压到只剩一点受光体积 */
+private const val ARC_LIGHT = 2f
+private const val FOG_LIGHT = 0.14f
+private const val FOG_DARK = 0.07f
 
 /** 水滴投影：静止 2dp、按住鼓到 8dp。酷安那颗珠子"浮"在轨道上靠的就是这一下 */
 private const val PILL_SHADOW_REST = 2f
@@ -212,7 +224,12 @@ fun ShelfBar(
      * 0.42 是把珠子涂白 —— 涂白的东西不需要折射也看不出是玻璃，他那句
      * "有折射有高亮还有大水滴，你什么都没有"，第一条病根就是这层白浆。
      */
-    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.16f)
+    /*
+     * 水珠的底色。判据是**珠子要比轨道亮**（酷安那颗就是亮出来的一颗水珠，不是暗下去的一块）：
+     * 白天白 0.55 压在 vibrancy 之后的页面上，实测珠子亮度才越过轨道那档；
+     * 夜里轨道是 Paper@0.12，水珠给 0.20，同样是往上亮。
+     */
+    val pillFill = if (isDark) Palette.Paper.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.55f)
     val specular = if (isDark) SPEC_DARK else SPEC_LIGHT
     // 夜里这一档没跟着降：0.22 是 0.8.8 就在的值，今晚这台机器的深色模式没能真切出来
     // （cmd uimode night yes 报 yes、dumpsys 也说 mComputedNightMode=true，界面还是浅色），
@@ -222,11 +239,17 @@ fun ShelfBar(
      * 色散 >0 就把上端偏冷、下端偏暖 —— 真·分光在这条路上做不了（顶部第 7 条），
      * 这是那根滑杆现在唯一还管得到的事。
      */
-    val rimTop = (if (isDark) 0.42f else 0.95f) * (0.45f + spec.dispersion * 0.55f)
+    /*
+     * 一整圈连续的上亮下暗细环。验收 agent 说上一版「两块油膜状斑、位置散不成环」：
+     * 冷暖两端太饱和、又叠在 1.5dp 粗边上。这版两端去饱和、色散门槛提到 0.6
+     * （常态不给彩虹）、描边收到 1dp。
+     */
+    val rimTop = (if (isDark) 0.40f else 0.85f) * (0.55f + spec.dispersion * 0.45f)
+    val chromaOn = spec.dispersion > 0.6f
     val pillRim: Brush = Brush.verticalGradient(
-        0f to (if (spec.dispersion > 0.02f) Color(0xFFBFE4FF) else Color.White).copy(alpha = rimTop),
-        0.55f to Color.White.copy(alpha = rimTop * 0.20f),
-        1f to (if (spec.dispersion > 0.02f) Color(0xFFFFE2C0) else Color.White).copy(alpha = rimTop * 0.55f),
+        0f to (if (chromaOn) Color(0xFFD6ECFF) else Color.White).copy(alpha = rimTop),
+        0.55f to Color.White.copy(alpha = rimTop * 0.28f),
+        1f to (if (chromaOn) Color(0xFFFFEEDC) else Color.White).copy(alpha = rimTop * 0.50f),
     )
     // 按住鼓到的倍数：引擎那两根不同阻尼弹簧的终点，静止 1f → 按下 pillBulge
     val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
@@ -238,8 +261,10 @@ fun ShelfBar(
     // 真机第一版三档都开太满：珠子糊到字完全化开、色散那圈彩虹抢过栏子。
     // 模糊压到轨道的三分之一（水珠要比轨道清楚才像一滴清水），带厚和位移各收一档。
     val pillBlurPx = with(density) { (spec.blur * 0.34f).toPx() }
-    val lensBandPx = with(density) { (8.dp + 16.dp * spec.refraction).toPx() }
-    val lensAmountPx = with(density) { (18.dp * spec.distortion).toPx() }
+    // 带厚收到外缘 8-10%。上一版 16dp 占 54dp 珠子的 30%，两条位移区几乎顶到中间，
+    // 验收 agent 判「珠内背景被整体放大 15-20% = 放大镜，不合格」—— 中心必须严格 1:1
+    val lensBandPx = with(density) { (3.dp + 7.dp * spec.refraction).toPx() }
+    val lensAmountPx = with(density) { (12.dp * spec.distortion).toPx() }
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
 
     BoxWithConstraints(
@@ -353,7 +378,8 @@ fun ShelfBar(
                             .clip(Capsule())
                             .hazeEffect(state = hazeState) {
                                 blurRadius = spec.blur
-                                noiseFactor = 0.05f
+                                // 0.05 那档噪点在真机上看得见面（agent：网点噪点可见、酷安干净）
+                                noiseFactor = 0.02f
                                 backgroundColor = surface
                             }
                         BarMaterial.Frosted -> Modifier
@@ -385,8 +411,8 @@ fun ShelfBar(
                     translationX =
                         if (ltr) drag.value * cellWidth + panelShift
                         else barWidth - (drag.value + 1f) * cellWidth + panelShift
-                    // 抬 6dp：珠子上沿露出轨道。别在这块 lambda 里写 with(density) ——
-                    // GraphicsLayerScope 自己有个叫 density 的 Float，会遮住外层那个 LocalDensity
+                    // 别在这块 lambda 里写 with(density)：GraphicsLayerScope 自己有个
+                    // 叫 density 的 Float（它是 Density），会遮住外层那个 LocalDensity
                     translationY = -PILL_LIFT.dp.toPx()
                 }
                 .height(PILL_HEIGHT.dp)
@@ -426,7 +452,7 @@ fun ShelfBar(
                                 lens(
                                     lensBandPx,
                                     lensAmountPx,
-                                    chromaticAberration = spec.dispersion > 0.35f,
+                                    chromaticAberration = spec.dispersion > 0.6f,
                                 )
                             },
                             // 库那三样先压成 0：上缘受光、下沿内阴影、投影都由我们自己画。
@@ -435,6 +461,11 @@ fun ShelfBar(
                             shadow = { Shadow(alpha = 0f) },
                             innerShadow = { InnerShadow(alpha = 0f) },
                         )
+                            // 这一层底色以前漏了：drawBackdrop 那一路没人叠 pillFill，
+                            // 结果 vibrancy 把页面压暗之后就直接上屏 —— 真机量到珠子里 199-205、
+                            // 轨道 245，整颗是**灰的**，看着像金属按钮不像水珠。
+                            // 水珠必须比轨道**亮**（酷安那颗就是亮出来的），所以这层白要给足。
+                            .background(pillFill, Capsule())
                         BarMaterial.Frosted -> Modifier
                             .clip(Capsule())
                             .hazeEffect(state = hazeState) {
@@ -453,22 +484,43 @@ fun ShelfBar(
                  */
                 .drawWithContent {
                     drawContent()
+                    // 顶雾：只给一点受光体积感。上一版拿它当高光，结果是一片弥散白雾、没有边线
                     drawRect(
                         brush = Brush.verticalGradient(
-                            0f to Color.White.copy(alpha = specular),
-                            0.16f to Color.White.copy(alpha = specular * 0.30f),
-                            0.46f to Color.White.copy(alpha = 0f),
+                            0f to Color.White.copy(alpha = if (isDark) FOG_DARK else FOG_LIGHT),
+                            0.40f to Color.White.copy(alpha = 0f),
                         ),
                     )
-                    drawRect(
+                    val arcW = ARC_LIGHT.dp.toPx()
+                    val arcSize = Size(size.width - arcW, size.height - arcW)
+                    val arcShift = Offset(arcW / 2f, arcW / 2f)
+                    // 上缘一条细亮弧：描边只在上半圈有亮度 —— 这才是「玻璃接光」那条线
+                    drawRoundRect(
                         brush = Brush.verticalGradient(
-                            0.52f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = if (isDark) 0.30f else 0.11f),
+                            0f to Color.White.copy(alpha = specular),
+                            0.26f to Color.White.copy(alpha = specular * 0.10f),
+                            0.60f to Color.White.copy(alpha = 0f),
                         ),
+                        topLeft = arcShift,
+                        size = arcSize,
+                        cornerRadius = CornerRadius(arcSize.height / 2f),
+                        style = Stroke(width = arcW),
+                    )
+                    // 下沿一道内阴影。上一版从 45% 就开始压、压到 0.20，agent 判
+                    // "成了一条 40dp 宽的实心底带，像脏印" —— 收到只贴最底一窄条
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            0.78f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = if (isDark) 0.26f else 0.10f),
+                        ),
+                        topLeft = arcShift,
+                        size = arcSize,
+                        cornerRadius = CornerRadius(arcSize.height / 2f),
+                        style = Stroke(width = arcW),
                     )
                 }
                 // 水珠自己一圈边光：少了它，两层同色同质就糊成一块了
-                .border(1.5.dp, pillRim, Capsule()),
+                .border(1.dp, pillRim, Capsule()),
         ) {}
 
         // ── ③ 标签层，画在最上面 ──
