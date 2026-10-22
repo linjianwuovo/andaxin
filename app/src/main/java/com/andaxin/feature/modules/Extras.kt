@@ -138,18 +138,23 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Sheet {
             Labeled(
                 label = "最近一笔",
-                value = card?.flows?.firstOrNull()?.let {
-                    "%s · %s".format(it.at.take(16), money(it)) } ?: "—",
+                value = when {
+                    card == null -> "—"
+                    card.flowsPending -> "流水还在拉…"
+                    else -> card.flows.firstOrNull()?.let {
+                        "%s · %s".format(it.at.take(16), money(it))
+                    } ?: "这 30 天没有消费"
+                },
             )
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(
                 label = "今天支出",
-                value = card?.let { "¥ %.2f".format(it.todayOut) } ?: "—",
+                value = card?.let { if (it.flowsPending) "…" else "¥ %.2f".format(it.todayOut) } ?: "—",
             )
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(
                 label = "近 30 天支出",
-                value = card?.let { "¥ %.2f".format(it.windowOut) } ?: "—",
+                value = card?.let { if (it.flowsPending) "…" else "¥ %.2f".format(it.windowOut) } ?: "—",
             )
             if (card != null && card.validUntil.isNotBlank()) {
                 Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
@@ -188,8 +193,10 @@ private fun rememberCard(): CardHolder {
     var page by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
-        val r = graph.card.card()
-        card = r.getOrNull()
+        // 余额先到就先上屏，流水那 200 条到了再整体换一次 —— 以前两个一起等，
+        // 进这一屏就是干等最慢的那一发（他 10-23 那句「校园卡数据加载慢」）
+        val r = graph.card.card(onBalance = { card = it })
+        card = r.getOrNull() ?: card
         why = r.exceptionOrNull()?.message
         // 没拿到才去问"官方页面在哪"：拿到了原生数据就不必多这一条
         page = if (r.isSuccess) null else graph.card.pageUrl()

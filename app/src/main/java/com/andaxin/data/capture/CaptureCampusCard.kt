@@ -83,12 +83,14 @@ class CampusCardClient(
         val statusText: String,
         val validUntil: String,
         val lastChange: String,
-        val flows: List<Flow>,
+        val flows: List<Flow> = emptyList(),
         /** 近 30 天窗口里自己加出来的支出合计。服务端没有"本月"这个口径，界面上要写清是 30 天。 */
-        val windowOut: Double,
-        val todayOut: Double,
+        val windowOut: Double = 0.0,
+        val todayOut: Double = 0.0,
         /** 流水那一条挂了但余额出来了 —— 分开报，别把半屏失败说成整屏没数据。 */
         val flowWhy: String? = null,
+        /** true = 余额已经到了、流水那 200 条还在路上。卡面那三行得说"还在拉"，不许摆 0。 */
+        val flowsPending: Boolean = false,
     )
 
     /**
@@ -103,7 +105,7 @@ class CampusCardClient(
     }
 
     /** 余额 + 近 30 天流水。撞 4001 会重换一次会话。 */
-    suspend fun card(): Result<Card> {
+    suspend fun card(onBalance: (Card) -> Unit = {}): Result<Card> {
         val id = session.identity()
             ?: return Result.failure(Exception("还没登录，校园卡要校方会话"))
 
@@ -111,11 +113,11 @@ class CampusCardClient(
             ?: exchange(id.accessToken, id.userCode, id.userName, id.userType)
                 .getOrElse { return Result.failure(it) }
 
-        var first = attempt(token)
+        var first = attempt(token, onBalance)
         if (first.isFailure && first.exceptionOrNull()?.message?.contains("4001") == true) {
             token = exchange(id.accessToken, id.userCode, id.userName, id.userType)
                 .getOrElse { return Result.failure(it) }
-            first = attempt(token)
+            first = attempt(token, onBalance)
         }
         return first
     }
@@ -153,7 +155,7 @@ class CampusCardClient(
         }.getOrNull()
     }
 
-    private suspend fun attempt(token: String): Result<Card> = coroutineScope {
+    private suspend fun attempt(token: String, onBalance: (Card) -> Unit = {}): Result<Card> = coroutineScope {
         // 余额和流水互不相干，一起发：串行的话这一屏要多等一个来回（实测每跳几百毫秒到两秒）
         val balTask = async { xyk(token, "XYK_BALANCE", "{}") }
         val detailTask = async {
@@ -166,6 +168,25 @@ class CampusCardClient(
             )
         }
         val bal = balTask.await().getOrElse { return@coroutineScope Result.failure(it) }
+        // 余额这一份先报出去：卡面上那个大数字、补助钱包、状态、有效期都只吃这一发。
+        // 流水要拉 200 条，是这一屏最慢的一发 —— 以前两个一起等，进屏就干等它
+        //（他 10-23 那句「校园卡数据加载慢」）。下面那份完整的照旧在最后返回。
+        onBalance(
+            Card(
+                flowsPending = true,
+                balance = bal.optString("mainFare").toDoubleOrNull() ?: 0.0,
+                subsidy = bal.optString("subsidyFare").toDoubleOrNull() ?: 0.0,
+                // 现打只见过 "1"。3/4/100 那几档是从 H5 源码读来的，没法在不挂失的前提下验，
+                // 所以未知码老老实实说"状态未知"，别拿源码里的映射表冒充实测。
+                statusText = when (bal.optString("status")) {
+                    "1" -> "正常"
+                    "" -> "状态没给"
+                    else -> "状态未知（码 ${bal.optString("status")}）"
+                },
+                validUntil = bal.optString("curNouseDate"),
+                lastChange = bal.optString("lastFareDate"),
+            ),
+        )
         val detail = detailTask.await()
         val rows = detail.mapCatching { it.rows() }.getOrElse { JSONArray() }
         val flows = (0 until rows.length()).mapNotNull { i ->
@@ -197,6 +218,7 @@ class CampusCardClient(
                 windowOut = flows.filter { !it.income }.sumOf { it.yuan },
                 todayOut = flows.filter { !it.income && it.at.startsWith(today) }.sumOf { it.yuan },
                 flowWhy = if (rows.length() == 0) detail.exceptionOrNull()?.message else null,
+                flowsPending = false,
             ),
         )
     }
