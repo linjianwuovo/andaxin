@@ -219,7 +219,7 @@ fun ShelfBar(
      * 夜里同一层奶油色就不是装饰了 —— 0.16 实测把栏底抬到 #33363A（页面是 #0E1116），
      * 还是整屏最亮的一块。压到 0.12 是 #25282D：分得出来，不抢。
      */
-    val surface = Palette.Paper.copy(alpha = if (isDark) 0.12f else 0.34f)
+    val surface = Palette.Paper.copy(alpha = if (isDark) 0.10f else 0.20f)
     // 毛玻璃那一档的整块底色：白天是奶油，夜里必须连底色一起换 ——
     // 只调 alpha 的白纱在黑底上还是一层白纱。
     val frostTint = if (isDark) Palette.NightCream.copy(alpha = 0.66f) else Palette.Paper.copy(alpha = 0.58f)
@@ -422,7 +422,11 @@ fun ShelfBar(
                             BarMaterial.Liquid -> Modifier
                                 .clip(Capsule())
                                 .hazeEffect(state = hazeState) {
-                                    blurRadius = spec.blur
+                                    // 液态这一档只吃滑杆的一半：10-22 深夜他第二句「底栏背景太糊了
+                                    // 要通透一点，参考酷安」。默认那根 0.5 现在落在 9dp —— 底下的字
+                                    // 认得出来、又确实糊过，酷安那条就是这个程度。毛玻璃那一档不动，
+                                    // 它存在的意义就是糊。
+                                    blurRadius = spec.blur * 0.5f
                                     // 0.05 那档噪点在真机上看得见面（agent：网点噪点可见、酷安干净）
                                     noiseFactor = 0.02f
                                     backgroundColor = surface
