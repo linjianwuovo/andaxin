@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.BuildConfig
+import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
@@ -68,25 +70,32 @@ import kotlinx.coroutines.launch
  *
  * 名字、学号是从登录那次落盘的键里读的，不发网络请求 —— 这一页要能在离线时照常打开。
  */
-private class Entry(val title: String, val note: String, val route: String? = null)
+private class Entry(
+    val title: String,
+    val note: String,
+    val route: String? = null,
+    /** 双色线性那套：主笔 + 点睛两张画片，色由界面现上（见 shell/ShelfBar.kt 同一段说明） */
+    val icon: Int = 0,
+    val iconAccent: Int = 0,
+)
 
 private val ENTRIES = listOf(
-    Entry("待办事务", "待办·申请·已办", "affair"),
-    Entry("查寝签到", "记录与详情", "dorm"),
-    Entry("校园卡", "余额与流水", "card"),
-    Entry("报修", "单据与新建", "repair"),
-    Entry("AI 课堂", "课件与签到", "aiclass"),
-    Entry("公开课", "目录与进度", "opencourse"),
-    Entry("班级群", "班内名单", "group"),
-    Entry("考试成绩", "列表与明细", "exam"),
-    Entry("素质学分", "五育分类", "credit"),
-    Entry("劳动教育", "工时认定", "labor"),
-    Entry("离返校", "记录与登记", "holiday"),
-    Entry("运动", "开始与记录", "sport"),
-    Entry("运动记录", "明细/维护", "sport/records"),
-    Entry("更多功能", "全部入口", "more"),
-    Entry("主题", "材质与玻璃", "theme"),
-    Entry("关于", BuildConfig.VERSION_NAME, "about"),
+    Entry("待办事务", "待办·申请·已办", "affair", R.drawable.ic_entry_todo, R.drawable.ic_entry_todo_accent),
+    Entry("查寝签到", "记录与详情", "dorm", R.drawable.ic_entry_dorm, R.drawable.ic_entry_dorm_accent),
+    Entry("校园卡", "余额与流水", "card", R.drawable.ic_entry_card, R.drawable.ic_entry_card_accent),
+    Entry("报修", "单据与新建", "repair", R.drawable.ic_entry_repair, R.drawable.ic_entry_repair_accent),
+    Entry("AI 课堂", "课件与签到", "aiclass", R.drawable.ic_entry_aiclass, R.drawable.ic_entry_aiclass_accent),
+    Entry("公开课", "目录与进度", "opencourse", R.drawable.ic_entry_opencourse, R.drawable.ic_entry_opencourse_accent),
+    Entry("班级群", "班内名单", "group", R.drawable.ic_entry_group, R.drawable.ic_entry_group_accent),
+    Entry("考试成绩", "列表与明细", "exam", R.drawable.ic_entry_exam, R.drawable.ic_entry_exam_accent),
+    Entry("素质学分", "五育分类", "credit", R.drawable.ic_entry_credit, R.drawable.ic_entry_credit_accent),
+    Entry("劳动教育", "工时认定", "labor", R.drawable.ic_entry_labor, R.drawable.ic_entry_labor_accent),
+    Entry("离返校", "记录与登记", "holiday", R.drawable.ic_entry_holiday, R.drawable.ic_entry_holiday_accent),
+    Entry("运动", "开始与记录", "sport", R.drawable.ic_entry_sport, R.drawable.ic_entry_sport_accent),
+    Entry("运动记录", "明细/维护", "sport/records", R.drawable.ic_entry_sportlog, R.drawable.ic_entry_sportlog_accent),
+    Entry("更多功能", "全部入口", "more", R.drawable.ic_entry_more, R.drawable.ic_entry_more_accent),
+    Entry("主题", "材质与玻璃", "theme", R.drawable.ic_entry_theme, R.drawable.ic_entry_theme_accent),
+    Entry("关于", BuildConfig.VERSION_NAME, "about", R.drawable.ic_entry_about, R.drawable.ic_entry_about_accent),
 )
 
 @Composable
@@ -210,6 +219,8 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 @Composable
 private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
     val ink = LocalInk.current
+    // 强调色要先取出来：graphicsLayer 那一层不是组合作用域，在里面读 MaterialTheme 会编不过
+    val accent = MaterialTheme.colorScheme.primary
     Sheet(modifier = Modifier.enterFade()) {
         entries.chunked(3).forEachIndexed { rowIdx, row ->
             Row(Modifier.fillMaxWidth()) {
@@ -221,6 +232,31 @@ private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
                             .padding(vertical = Gap.md),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        if (e.icon != 0) {
+                            Box(Modifier.size(22.dp)) {
+                                androidx.compose.foundation.Image(
+                                    painter = androidx.compose.ui.res.painterResource(e.icon),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .graphicsLayer {
+                                            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(ink.strong)
+                                        },
+                                )
+                                if (e.iconAccent != 0) {
+                                    androidx.compose.foundation.Image(
+                                        painter = androidx.compose.ui.res.painterResource(e.iconAccent),
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .matchParentSize()
+                                            .graphicsLayer {
+                                                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(accent)
+                                            },
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(Gap.xs))
+                        }
                         Text(
                             text = e.title,
                             fontSize = Type.body,

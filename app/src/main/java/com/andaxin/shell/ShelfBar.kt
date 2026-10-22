@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -131,6 +132,10 @@ fun ShelfBar(
     hazeState: HazeState,
     labels: List<String>,
     icons: List<Int>,
+    /** 未选中那枚的"点睛"层（跟着强调色），和 [icons] 一一对位；没有就不叠 */
+    iconsAccent: List<Int> = emptyList(),
+    /** 选中那一枚换成的实心图（整枚只上强调色） */
+    iconsOn: List<Int> = emptyList(),
     /** 每格右上角那颗未读角标；给 0 就不画。顺序跟 [labels] 对齐。 */
     badges: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
@@ -274,6 +279,19 @@ fun ShelfBar(
                 .graphicsLayer { translationX = panelShift }
                 .then(
                     when (material) {
+                        /*
+                         * 栏体这一档 10-22 从 drawBackdrop 换成了 haze。原因不是口味：
+                         * 那层 kyant 的采集在这台机上**一直是空的** —— 四种探法都验过
+                         * （撤 hazeSource、撤每页那层不透明底、effects 只留 blur(40)、
+                         * 把 layerBackdrop 挪到外面包的 Box 上），栏底下那行字始终清清楚楚，
+                         * 一点没糊；而同一屏切到「毛玻璃」那一档，haze 当场就糊了。
+                         * 也就是说以前这层"液态玻璃"根本没采到背景，只是蒙了张 34% 的奶白 ——
+                         * 他那句"背景都是纯色"从头到尾说的就是这件事，我第一轮只把内容放到栏底下，
+                         * 没去验糊没糊，所以到今晚才认出来。
+                         *
+                         * 水球那一层还留在 drawBackdrop 上：它静止时只画自己那层灰，
+                         * 折射要按住才看得见，等采集修好再一起换。
+                         */
                         BarMaterial.Liquid -> Modifier.drawBackdrop(
                             backdrop = pageBackdrop,
                             shape = { Capsule() },
@@ -287,11 +305,8 @@ fun ShelfBar(
                             /*
                              * 这一行是被他那句"还有一大块矩形框着那意义何在"逼出来的。
                              * `drawBackdrop` 不传 highlight 时吃的是库的 `Highlight.Default`，
-                             * 画出来是一圈 1dp（3.5px）的**纯白硬边** —— 真机像素扫过：
-                             * 栏外是 (234,236,239)，栏内是 (244,246,249)，中间那 3 个像素是 (255,255,255)。
-                             * 高光本该是压在玻璃上沿的一道柔光，绕整圈就成了"框"，
-                             * 而且因为它是白的，白天那一圈还特别像贴纸的白边。
-                             * 关成 0，边缘交给下面那圈 1dp 发丝线 —— 那才是给"栏子浮在内容上"用的。
+                             * 画出来是一圈 1dp（3.5px）的**纯白硬边**（真机像素：栏外 234、栏内 244、
+                             * 中间 3px 是 255）。关成 0，边缘交给下面那圈 1dp 发丝线。
                              */
                             highlight = { Highlight.Default.copy(alpha = 0f) },
                             layerBlock = {
@@ -301,11 +316,13 @@ fun ShelfBar(
                             },
                             onDrawSurface = { drawRect(surface) },
                         )
-                        BarMaterial.Frosted -> Modifier.hazeEffect(state = hazeState) {
-                            blurRadius = spec.blur
-                            noiseFactor = 0.14f
-                            backgroundColor = frostTint
-                        }
+                        BarMaterial.Frosted -> Modifier
+                            .clip(Capsule())
+                            .hazeEffect(state = hazeState) {
+                                blurRadius = spec.blur
+                                noiseFactor = 0.14f
+                                backgroundColor = frostTint
+                            }
                         BarMaterial.Solid -> Modifier.background(Palette.Paper, Capsule())
                     },
                 )
@@ -336,6 +353,8 @@ fun ShelfBar(
                 ShelfCell(
                     label = labels.getOrElse(index) { "?" },
                     iconRes = icons.getOrElse(index) { 0 },
+                    iconAccentRes = iconsAccent.getOrElse(index) { 0 },
+                    iconOnRes = iconsOn.getOrElse(index) { 0 },
                     active = index == current,
                     accent = accent,
                     badge = badges.getOrElse(index) { 0 },
@@ -429,6 +448,8 @@ private fun RowScope.ShelfCell(
     accent: Color,
     scale: () -> Float,
     onClick: () -> Unit,
+    iconAccentRes: Int = 0,
+    iconOnRes: Int = 0,
     badge: Int = 0,
 ) {
     val ink = LocalInk.current
@@ -457,17 +478,35 @@ private fun RowScope.ShelfCell(
             ),
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = label,
-                // 未选中那几格用最重的一级墨色（旧仓那版是他真机验收过的："tab 标签的灰色改成黑色"）。
-                modifier = Modifier
-                    .size(22.dp)
-                    .graphicsLayer {
-                        val tint = if (active) accent else ink.strong
-                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint)
-                    },
-            )
+            /*
+             * 一枚 tab 图标分两层画：主笔上墨色，点睛那一小笔上强调色。
+             * 颜色不写死在 vector 里 —— 本仓的夜间模式是 Compose 层切的（没有 values-night），
+             * 资源里写死深碳灰到夜里就是一片看不见；强调色又是「主题」里能改的。
+             * 选中那枚换成实心图，整枚只上强调色，深浅靠 vector 自己那两层 alpha。
+             */
+            Box(Modifier.size(22.dp)) {
+                Image(
+                    painter = painterResource(if (active && iconOnRes != 0) iconOnRes else iconRes),
+                    contentDescription = label,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            val tint = if (active) accent else ink.strong
+                            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint)
+                        },
+                )
+                if (!active && iconAccentRes != 0) {
+                    Image(
+                        painter = painterResource(iconAccentRes),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer {
+                                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(accent)
+                            },
+                    )
+                }
+            }
             if (badge > 0) {
                 // 数字角标：一位数就是圆点，两位数撑成胶囊，三位数收进"99+"，
                 // 免得哪天真攒出一百多条未读，把这格撑到隔壁那格身上

@@ -203,6 +203,7 @@ private fun PlanCard(plan: SportPlan?, ink: InkSet) {
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = km2(doneKm),
+                        style = Type.tabular,
                         fontSize = Type.num,
                         fontWeight = FontWeight.SemiBold,
                         color = ink.strong,
@@ -819,7 +820,7 @@ private typealias ColumnScope = androidx.compose.foundation.layout.ColumnScope
 @Composable
 private fun Stat(label: String, value: String) {
     Column {
-        Text(value, fontSize = Type.title, fontWeight = FontWeight.Medium, color = LocalInk.current.strong)
+        Text(value, style = Type.tabular, fontSize = Type.title, fontWeight = FontWeight.Medium, color = LocalInk.current.strong)
         Spacer(Modifier.height(Gap.xs))
         Text(label, fontSize = Type.micro, color = LocalInk.current.faint)
     }

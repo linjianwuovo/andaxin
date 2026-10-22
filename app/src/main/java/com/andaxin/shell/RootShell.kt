@@ -94,12 +94,20 @@ import com.andaxin.feature.brief.BriefDetailPage
  * 底栏五格。格数与顺序是他定的，不许增删改序 —— 要动先问。
  * 每格一个图标 + 一行字，图标是自己画的 vector，不引 material-icons-extended 那个大包。
  */
-private enum class Shelf(val labelRes: Int, val iconRes: Int) {
-    Home(R.string.tab_home, R.drawable.ic_tab_home),
-    Timetable(R.string.tab_schedule, R.drawable.ic_tab_schedule),
-    Message(R.string.tab_message, R.drawable.ic_tab_message),
-    Notice(R.string.tab_notice, R.drawable.ic_tab_notice),
-    Me(R.string.tab_me, R.drawable.ic_tab_me),
+private enum class Shelf(
+    val labelRes: Int,
+    /** 未选中：主笔那层（跟着墨色） */
+    val iconRes: Int,
+    /** 未选中：点睛那层（跟着强调色）。拆两张是因为色得跟着主题和自定义强调色走 */
+    val iconAccentRes: Int,
+    /** 选中：整枚实心双色填充，只用强调色上一色 */
+    val iconOnRes: Int,
+) {
+    Home(R.string.tab_home, R.drawable.ic_tab_home, R.drawable.ic_tab_home_accent, R.drawable.ic_tab_home_on),
+    Timetable(R.string.tab_schedule, R.drawable.ic_tab_schedule, R.drawable.ic_tab_schedule_accent, R.drawable.ic_tab_schedule_on),
+    Message(R.string.tab_message, R.drawable.ic_tab_message, R.drawable.ic_tab_message_accent, R.drawable.ic_tab_message_on),
+    Notice(R.string.tab_notice, R.drawable.ic_tab_notice, R.drawable.ic_tab_notice_accent, R.drawable.ic_tab_notice_on),
+    Me(R.string.tab_me, R.drawable.ic_tab_me, R.drawable.ic_tab_me_accent, R.drawable.ic_tab_me_on),
 }
 
 object Route {
@@ -415,6 +423,8 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val pageBackdrop = rememberLayerBackdrop()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
     val icons = Shelf.entries.map { it.iconRes }
+    val iconsAccent = Shelf.entries.map { it.iconAccentRes }
+    val iconsOn = Shelf.entries.map { it.iconOnRes }
     // 五格里只有「消息」那一格有未读概念（公告那份数据里没有已读未读），顺序对齐 Shelf
     val unreadMsgs by com.andaxin.core.store.Unread.messages.collectAsStateWithLifecycle()
 
@@ -454,6 +464,8 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             hazeState = haze,
             labels = labels,
             icons = icons,
+            iconsAccent = iconsAccent,
+            iconsOn = iconsOn,
             badges = listOf(0, 0, unreadMsgs, 0, 0),
             modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
         )
