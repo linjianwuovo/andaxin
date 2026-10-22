@@ -50,11 +50,13 @@ class RunService : Service() {
         return START_NOT_STICKY
     }
 
-    /** 有没有被允许发提升通知：manifest 声明 + 运行时授权，两个都要现查。 */
-    private fun canPromote(): Boolean =
-        android.os.Build.VERSION.SDK_INT >= 36 &&
-            ContextCompat.checkSelfPermission(this, "android.permission.POST_PROMOTED_NOTIFICATIONS") ==
-            PackageManager.PERMISSION_GRANTED
+    /**
+     * 有没有被允许发提升通知。以前这儿是自己现查一句 `checkSelfPermission`，
+     * 现在跟「更多功能」那一行问的是同一个地方（`LiveUpdates.canPost`）——
+     * 两处问法不一样时，会出现"界面说已允许、发出来还是普通通知"，那种最难查。
+     * 为什么两个都要问、为什么不能缓存，见 `core/notification/LiveUpdates.kt` 顶上那段。
+     */
+    private fun canPromote(): Boolean = com.andaxin.core.notification.LiveUpdates.canPost(this)
 
     override fun onDestroy() {
         scope.cancel()

@@ -1,5 +1,6 @@
 package com.andaxin.feature.modules
 
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,12 +73,54 @@ private val MORE = listOf(
 @Composable
 fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ink = LocalInk.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // 每次回到这一屏、每次点完都重新问一遍系统：ROM 那个开关是用户随时能在设置里拨的，
+    // 缓存下来就成了"我明明开了它还说不行"
+    var askTick by remember { mutableIntStateOf(0) }
+    val canPost = askTick.let { com.andaxin.core.notification.LiveUpdates.canPost(ctx) }
+    val askPromoted = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) {
+        askTick++
+        // 系统要是没弹这一发（权限本来就给了、或者这个 ROM 根本没那套弹层），就地把他送到
+        // 应用的通知设置页 —— 点了没反应比点了报错更难查
+        if (!com.andaxin.core.notification.LiveUpdates.canPost(ctx)) {
+            com.andaxin.core.notification.LiveUpdates.openNotificationSettings(ctx)
+        }
+    }
     ScaffoldPage(title = "更多功能", onBack = onBack) {
         Sheet {
             MORE.forEachIndexed { i, (label, route) ->
                 RowLine(title = label, right = "›", onClick = { open(route) })
                 if (i != MORE.lastIndex) Hairline()
             }
+        }
+        Spacer(Modifier.height(Gap.lg))
+        Sheet {
+            RowLine(
+                title = "实况更新权限",
+                sub = "跑步、上课提醒那两条要能在状态栏胶囊（流体云 / 实时动态）上露出来，靠这一发。" +
+                    "不给也能用，只是只出现在通知栏里。",
+                right = when {
+                    !com.andaxin.core.notification.LiveUpdates.supported() -> "这台系统没有"
+                    canPost -> "已允许"
+                    else -> "没允许"
+                },
+                onClick = {
+                    if (com.andaxin.core.notification.LiveUpdates.supported() && !canPost) {
+                        askPromoted.launch(android.Manifest.permission.POST_PROMOTED_NOTIFICATIONS)
+                    } else {
+                        com.andaxin.core.notification.LiveUpdates.openNotificationSettings(ctx)
+                    }
+                },
+            )
+            Hairline()
+            RowLine(
+                title = "系统里的实况开关",
+                sub = "总开关和「允许哪些应用上岛」都在那一页，我们从应用里拨不动。",
+                right = "›",
+                onClick = { com.andaxin.core.notification.LiveUpdates.openNotificationSettings(ctx) },
+            )
         }
     }
 }
