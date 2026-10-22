@@ -90,9 +90,10 @@ import kotlin.math.sign
  * 换页时机：保持"抬手那一刻换页"（旧仓真机验收过的手感），不是上游的"球先弹到位再换页"。
  *
  * 七条是踩过才知道的，别再踩一遍：
- * 1. 按压缩放只能写进 drawBackdrop 的 layerBlock —— 那是还在用 kyant 折射时的规矩（库采样背景时
- *    会对 layerBlock 做一次逆仿射，写在外面那层 graphicsLayer 球里就全是放大的字，变成放大镜）。
- *    现在水滴走 haze，它自己那层 graphicsLayer 就是最终像素，scale 反而必须写在这里。
+ * 1. 水滴**点按不放大**（他 10-22 令）。引擎的 pressedScale 钉在 1f，形变只留"拖动途中被速度
+ *    甩扁"这一种。以前那套按压缩放必须写进 drawBackdrop 的 layerBlock 的规矩，是给 kyant 折射
+ *    用的（库采样背景时会对 layerBlock 做一次逆仿射，写在外面的话球里全是放大的字，变放大镜）；
+ *    现在走 haze、水珠自己那层就是最终像素，真要恢复按压鼓包，写在这层的 graphicsLayer 就行。
  * 2. 水滴必须是栏体的兄弟节点，不然被栏体那层 clip 剪住，鼓不出栏外。
  * 3. 判"手指在哪一格"用 floor，不能用 roundToInt：round 会把格心右侧每个点都算到下一格，
  *    表现成"按住首页球往右飘"。
@@ -114,16 +115,19 @@ private const val BAR_HEIGHT = 64f
  * 水珠 48dp、轨道 64dp。原来那档是 56dp，静止时它上下各只留 4dp，
  * 于是左右两端的半圆会**戳到轨道的圆角外面去**（轨道端头那 32dp 半径往里收，
  * 水珠的 28dp 半径不收）—— 第一格和最后一格看着像"珠子漏出栏子一截"。
- * 收到 48dp 后静止时整颗在轨道里，按住鼓到 1.325 倍正好齐平轨道、再往上才出栏外，
- * 那一下才是"水滴鼓起来"，而不是一直顶着框。
+ * 收到 48dp 后静止时整颗在轨道里，不会顶到栏子外面；拖动途中被甩扁也还在轨道内。
+ * （原来静止 56dp + 按住鼓到 1.393 倍那套已经撤了 —— 他要的是点按不放大。）
  */
 private const val PILL_HEIGHT = 48f
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
-/** 水滴鼓起幅度：扭曲度 0→1 映射到 1.15→1.50 倍（原来写死 78/56 = 1.393） */
-private const val PILL_BULGE_MIN = 1.15f
-private const val PILL_BULGE_SPAN = 0.35f
+/**
+ * 水滴的形变只在**拖动途中**发生（被速度甩扁一点），点按不放大 —— 他 10-22 那句
+ * "水滴点按不要有放大效果"。所以引擎的 pressedScale 钉在 1f，扭曲度这根滑杆
+ * 改成管下面那个甩扁系数：0 → 一点不甩，1 → 甩两倍那么狠，默认 0.5 就是原样。
+ */
+private const val PILL_SQUASH_AT_HALF = 1f
 
 /** 水滴投影：静止 2dp、按住鼓到 8dp。酷安那颗珠子"浮"在轨道上靠的就是这一下 */
 private const val PILL_SHADOW_REST = 2f
@@ -194,8 +198,8 @@ fun ShelfBar(
             ),
         )
     }
-    // 按住时水珠鼓多少：引擎那两根弹簧的终点，静止 1f → 按下 pillBulge
-    val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
+    // 拖动时被甩扁的幅度系数（点按不放大，见上面 PILL_SQUASH_AT_HALF 那段）
+    val squashGain = spec.distortion * 2f * PILL_SQUASH_AT_HALF
     val rubberBandPx = with(density) { PANEL_RUBBER_BAND.dp.toPx() }
 
     BoxWithConstraints(
@@ -238,14 +242,15 @@ fun ShelfBar(
         // 且阻尼不同（1.0 / 0.6 / 0.7），按住时横纵不同步地涨，就是水滴被捏一下。
         // onDragStarted 里把 value 移到手指那一格，所以按在远处那格球是带速度弹过去的。
         // 拖动途中页面不动，换页只在抬手那一刻。
-        val drag = remember(scope, pageCount, density, ltr, cellWidth, pillBulge) {
+        val drag = remember(scope, pageCount, density, ltr, cellWidth) {
             DampedDragAnimation(
                 animationScope = scope,
                 initialValue = current.toFloat(),
                 valueRange = 0f..(pageCount - 1).toFloat(),
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
-                pressedScale = pillBulge,
+                // 1f = 按住不鼓。要手感回来只改这一个数，但那是他明确不要的放大效果。
+                pressedScale = 1f,
                 canDrag = { offset -> offset.x in 0f..barWidth },
                 onDragStarted = { position -> updateValue(indexAt(position.x).toFloat()) },
                 onDragStopped = {
@@ -342,12 +347,14 @@ fun ShelfBar(
                         if (ltr) drag.value * cellWidth + panelShift
                         else barWidth - (drag.value + 1f) * cellWidth + panelShift
                     val p = press()
-                    // X/Y 是引擎里两根不同阻尼的弹簧，不同步地涨才有被捏的味道；
-                    // 形变量吃的是 velocity（每帧由 VelocityTracker 算出来的真速度），
-                    // 不是累计位移 —— 捏一下就有、慢慢拖不会一直鼓着。
+                    // 只吃 velocity（每帧由 VelocityTracker 算出来的真速度），不吃累计位移：
+                    // 拖起来那一下珠子被甩成横的，停手立刻回圆；站着不动按住 = 一点不变。
+                    // drag.scaleX/scaleY 那两根按压弹簧现在是 1f，读它只是留着以后想调的口子。
                     val velocity = drag.velocity / 10f
-                    scaleX = drag.scaleX / (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
-                    scaleY = drag.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+                    val stretch = ((velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)) * squashGain
+                    val squeeze = ((velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)) * squashGain
+                    scaleX = drag.scaleX / (1f - stretch)
+                    scaleY = drag.scaleY * (1f - squeeze)
                     // 投影挂在这层自己的 outline 上：给了 shape 但不开 clip，
                     // 于是珠子鼓出栏外那几 dp 不会被自己剪掉，影照样投在轨道上。
                     shape = Capsule()
