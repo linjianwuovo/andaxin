@@ -399,6 +399,16 @@ fun ShelfBar(
         // pressProgress 每帧都在变，包成 lambda 传下去，别引起整排格 recompose
         val press = { drag.pressProgress }
 
+        /*
+         * 水珠此刻压在哪一格 —— 10-22 深夜定的规格：实心图、放大、盖在珠子上面那份清楚副本，
+         * 全部跟着**水珠**走，不再跟着页面走（`current` 是 pager.currentPage，换页才翻）。
+         * 必须走 derivedStateOf：drag.value 是每帧都在动的浮点，直接读会让五格每帧重组一次；
+         * 取整之后只有"越过格与格之间那条中线"的那一帧才变，重组也就只在那一下。
+         */
+        val dropIndex by remember {
+            derivedStateOf { drag.value.fastRoundToInt().fastCoerceIn(0, pageCount - 1) }
+        }
+
         // 珠子鼓到多大：pillBulge 用它算尺寸，下面算「折射能往哪儿取」也用它，两边必须同一个式子
         val bulgeX = {
             val v = drag.velocity / 10f
@@ -498,8 +508,8 @@ fun ShelfBar(
                 iconsAccent = iconsAccent,
                 iconsOn = iconsOn,
                 badges = badges,
-                current = current,
-                cursor = cursor,
+                activeIndex = dropIndex,
+                cursor = dropIndex,
                 accent = accent,
                 press = press,
                 onlyIndex = null,
@@ -634,11 +644,11 @@ fun ShelfBar(
             iconsAccent = iconsAccent,
             iconsOn = iconsOn,
             badges = emptyList(),
-            current = current,
-            cursor = cursor,
+            activeIndex = dropIndex,
+            cursor = dropIndex,
             accent = accent,
             press = press,
-            onlyIndex = current,
+            onlyIndex = dropIndex,
             interactive = false,
             modifier = Modifier.graphicsLayer { translationX = panelShift },
             onSelect = {},
@@ -688,7 +698,8 @@ private fun ShelfLabels(
     iconsAccent: List<Int>,
     iconsOn: List<Int>,
     badges: List<Int>,
-    current: Int,
+    /** 该上实心图的那一格（= 水珠现在压着的那格，不是 pager 那一页） */
+    activeIndex: Int,
     cursor: Int,
     accent: Color,
     press: () -> Float,
@@ -713,7 +724,7 @@ private fun ShelfLabels(
                     iconRes = icons.getOrElse(index) { 0 },
                     iconAccentRes = iconsAccent.getOrElse(index) { 0 },
                     iconOnRes = iconsOn.getOrElse(index) { 0 },
-                    active = index == current,
+                    active = index == activeIndex,
                     accent = accent,
                     badge = badges.getOrElse(index) { 0 },
                     scale = { if (index == cursor) lerp(1f, 1.2f, press()) else 1f },
