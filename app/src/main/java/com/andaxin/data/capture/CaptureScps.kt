@@ -9,6 +9,7 @@ import com.andaxin.data.NoticeFeed
 import com.andaxin.data.NoticeItem
 import com.andaxin.data.TimetableFeed
 import com.andaxin.data.TimetableSlot
+import com.andaxin.data.WeekTable
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -295,6 +296,21 @@ internal fun htmlParagraphs(html: String): List<String> {
  * 判断"这是不是一节课"，课表顶上单独用一行"晨跑活动"标出它。
  */
 class CaptureTimetable(private val school: School) : TimetableFeed {
+
+    /**
+     * 【取证 · ③】`POST zhxy-csh/dict/selectZcList.do` → 根节点 `rows:[{text:"第8周",value:"8"},…]`
+     * 就是这一学期的全部周次，`data.week` 是"现在第几周"（首页那句"第 8 周"用的就是它）。
+     * 界面上那一行**照这个排**，不自己数到 20 —— 学校给几周就排几格。
+     */
+    override suspend fun weeks(): WeekTable {
+        val root = school.post("${School.CSH}/dict/selectZcList.do").getOrNull() ?: return WeekTable()
+        val arr = root.optJSONArray("rows") ?: JSONArray()
+        val all = (0 until arr.length()).mapNotNull { i ->
+            arr.optJSONObject(i)?.optString("value")?.toIntOrNull()
+        }
+        val now = root.optJSONObject("data")?.optString("week")?.toIntOrNull() ?: 0
+        return WeekTable(if (all.isEmpty()) (1..20).toList() else all, now)
+    }
 
     override suspend fun week(weekOffset: Int): Result<List<TimetableSlot>> {
         val dict = school.post("${School.CSH}/dict/selectZcList.do")

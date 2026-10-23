@@ -91,6 +91,10 @@ data class TimetableUiState(
     val weekOffset: Int = 0,
     val slots: List<TimetableSlot> = emptyList(),
     val error: String? = null,
+    /** 校方那一学期的全部周次（`selectZcList.do` 的 `rows`），界面上排成"第一周…第N周"一行。 */
+    val weeks: List<Int> = emptyList(),
+    /** 现在第几周。0 = 还没拿到。 */
+    val now: Int = 0,
 )
 
 class TimetableModel(private val feed: TimetableFeed) : ViewModel() {
@@ -98,6 +102,12 @@ class TimetableModel(private val feed: TimetableFeed) : ViewModel() {
     val state: StateFlow<TimetableUiState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            val w = runCatching { feed.weeks() }.getOrNull()
+            if (w != null && w.weeks.isNotEmpty()) {
+                _state.value = _state.value.copy(weeks = w.weeks, now = w.now)
+            }
+        }
         load(0)
     }
 
@@ -108,7 +118,8 @@ class TimetableModel(private val feed: TimetableFeed) : ViewModel() {
     /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
     suspend fun refresh(offset: Int = _state.value.weekOffset) {
         val r = try { feed.week(offset) } catch (e: Exception) { Result.failure(e) }
-        _state.value = TimetableUiState(
+        // 用 copy：整份 new 会把刚拿到的周次表冲掉，那一行会闪回「本周/下周」两颗
+        _state.value = _state.value.copy(
             firstLoad = false,
             weekOffset = offset,
             slots = r.getOrDefault(_state.value.slots),

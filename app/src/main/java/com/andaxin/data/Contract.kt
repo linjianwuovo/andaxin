@@ -72,7 +72,17 @@ data class Dashboard(
 /** 课表。【取证】只有接口名 in.aiit.edu.cn 下的两个 .do，字段是待抓包状态。 */
 interface TimetableFeed {
     suspend fun week(weekOffset: Int): Result<List<TimetableSlot>>
+
+    /**
+     * 校方自己的周次表（`zhxy-csh/dict/selectZcList.do` 的 `rows`），给界面排"第一周…第N周"那一行。
+     * 默认回空 —— 占位那份数据没有周次表，界面上就退回「本周 / 下周」两颗，不摆一排空的。
+     */
+    suspend fun weeks(): WeekTable = WeekTable()
 }
+
+/** 一学期一共几周、现在第几周。`weeks` 是 1..N 的周次序号。 */
+@Immutable
+data class WeekTable(val weeks: List<Int> = emptyList(), val now: Int = 0)
 
 /** 消息中心。【取证】抓包 4 处 + .do 7 处，是证据最厚的一块。 */
 interface MessageFeed {

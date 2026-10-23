@@ -86,6 +86,9 @@ class AppGraph(val context: Context) {
 
     val store: Store by lazy { Store(context) }
 
+    /** 关于页那颗「查一次」：读我们自己那个 GitHub 仓的 release，不带任何凭据。 */
+    val updates by lazy { com.andaxin.data.capture.UpdateFeed() }
+
     /** 明暗、底栏材质、四根玻璃滑杆 */
     val appearance: AppearanceStore by lazy { AppearanceStore(store) }
 

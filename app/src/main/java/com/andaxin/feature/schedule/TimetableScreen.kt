@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -150,11 +153,29 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
                 )
             }
 
-            // 周次切换原来单占一行、离标题 16dp，看着像两个不相干的控件；现在贴着标题下面一排
+            /*
+             * 周次那一排。原来是「本周 / 下周」两颗 —— 只能往前看一周，第 9 周想调课表就得退出重进。
+             * 现在照校方那张周次表（`selectZcList.do` 的 `rows`）排成一横行「第一周…第N周」，
+             * 学校给几周就排几格，点哪格看哪周；进屏先滚到本周那一格，不让人自己找。
+             */
             Spacer(Modifier.height(Gap.xxs))
-            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                Chip("本周", state.weekOffset == 0) { model.load(0) }
-                Chip("下周", state.weekOffset == 1) { model.load(1) }
+            val shownWeek = if (state.now == 0) 0 else state.now + state.weekOffset
+            if (state.weeks.isEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                    Chip("本周", state.weekOffset == 0) { model.load(0) }
+                    Chip("下周", state.weekOffset == 1) { model.load(1) }
+                }
+            } else {
+                val weekList = rememberLazyListState()
+                LazyRow(state = weekList, horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                    items(state.weeks, key = { it }) { w ->
+                        Chip(cnWeek(w), w == shownWeek) { model.load(w - state.now) }
+                    }
+                }
+                LaunchedEffect(state.weeks, state.now) {
+                    val i = state.weeks.indexOf(state.now)
+                    if (i > 0) weekList.scrollToItem(i)
+                }
             }
 
             Spacer(Modifier.height(Gap.md))
@@ -478,5 +499,23 @@ private fun DayList(slots: List<TimetableSlot>, today: Int, runs: List<Timetable
                 Spacer(Modifier.height(Gap.xs))
             }
         }
+    }
+}
+
+/**
+ * 周次的中文写法：`7 → 第七周`、`12 → 第十二周`、`21 → 第二十一周`。
+ * 校方 `rows` 里给的是"第12周"那种阿拉伯数字，他 10-23 深夜要的是"第一周第二周"这一排，
+ * 所以数字在这儿翻成中文；超过 30（没有这种学期）直接回阿拉伯数字，不硬编一套错的读法。
+ */
+private fun cnWeek(n: Int): String = "第${cnNum(n)}周"
+
+private fun cnNum(n: Int): String {
+    val d = listOf("", "一", "二", "三", "四", "五", "六", "七", "八", "九")
+    return when {
+        n in 1..10 -> if (n == 10) "十" else d[n]
+        n in 11..19 -> "十" + d[n - 10]
+        n in 20..29 -> d[n / 10] + "十" + d[n % 10]
+        n == 30 -> "三十"
+        else -> n.toString()
     }
 }
