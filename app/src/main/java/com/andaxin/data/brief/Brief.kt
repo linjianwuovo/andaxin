@@ -63,8 +63,23 @@ sealed class Field {
 }
 
 @Immutable
-/** [sample] = 这是没登录时那份形状占位的表：字段是编的，提交也是发不出去的。 */
-data class FormSpec(val title: String, val fields: List<Field>, val sample: Boolean = false)
+/**
+ * [sample] = 这是没登录时那份形状占位的表：字段是编的，提交也是发不出去的。
+ * [defaults] = 键（= 校方的 `model`）→ 该预先填进去的值。发起流程那张表里"学号/姓名/班级"这一类
+ *   是学校自己给的预填值（`findDefinitionBase.do`），而且**提交时要照发**，
+ *   所以必须由数据源给、不能只当占位文字看。
+ * [footnote] = 这张表末尾的一句说明（比如"附件那一格本机没做"），不给就不摆。
+ * [canSubmit] = 这台机器上到底发不发得出去。发不出去（那条写口还没接）就别摆那颗键 ——
+ *   摆一颗按下去只会报错的主按钮，比少一颗按钮坏得多。
+ */
+data class FormSpec(
+    val title: String,
+    val fields: List<Field>,
+    val sample: Boolean = false,
+    val defaults: Map<String, String> = emptyMap(),
+    val footnote: String? = null,
+    val canSubmit: Boolean = true,
+)
 
 interface ListSource {
     suspend fun rows(): Result<List<BriefRow>>
