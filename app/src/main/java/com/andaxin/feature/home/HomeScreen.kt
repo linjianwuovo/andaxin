@@ -48,13 +48,13 @@ import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
 import com.andaxin.core.design.Type
+import com.andaxin.data.capture.HomeExtras
 import com.andaxin.core.net.RemoteImage
 import com.andaxin.core.schedule.Periods
 import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.HeroStyle
 import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.TimetableSlot
-import com.andaxin.data.capture.HomeExtras
 import com.andaxin.data.capture.SchoolService
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
@@ -102,22 +102,38 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     // 首页壁纸跟着「设置 → 主题」里选的那一档走：自动/晨雾/金树/月夜
     val look by graph.appearance.state.collectAsStateWithLifecycle(initialValue = Appearance())
+    /*
+     * 首页下半屏那一栏的数据。以前这里挂的是 `graph.home.load()` 那一发（服务清单 / 轮播图 /
+     * 联系方式 / 校历），屏上最后只剩「求助电话」一组号码 —— 10-23 深夜他说"删了换成待办"，
+     * 所以这一栏改成数今天该办的事；那条接口还在数据层里，只是不再上屏。
+     *
+     * key 用 `session.generation`：换票之前发出去的那几发拿着旧票，会写出一句
+     * 「登录已在别处被顶掉」而同一屏别处是真数据，看着像只接好了一半。
+     */
+    // 只剩校历那一行还在用这一发（「第 X 周」那句话是服务端给的，跟着问候语走）；
+    // 同一发里的联系方式（求助电话）10-23 深夜起不再上屏了。
     var extras by remember { mutableStateOf<HomeExtras?>(null) }
-    var extrasWhy by remember { mutableStateOf<String?>(null) }
-    var extrasTry by remember { mutableStateOf(0) }
+    LaunchedEffect(session.generation) {
+        runCatching { graph.home.load() }.getOrNull()?.onSuccess { extras = it }
+    }
+
+    var todo by remember { mutableStateOf<List<com.andaxin.data.brief.BriefRow>>(emptyList()) }
+    var todoWhy by remember { mutableStateOf<String?>(null) }
+    var todoTry by remember { mutableStateOf(0) }
     // 拉得比 700ms 还久才亮"正在拉…"：快的时候不闪那一下，慢的时候下半屏不会一片白
-    var extrasSlow by remember { mutableStateOf(false) }
-    LaunchedEffect(session.generation, extrasTry) {
-        extras = null
-        extrasWhy = null
-        extrasSlow = false
+    var todoSlow by remember { mutableStateOf(false) }
+    LaunchedEffect(session.generation, todoTry) {
+        todo = emptyList()
+        todoWhy = null
+        todoSlow = false
         val tick = launch {
             delay(700)
-            extrasSlow = true
+            todoSlow = true
         }
-        graph.home.load()
-            .onSuccess { extras = it }
-            .onFailure { extrasWhy = it.message ?: "没拉到" }
+        runCatching { graph.affairList.rows() }
+            .getOrElse { Result.failure(Exception("这一发没打出去")) }
+            .onSuccess { todo = it }
+            .onFailure { todoWhy = it.message ?: "没拉到" }
         tick.cancel()
     }
 
@@ -154,7 +170,8 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     // 两趟一起等：上面那一叠数和下半屏那几发不是一个来源，只等一边就是假动作。
     Refreshable({
         model.refresh()
-        graph.home.load().onSuccess { extras = it }
+        todoTry++
+        runCatching { graph.home.load() }.getOrNull()?.onSuccess { extras = it }
     }, modifier.fillMaxSize()) {
         val scroll = rememberScrollState()
         Column(
@@ -317,23 +334,36 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             }
 
             /*
-             * 下半屏那几块（服务清单、求助电话）是另外几条接口。
-             * 拉不到时**以前整块直接消失** —— 屏幕下半截一大片白，看着像这一版做没了。
-             * 现在照样出小标题，写一句为什么，并给一颗「重试」：拿不到就说拿不到，
-             * 不留一片让人猜的空白。
+             * 首页下半屏这一栏。以前是「求助电话」（三个报警号 + 一条校内电话），
+             * 10-23 深夜他一句"底下求助电话那一栏删了换成待办"换掉了 ——
+             * 号码那条接口照旧在数据层里，只是不再上屏；这一栏的位置给"今天要办的事"。
+             * 每一行点进去都是待办那一屏（这里只列最近四条，不在首页办事）。
              */
-            val ex = extras
+            SectionBlock("待办")
+            val top = todo.take(4)
             when {
-                ex != null -> Extras(ex)
-                extrasWhy != null -> {
-                    SectionBlock("求助电话")
-                    LoadWhy(extrasWhy, wide = false)
+                top.isEmpty() && todoSlow -> Text("正在拉…", fontSize = Type.meta, color = ink.faint)
+                top.isEmpty() && todoWhy != null -> {
+                    LoadWhy(todoWhy, wide = false)
                     Spacer(Modifier.height(Gap.sm))
-                    Chip("重试", picked = false) { extrasTry++ }
+                    Chip("重试", picked = false) { todoTry++ }
                 }
-                extrasSlow -> {
-                    SectionBlock("求助电话")
-                    Text("正在拉…", fontSize = Type.meta, color = ink.faint)
+                top.isEmpty() -> Text("现在没有待办。", fontSize = Type.body, color = ink.faint)
+                else -> Sheet(modifier = Modifier.enterFade(top.size)) {
+                    top.forEachIndexed { i, r ->
+                        RowLine(
+                            title = r.title,
+                            sub = r.sub,
+                            right = r.right,
+                            flag = r.flag,
+                            onClick = { open(com.andaxin.shell.Route.AFFAIR) },
+                        )
+                        if (i != top.lastIndex) {
+                            Spacer(Modifier.height(Gap.xs))
+                            Hairline()
+                            Spacer(Modifier.height(Gap.xs))
+                        }
+                    }
                 }
             }
             ShelfTail()
@@ -508,27 +538,6 @@ private fun SectionBlock(text: String) {
         color = LocalInk.current.muted,
         modifier = Modifier.padding(top = Rhythm.sectionGap, bottom = Gap.xs, start = Gap.xxs),
     )
-}
-
-/**
- * 首页下半屏：只剩求助电话。
- *
- * 原来还有一条「校方服务清单」—— 把学校给的 emoji 图标原样排成四列，
- * 他 10-21 11:3x 一句「删了，我自己明明可以做漂亮的界面」把它去掉了。
- * 常去的那几个入口在上一排我们自己的胶囊里，这一格不再复述一遍。
- */
-@Composable
-private fun Extras(e: HomeExtras) {
-    if (e.contacts.isNotEmpty()) {
-        SectionBlock("求助电话")
-        Sheet(modifier = Modifier.enterFade(e.contacts.size)) {
-            e.contacts.forEachIndexed { i, c ->
-                // 这发的 `infoName` 里装的是电话号码（真值见 CaptureHome 顶上第①条），键名骗人
-                RowLine(title = c.label, right = c.contact)
-                if (i != e.contacts.lastIndex) Hairline()
-            }
-        }
-    }
 }
 
 /** 只在需要时把 host 拿出来用（服务清单的副标题已经不显示了，留着给详情用）。 */
