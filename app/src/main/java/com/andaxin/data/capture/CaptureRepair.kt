@@ -46,8 +46,13 @@ import org.json.JSONObject
  *
  * 【10-23 夜里接上的】新建报修的提交在 `CaptureRepairForm.submit`（十个键 + `tpId` 空串），
  * 「取消这张单」走 `addLcbzForSjd{bxdh, cz:8}`（见下面 `act`），两者都停在连按两次之后由人按。
- * 【还是没接】传图（`uploadForSjd`）——那座桥发 multipart 时身份到底放头里还是放字段里，我们没有一手证据，
- * 盲发一次不如不做；完工评价（`updateBxdByIdForSjd{wcqk,fwpj,yjfk}`）——那两个选项的**取值表**还在 JS 的数组里没抄全。
+ * 【传图：10-24 凌晨把前提推翻】以前这里写的是"那座桥发 multipart，身份放头里还是字段里没证据"。
+ * 把 `bxjs/` 全扫了一遍 `uploadForSjd`，四处调用点在同一段 `photograph` 组件里，**它压根不是 multipart**：
+ * `ABILITY.request.post("/api/bxjlSjd/uploadForSjd.do?timestap=" + Date.now(), {fileImg: <dataURL>}, false)` ——
+ * 图是 canvas 压缩后 `readAsDataURL` 那个 base64 串，直接进 `fileImg` 一个字段；
+ * 响应读 `data.file.id` / `data.file.fileFullName`，提交时 `tpId = imgList.map(id).join(",")`；
+ * 客户端两道闸：单张 <5MB、最多 10 张。multipart 那条只有劳动工程（`lxgc`）一族在用，别当报修的样。
+ * 逐条原文与出处见 `docs/接入清单.md` 一点三之二十八。这一发我们自己还没打过，接上后照旧连按两次。
  *
  * 【10-23 更正 + 警告】`updateBxdByIdForSjd` 我以前注成"标已读"，那是猜的。官方 bundle 里它是**改单的通用口**：
  * 列表页 `toDetail` 每次点行**无条件**发 `{id, qtYqbz:1}` 然后才跳详情（无确认弹窗，回 65 字节
