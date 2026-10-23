@@ -1,0 +1,78 @@
+安大信 (andaxin)
+Copyright 2026 linjianwuovo
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+
+本项目不是官方产品
+------------------
+"安大信" 是一个学生个人写的校园客户端，不隶属安徽信息工程学院，不代表校方，也不代表
+安小信或任何第三方厂商。它做的事情只有一件：拿用户自己的账号，去访问用户自己在官方
+App 里本来就能看到的那些接口。
+
+登录口令只存在用户自己手机上，用 Android Keystore 里一把不可导出的 AES-GCM 密钥加密；
+不进日志、不进崩溃上报、不进仓库。成绩、课表、名单这些属于别人的数据只在本机显示，
+本项目不提供导出，也不向任何第三方发送。
+
+
+运行时依赖（均为 Apache-2.0，与本许可兼容）
+------------------------------------------
+坐标照 gradle/libs.versions.toml 里的写，许可取自各自 POM 的 <licenses> 声明。
+
+  Android Jetpack / Compose — Apache-2.0 — https://developer.android.com/jetpack
+    androidx.compose:compose-bom, androidx.compose.material3, androidx.compose.ui.*,
+    androidx.compose.foundation, androidx.activity:activity-compose,
+    androidx.lifecycle:*, androidx.core:core-ktx, androidx.datastore:datastore-preferences,
+    androidx.navigation:navigation-compose
+  CameraX — Apache-2.0 — https://developer.android.com/camera
+    androidx.camera:camera-camera2 / camera-lifecycle / camera-view
+  ML Kit Barcode Scanning — 自定义 Google API 许可（非 Apache，见
+  https://developers.google.com/ml-kit/terms）— com.google.mlkit:barcode-scanning
+    TODO: 分发前确认这一条的措辞，ML Kit 的许可不是 OSI 开源许可，是 Google 的服务条款。
+  OkHttp — Apache-2.0 — https://square.github.io/okhttp/ — com.squareup.okhttp3:okhttp
+  Coil — Apache-2.0 — https://coil-kt.github.io/coil/ — io.coil-kt.coil3:coil-compose,
+    coil-network-okhttp
+  kotlinx.serialization — Apache-2.0 — https://github.com/Kotlin/kotlinx.serialization
+  Miuix — Apache-2.0 — https://github.com/compose-miuix-ui/miuix
+    top.yukonga.miuix.kmp:miuix-ui / miuix-icons / miuix-blur-android
+  Haze — Apache-2.0 — https://github.com/chrisbanes/haze — dev.chrisbanes.haze:haze,
+    haze-materials
+  Shapes — Apache-2.0 — https://github.com/Kyant0/Shapes — io.github.kyant0:shapes
+    （底栏那颗水珠用的 Capsule 形状）
+
+
+机制参考（代码自写，思路来自这两处）
+------------------------------------
+  Kyant0/AndroidLiquidGlass — Apache-2.0 — https://github.com/Kyant0/AndroidLiquidGlass
+  PallavAg/liquid-glass-web-react — MIT (c) 2026 Pallav Agarwal —
+    https://github.com/PallavAg/liquid-glass-web-react
+
+  这两处提供的是"液态玻璃怎么做"的机制与数值口径（折射带、色散、SDF 圆角矩形、
+  circleMap 曲线）。app/src/main/java/com/andaxin/core/design/LiquidLens.kt 里那段 AGSL
+  和 shell/ShelfBar.kt 那四层叠法是自己写的，具体每一处对应参考实现的哪个想法，
+  TODO: 公开前逐条补一句，别只写"参考"。
+
+
+字体
+----
+  MiSans — 不是 OSI 开源许可，按小米自己的《MiSans 字体知识产权许可协议》使用并随包再分发。
+  协议原文在 docs/licenses/MiSans-字体知识产权许可协议.pdf，字体文件在
+  app/src/main/res/font/misans_vf.ttf。TODO: 公开前把该协议里"可否随开源软件再分发"
+  那一条核对一遍，不确定就换成 Google 的 Noto Sans CJK（Apache-2.0）。
+
+
+数据与协议
+----------
+  代码里出现的学校侧域名、接口名、字段形状、登录用的 RSA 公钥、校园卡那对入口常量，
+  都是从公开客户端里读到或自己现打验出来的事实数据，不是本项目的授权范围；校方随时可以
+  改动或关闭，届时对应那一屏就是取不到数。本项目不包含任何绕过鉴权、伪造身份或
+  批量抓取的能力，写操作一律停在最后一步由用户自己按。
