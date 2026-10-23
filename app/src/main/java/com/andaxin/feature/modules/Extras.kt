@@ -151,12 +151,13 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(
                 label = "今天支出",
-                value = card?.let { if (it.flowsPending) "…" else "¥ %.2f".format(it.todayOut) } ?: "—",
+                // 各看各的那一发：今天那一发回来就能填这格，不用等 200 条那发
+                value = card?.let { if (!it.todayKnown) "…" else "¥ %.2f".format(it.todayOut) } ?: "—",
             )
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(
                 label = "近 30 天支出",
-                value = card?.let { if (it.flowsPending) "…" else "¥ %.2f".format(it.windowOut) } ?: "—",
+                value = card?.let { if (it.windowPending) "…" else "¥ %.2f".format(it.windowOut) } ?: "—",
             )
             if (card != null && card.validUntil.isNotBlank()) {
                 Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
@@ -195,9 +196,9 @@ private fun rememberCard(): CardHolder {
     var page by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
-        // 余额先到就先上屏，流水那 200 条到了再整体换一次 —— 以前两个一起等，
-        // 进这一屏就是干等最慢的那一发（他 10-23 那句「校园卡数据加载慢」）
-        val r = graph.card.card(onBalance = { card = it })
+        // 三刀分三次上屏：余额 → 今天支出（顺带今天的最近一笔）→ 近 30 天那 200 条。
+        // 以前是余额和流水一起等最慢那一发（他 10-23 那句「校园卡数据加载慢」）。
+        val r = graph.card.card(onStage = { card = it })
         card = r.getOrNull() ?: card
         why = r.exceptionOrNull()?.message
         // 没拿到才去问"官方页面在哪"：拿到了原生数据就不必多这一条

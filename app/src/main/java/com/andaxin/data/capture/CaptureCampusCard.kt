@@ -89,8 +89,12 @@ class CampusCardClient(
         val todayOut: Double = 0.0,
         /** 流水那一条挂了但余额出来了 —— 分开报，别把半屏失败说成整屏没数据。 */
         val flowWhy: String? = null,
-        /** true = 余额已经到了、流水那 200 条还在路上。卡面那三行得说"还在拉"，不许摆 0。 */
+        /** true = 「最近一笔」这一格还定不下来（余额到了，能定它的那一发还没到）。 */
         val flowsPending: Boolean = false,
+        /** 今天那一发（只查当天）回来了没有。没回来时「今天支出」摆 `…`，不许摆 0。 */
+        val todayKnown: Boolean = false,
+        /** 近 30 天那 200 条还在路上 —— 「近 30 天支出」只有这一发能算。 */
+        val windowPending: Boolean = false,
     )
 
     /**
@@ -104,8 +108,11 @@ class CampusCardClient(
         runCatching { exchange(id.accessToken, id.userCode, id.userName, id.userType) }
     }
 
-    /** 余额 + 近 30 天流水。撞 4001 会重换一次会话。 */
-    suspend fun card(onBalance: (Card) -> Unit = {}): Result<Card> {
+    /**
+     * 余额 + 今天 + 近 30 天流水，分三刀交出去：[onStage] 会先收到只有余额的那一份，
+     * 再收到补上「今天支出」的那一份，最后 return 的是完整的一份。撞 4001 会重换一次会话。
+     */
+    suspend fun card(onStage: (Card) -> Unit = {}): Result<Card> {
         val id = session.identity()
             ?: return Result.failure(Exception("还没登录，校园卡要校方会话"))
 
@@ -113,11 +120,11 @@ class CampusCardClient(
             ?: exchange(id.accessToken, id.userCode, id.userName, id.userType)
                 .getOrElse { return Result.failure(it) }
 
-        var first = attempt(token, onBalance)
+        var first = attempt(token, onStage)
         if (first.isFailure && first.exceptionOrNull()?.message?.contains("4001") == true) {
             token = exchange(id.accessToken, id.userCode, id.userName, id.userType)
                 .getOrElse { return Result.failure(it) }
-            first = attempt(token, onBalance)
+            first = attempt(token, onStage)
         }
         return first
     }
@@ -155,9 +162,19 @@ class CampusCardClient(
         }.getOrNull()
     }
 
-    private suspend fun attempt(token: String, onBalance: (Card) -> Unit = {}): Result<Card> = coroutineScope {
-        // 余额和流水互不相干，一起发：串行的话这一屏要多等一个来回（实测每跳几百毫秒到两秒）
+    private suspend fun attempt(token: String, onStage: (Card) -> Unit = {}): Result<Card> = coroutineScope {
+        // 三发一起发：余额最快、只查当天那发其次、近 30 天 200 条最慢。
+        // 串行的话这一屏要多等两个来回（实测每跳几百毫秒到两秒）。
         val balTask = async { xyk(token, "XYK_BALANCE", "{}") }
+        val todayTask = async {
+            xyk(
+                token, "XYK_TRADE_DETAIL",
+                JSONObject()
+                    .put("beginIndex", 0).put("count", TODAY_PAGE)
+                    .put("beginDate", day(0)).put("endDate", day(0))
+                    .toString(),
+            )
+        }
         val detailTask = async {
             xyk(
                 token, "XYK_TRADE_DETAIL",
@@ -168,58 +185,76 @@ class CampusCardClient(
             )
         }
         val bal = balTask.await().getOrElse { return@coroutineScope Result.failure(it) }
-        // 余额这一份先报出去：卡面上那个大数字、补助钱包、状态、有效期都只吃这一发。
-        // 流水要拉 200 条，是这一屏最慢的一发 —— 以前两个一起等，进屏就干等它
-        //（他 10-23 那句「校园卡数据加载慢」）。下面那份完整的照旧在最后返回。
-        onBalance(
-            Card(
-                flowsPending = true,
-                balance = bal.optString("mainFare").toDoubleOrNull() ?: 0.0,
-                subsidy = bal.optString("subsidyFare").toDoubleOrNull() ?: 0.0,
-                // 现打只见过 "1"。3/4/100 那几档是从 H5 源码读来的，没法在不挂失的前提下验，
-                // 所以未知码老老实实说"状态未知"，别拿源码里的映射表冒充实测。
-                statusText = when (bal.optString("status")) {
-                    "1" -> "正常"
-                    "" -> "状态没给"
-                    else -> "状态未知（码 ${bal.optString("status")}）"
-                },
-                validUntil = bal.optString("curNouseDate"),
-                lastChange = bal.optString("lastFareDate"),
-            ),
-        )
-        val detail = detailTask.await()
-        val rows = detail.mapCatching { it.rows() }.getOrElse { JSONArray() }
-        val flows = (0 until rows.length()).mapNotNull { i ->
-            val o = rows.optJSONObject(i) ?: return@mapNotNull null
-            val yuan = o.optString("opfare").toDoubleOrNull() ?: return@mapNotNull null
-            Flow(
-                at = o.optString("opdt"),
-                what = o.optString("description").ifBlank { o.optString("accdscrp") },
-                term = o.optString("termName"),
-                yuan = yuan,
-                income = o.optInt("flag", 1) == 0,
+        val head = balanceOf(bal)
+        // 第一刀：余额一到就上屏。卡面那个大数字、补助钱包、状态、有效期都只吃这一发。
+        onStage(head.copy(flowsPending = true, windowPending = true))
+        /*
+         * 第二刀：只查当天那一发。它比 200 条那发回来得早，能当场定下「今天支出」；
+         * 今天有消费时连「最近一笔」也一起定了 —— 今天的行必然是整个窗口里最新的那批。
+         *
+         * 这一刀**不假设服务端按时间倒序给行**（没验过，见 docs/接入清单.md）：
+         * 今天的行自己排、自己加。「今天到底有没有拉全」用条数判：拿回来的行数不到一页，
+         * 或者 `totalCount` 说就这么多，才算全 —— 否则这一刀直接放弃，等第三刀，
+         * 宁可那一格多摆一会儿 `…`，也不摆一个算漏了的合计。
+         */
+        val todayBody = todayTask.await().getOrNull()
+        val todayRows = todayBody?.let { flowsOf(it.rows()) }
+        val todayCount = todayBody?.optInt("totalCount", -1) ?: -1
+        if (todayRows != null && (todayRows.size < TODAY_PAGE || todayCount in 0..todayRows.size)) {
+            onStage(
+                head.copy(
+                    flows = todayRows.sortedByDescending { it.at },
+                    todayOut = todayRows.filter { !it.income }.sumOf { it.yuan },
+                    todayKnown = true,
+                    // 今天有行 → 「最近一笔」当场定；今天一行没有 → 那还得等全窗口那一发
+                    flowsPending = todayRows.isEmpty(),
+                    windowPending = true,
+                ),
             )
         }
+        // 第三刀：近 30 天那 200 条。只有它能算「近 30 天支出」。
+        val detail = detailTask.await()
+        val rows = detail.mapCatching { it.rows() }.getOrElse { JSONArray() }
+        val flows = flowsOf(rows)
         val today = day(0)
         Result.success(
-            Card(
-                balance = bal.optString("mainFare").toDoubleOrNull() ?: 0.0,
-                subsidy = bal.optString("subsidyFare").toDoubleOrNull() ?: 0.0,
-                // 现打只见过 "1"。3/4/100 那几档是从 H5 源码读来的，没法在不挂失的前提下验，
-                // 所以未知码老老实实说"状态未知"，别拿源码里的映射表冒充实测。
-                statusText = when (bal.optString("status")) {
-                    "1" -> "正常"
-                    "" -> "状态没给"
-                    else -> "状态未知（码 ${bal.optString("status")}）"
-                },
-                validUntil = bal.optString("curNouseDate"),
-                lastChange = bal.optString("lastFareDate"),
+            head.copy(
                 flows = flows.sortedByDescending { it.at },
                 windowOut = flows.filter { !it.income }.sumOf { it.yuan },
                 todayOut = flows.filter { !it.income && it.at.startsWith(today) }.sumOf { it.yuan },
+                todayKnown = true,
                 flowWhy = if (rows.length() == 0) detail.exceptionOrNull()?.message else null,
                 flowsPending = false,
+                windowPending = false,
             ),
+        )
+    }
+
+    /** 卡面上只吃余额那一发的几样东西：流水没到时先拿它上屏。 */
+    private fun balanceOf(bal: JSONObject) = Card(
+        balance = bal.optString("mainFare").toDoubleOrNull() ?: 0.0,
+        subsidy = bal.optString("subsidyFare").toDoubleOrNull() ?: 0.0,
+        // 现打只见过 "1"。3/4/100 那几档是从 H5 源码读来的，没法在不挂失的前提下验，
+        // 所以未知码老老实实说"状态未知"，别拿源码里的映射表冒充实测。
+        statusText = when (bal.optString("status")) {
+            "1" -> "正常"
+            "" -> "状态没给"
+            else -> "状态未知（码 ${bal.optString("status")}）"
+        },
+        validUntil = bal.optString("curNouseDate"),
+        lastChange = bal.optString("lastFareDate"),
+    )
+
+    /** 流水行。`flag` 是 0 才算进账，`opfare` 是元。 */
+    private fun flowsOf(rows: JSONArray) = (0 until rows.length()).mapNotNull { i ->
+        val o = rows.optJSONObject(i) ?: return@mapNotNull null
+        val yuan = o.optString("opfare").toDoubleOrNull() ?: return@mapNotNull null
+        Flow(
+            at = o.optString("opdt"),
+            what = o.optString("description").ifBlank { o.optString("accdscrp") },
+            term = o.optString("termName"),
+            yuan = yuan,
+            income = o.optInt("flag", 1) == 0,
         )
     }
 
@@ -371,6 +406,9 @@ class CampusCardClient(
     private companion object {
         const val HUB = "https://hub.17wanxiao.com/bsacs"
         const val ECARD = "https://ecardh5.17wanxiao.com/ecardh5"
+        /** 只查当天那一发要多少条。一天内刷卡刷过 50 次不算常态，
+         *  真撞上了由 `totalCount` 那条判据兜住：这一刀直接放弃，等全窗口那一发。 */
+        const val TODAY_PAGE = 50
 
         /**
          * 校方清单里那条 17wanxiao 入口没了之后的兜底（旧项目 `ApiConstants` 那对常量）：
