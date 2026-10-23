@@ -70,6 +70,19 @@ App 里本来就能看到的那些接口。
   那一条核对一遍，不确定就换成 Google 的 Noto Sans CJK（Apache-2.0）。
 
 
+上游谱系（本项目不含其中的代码）
+--------------------------------
+  轻小信 / lightxin — MIT License, Copyright (c) 2026 LightXin
+  https://github.com/Relianttt/lightxin
+  （SDX8/lightxin 与本作者早年的 fork 都是它的派生，那条线整体是 MIT。）
+
+  安大信不是这条线的 fork，也不含从它任何一个版本里搬来的行：拿
+  tools/check_clean_room.py 那把尺子对 SDX8/lightxin 的**全部历史**（111 个提交、去重后
+  644 个 .kt 版本、25,734 个"连续 6 行"窗口）比过，0 命中。
+  留这一段是把关系说清楚：MIT 与 Apache-2.0 兼容，将来若确实要用到那条线的代码，
+  条件就是把上面那行版权和它的许可原文一并保留在本文件里。
+
+
 数据与协议
 ----------
   代码里出现的学校侧域名、接口名、字段形状、登录用的 RSA 公钥、校园卡那对入口常量，
