@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,7 @@ import com.andaxin.shell.Sheet
 import com.andaxin.shell.Chip
 import com.andaxin.shell.RowLine
 import com.andaxin.core.design.Type
+import kotlinx.coroutines.launch
 
 /*
  * 待办事务这一屏的三个 tab。
@@ -49,20 +51,26 @@ import com.andaxin.core.design.Type
  * 所以角标要哪个就用哪个列表自己的条数，别拿 `getYwdtCount` 那四个 0 当结论。
  */
 
-private val TABS = listOf("待办", "我的申请", "已办")
+private val TABS = listOf("待办", "待阅", "我的申请", "已办")
 
 @Composable
 fun AffairTabsScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     var tab by remember { mutableIntStateOf(0) }
-    val sources = listOf(graph.affairList, graph.myAffairList, graph.handledList)
+    val sources = listOf(graph.affairList, graph.toReadList, graph.myAffairList, graph.handledList)
     var rows by remember { mutableStateOf<List<BriefRow>>(emptyList()) }
     var why by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(true) }
+    // 「全部标已阅」也是一发写操作：连按两次、发的时候不重复点，回的话就摆在这一栏底下
+    val scope = rememberCoroutineScope()
+    var armedBulk by remember { mutableStateOf(false) }
+    var bulkBusy by remember { mutableStateOf(false) }
+    var bulkWhy by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(tab) {
         busy = true; why = null
+        armedBulk = false; bulkWhy = null
         // 没接的那一栏（登录不了 / 服务端拒了）把原话留在这一栏里，不整个屏变错误态
         val r = runCatching { sources[tab].rows() }
         rows = r.getOrNull()?.getOrDefault(emptyList()).orEmpty()
@@ -84,14 +92,50 @@ fun AffairTabsScreen(open: (String) -> Unit, onBack: () -> Unit) {
             }
             Spacer(Modifier.height(Gap.sm))
         }
+        // 只有「待阅」那一栏报了这个标签；别的栏回 null，就不摆哑按钮
+        val bulk = sources.getOrNull(tab)?.bulkLabel()
+        if (bulk != null && !busy) {
+            Sheet(modifier = Modifier.pressClick {
+                if (bulkBusy) return@pressClick
+                if (armedBulk) {
+                    armedBulk = false
+                    bulkBusy = true
+                    scope.launch {
+                        val r = runCatching { sources[tab].bulk() }.getOrNull()
+                            ?: Result.failure(Exception("这一发没打出去"))
+                        bulkWhy = r.getOrNull() ?: r.exceptionOrNull()?.message
+                        // 标成功了就重拉这一栏：剩下的才是真没阅的，不拿"学校说成功了"当数
+                        if (r.isSuccess) {
+                            rows = sources[tab].rows().getOrDefault(rows)
+                        }
+                        bulkBusy = false
+                    }
+                } else {
+                    armedBulk = true
+                }
+            }) {
+                Text(
+                    text = when {
+                        bulkBusy -> "正在发…"
+                        armedBulk -> "再按一次，真的$bulk"
+                        else -> bulk
+                    },
+                    fontSize = Type.body,
+                    color = if (armedBulk || bulkBusy) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.height(Gap.sm))
+        }
 
         if (busy) {
             Text("正在拉…", fontSize = Type.body, color = ink.faint)
         } else if (rows.isEmpty()) {
             Text(
                 text = why ?: when (tab) {
-                    1 -> "还没有发起过的申请。"
-                    2 -> "没有已办。"
+                    1 -> "这一栏回的是空列表。"
+                    2 -> "还没有发起过的申请。"
+                    3 -> "没有已办。"
                     else -> "现在没有待办。"
                 },
                 fontSize = Type.body, color = ink.faint,
@@ -120,6 +164,10 @@ fun AffairTabsScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Spacer(Modifier.height(Gap.md))
                 Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
             }
+        }
+        bulkWhy?.let {
+            Spacer(Modifier.height(Gap.md))
+            Text(it, fontSize = Type.meta, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.md))

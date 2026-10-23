@@ -20,6 +20,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +51,8 @@ fun MessageScreen(modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
     val model = adxViewModel { MessageModel(it.messages) }
     val state by model.state.collectAsStateWithLifecycle()
+    // 第一下按下去只是把这一行 arm 起来，第二次才真发 `readPushMessage.do`
+    var armedRead by remember { mutableStateOf<String?>(null) }
 
     // 下拉一次重拉这一屏：新消息不用杀进程重开才看得见
     Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
@@ -75,7 +80,17 @@ fun MessageScreen(modifier: Modifier = Modifier) {
             } else if (state.items.isNotEmpty()) {
                 Sheet {
                     state.items.forEachIndexed { i, item ->
-                        MessageRow(item) { model.markRead(item.id) }
+                        // 「标已读」也是一发写操作（`msgCenter/readPushMessage.do`），以前点一下行就替学校发了，
+                        // 而这条口的成功响应我们一次都没验过 —— 现在要连按两下，第一下只把这行变成"再按一次"
+                        MessageRow(item, armed = armedRead == item.id) {
+                            if (!item.unread) return@MessageRow
+                            if (armedRead == item.id) {
+                                armedRead = null
+                                model.markRead(item.id)
+                            } else {
+                                armedRead = item.id
+                            }
+                        }
                         if (i != state.items.lastIndex) {
                             Spacer(Modifier.height(Gap.xs))
                             Hairline()
@@ -112,7 +127,7 @@ fun MessageScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MessageRow(item: MessageItem, onClick: () -> Unit) {
+private fun MessageRow(item: MessageItem, armed: Boolean = false, onClick: () -> Unit) {
     val ink = LocalInk.current
     Row(
         Modifier
@@ -154,12 +169,23 @@ private fun MessageRow(item: MessageItem, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(Gap.sm))
         // 时间挪到右边那一栏：它以前占整行第三行，一行消息要三行才说完
-        Text(
-            text = item.sentAt.substringAfter(' ').ifBlank { item.sentAt },
-            fontSize = Type.micro,
-            color = ink.ghost,
-            textAlign = TextAlign.End,
-            modifier = Modifier.widthIn(max = 74.dp),
-        )
+        Column(Modifier.widthIn(max = 96.dp), horizontalAlignment = Alignment.End) {
+            if (armed) {
+                // arm 起来的那一下必须当场看得见，不然人只会以为"点了没反应"
+                Text(
+                    text = "再按一次标已读",
+                    fontSize = Type.micro,
+                    lineHeight = Type.metaLine,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
+            Text(
+                text = item.sentAt.substringAfter(' ').ifBlank { item.sentAt },
+                fontSize = Type.micro,
+                color = ink.ghost,
+                textAlign = TextAlign.End,
+            )
+        }
     }
 }

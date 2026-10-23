@@ -131,11 +131,11 @@ internal class DetailModel(private val source: DetailSource, private val id: Str
     }
 
     /** 详情里那颗写操作键。界面已经连按两次确认过才会走到这儿。 */
-    fun act() {
+    fun act(action: String) {
         if (_state.value.acting) return
         _state.value = _state.value.copy(acting = true, error = null)
         viewModelScope.launch {
-            val r = try { source.act(id) } catch (e: Exception) { Result.failure(e) }
+            val r = try { source.act(id, action) } catch (e: Exception) { Result.failure(e) }
             _state.value = _state.value.copy(
                 acting = false,
                 done = r.getOrNull(),
@@ -255,8 +255,9 @@ fun BriefDetailPage(
     val model = adxViewModel { DetailModel(source, id) }
     val state by model.state.collectAsStateWithLifecycle()
     val ink = LocalInk.current
-    // 写操作要连按两次：第一次只是把键变成"再按一次真的销假"，第二次才发报文
-    var armed by remember { mutableStateOf(false) }
+    // 写操作要连按两次：第一次只是把按下的那颗变成"再按一次真的××"，第二次才发报文。
+    // 记的是**哪一颗**被 arm 了 —— 三颗键挤在同一屏，按「驳回」却发出去「同意」是不能发生的事。
+    var armedKey by remember { mutableStateOf<String?>(null) }
 
     ScaffoldPage(title = state.data?.title ?: title, onBack = onBack) {
         val d = state.data
@@ -282,28 +283,29 @@ fun BriefDetailPage(
                 Spacer(Modifier.height(Gap.md))
                 Text(it, fontSize = Type.body, color = ink.body, lineHeight = Type.bodyLine)
             }
-            if (d.writable) {
-                Spacer(Modifier.height(Gap.lg))
-                    // 写操作那颗键走 Miuix 的 Button；armed 那档换成错误色，
-                // 让"这一下是真发"在颜色上就看得出来，不靠多写一行字
+            if (d.actions.isNotEmpty()) Spacer(Modifier.height(Gap.md))
+            d.actions.forEach { a ->
+                Spacer(Modifier.height(Gap.sm))
+                // armed 那档换成错误色，让"这一下是真发"在颜色上就看得出来，不靠多写一行字
+                val armed = armedKey == a.key
                 MiuixButton(
                     onClick = {
                         if (armed) {
-                            armed = false
-                            model.act()
+                            armedKey = null
+                            model.act(a.key)
                         } else {
-                            armed = true
+                            armedKey = a.key
                         }
                     },
                     enabled = !state.acting,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = if (armed) dangerColors() else ButtonDefaults.buttonColorsPrimary(),
+                    colors = if (armed || a.danger) dangerColors() else ButtonDefaults.buttonColorsPrimary(),
                 ) {
                     Text(
                         text = when {
                             state.acting -> "正在发…"
-                            armed -> "再按一次，真的${d.writeLabel.ifBlank { "提交" }}"
-                            else -> d.writeLabel.ifBlank { "提交" }
+                            armed -> "再按一次，真的${a.label}"
+                            else -> a.label
                         },
                         fontSize = Type.title,
                         fontWeight = FontWeight.Medium,
