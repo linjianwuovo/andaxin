@@ -14,6 +14,9 @@ import org.json.JSONObject
  * 九条读口全通，逐字段骨架在 `lxtmp/契约_报修现打.md`。这里只写界面上真用得着的结论。
  *
  * **域名不是门户那一套。** 这一族在 `https://repair.aiit.edu.cn/bxjlSjd/<方法>.do`。
+ * 10-23 复看官方抓包：安小信自己走的是**明文 `http://repair.aiit.edu.cn:8081/bxjlSjd/`**
+ * （H5 里写 `/api/bxjlSjd/…`，`ABILITY.request` 那座桥把 `/api` 换成 host:8081）。
+ * 两条都回得来数据，我们保留 443 那条，但别写成"官方就是 https"。
  * 同一份报文打到 `in.aiit.edu.cn/bxjlSjd/…` 是 **HTTP 405 + nginx 那页 145 字节 HTML**
  * （六种身份写法全一样），所以别拿 `School.MAIN` 当基址拼 —— 那是课表那条
  * "前缀写错捞回一坨 HTML" 的坑换了个域名再来一遍。
@@ -38,9 +41,17 @@ import org.json.JSONObject
  * **单号不存在时回的是 `flag:true` + `data.data:null`**（76 字节），不是失败。
  * 所以这里要按「没有这张报修单」处理，不能当成功有数据。
  *
- * 【没接的】新建报修的提交（`saveOrUpdateBxdForSjd`）、标已读（`updateBxdByIdForSjd`）、
- * 加备注（`addLcbzForSjd`）、传图（`uploadForSjd`）—— **一次都没发过**，形状只从 JS 读到。
- * 那是往学校系统里写单据，得他自己按。`form()` 那侧照旧走占位。
+ * 【没接的】新建报修的提交（`saveOrUpdateBxdForSjd`）、改单（`updateBxdByIdForSjd`）、
+ * 加备注（`addLcbzForSjd`）、传图（`uploadForSjd`）—— 我们一次都没发过。
+ *
+ * 【10-23 更正 + 警告】`updateBxdByIdForSjd` 我以前注成"标已读"，那是猜的。官方 bundle 里它是**改单的通用口**：
+ * 列表页 `toDetail` 每次点行**无条件**发 `{id, qtYqbz:1}` 然后才跳详情（无确认弹窗，回 65 字节
+ * `{"flag":true,"data":{},…}`）；「完工确认+服务评价」那页（组件 `MakeSure`）确认后发
+ * `{id, wcqk, fwpj, yjfk, userCode}` 打的也是同一个 `.do`。`qtYqbz` 什么字典服务端从没给过，所以不叫它"标已读"。
+ * 结论：**"打开一张报修单"这个动作本身就往学校写一次**，以后逐屏抓包别再把点行进详情当无害读。
+ * 详见 `docs/接入清单.md` 一点三之二十五。
+ * 新建提交仍然零报文：这一轮表单调出来了（`getSjh/getBxdd/getBxlx/getDictList` 那四口就是进表时发的），
+ * 提交键没按。`form()` 那侧照旧走占位。
  */
 private const val REPAIR = "https://repair.aiit.edu.cn/bxjlSjd"
 
