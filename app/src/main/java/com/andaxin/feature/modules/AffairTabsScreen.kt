@@ -54,10 +54,15 @@ import kotlinx.coroutines.launch
 private val TABS = listOf("待办", "待阅", "我的申请", "已办")
 
 @Composable
-fun AffairTabsScreen(open: (String) -> Unit, onBack: () -> Unit) {
+fun AffairTabsScreen(
+    open: (String) -> Unit,
+    onBack: () -> Unit,
+    /** 首页那一栏的四个数各指一栏，进哪一栏由它定；从别处进来还是先站在「待办」。 */
+    startTab: Int = 0,
+) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(startTab.coerceIn(0, TABS.lastIndex)) }
     val sources = listOf(graph.affairList, graph.toReadList, graph.myAffairList, graph.handledList)
     var rows by remember { mutableStateOf<List<BriefRow>>(emptyList()) }
     var why by remember { mutableStateOf<String?>(null) }

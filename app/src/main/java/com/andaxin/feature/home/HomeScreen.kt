@@ -68,6 +68,8 @@ import com.andaxin.shell.ShelfTail
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.andaxin.shell.ErrorLine
@@ -117,24 +119,32 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         runCatching { graph.home.load() }.getOrNull()?.onSuccess { extras = it }
     }
 
-    var todo by remember { mutableStateOf<List<com.andaxin.data.brief.BriefRow>>(emptyList()) }
+    /*
+     * 首页那一栏「待办事务」的四个数。排版照官方那一屏（23:1x 读屏读到的）：
+     * 一句小标题 + 一格一个数、数下面挂名字，**不是列表**。
+     *
+     * 数从哪来：**四栏各自的列表口自己数**。官方那一屏四个数全 0，而它用的是
+     * `flowRuTask/getYwdtCount.do` 那四个 redDot —— 那条口 10-20 现打定死不能用
+     * （零业务参数、`approvedType` 收了完全忽略、六次响应逐字节相同，而同一把会话下
+     * 列表口回 21 条时它四个数全 0）。所以我们不拿它当权威，谁那一栏就用谁那条列表口的条数。
+     *
+     * 四发**并着发、一起出现**（他定过一条：多数据源那一屏不许一路加载一路蹦），
+     * 哪一发挂了那一格就摆「—」而不是 0 —— 没拿到和没有是两件事。
+     */
+    val todoTabs = listOf("待办", "待阅", "我的申请", "已办")
+    var todoCounts by remember { mutableStateOf<List<String>?>(null) }
     var todoWhy by remember { mutableStateOf<String?>(null) }
     var todoTry by remember { mutableStateOf(0) }
-    // 拉得比 700ms 还久才亮"正在拉…"：快的时候不闪那一下，慢的时候下半屏不会一片白
-    var todoSlow by remember { mutableStateOf(false) }
     LaunchedEffect(session.generation, todoTry) {
-        todo = emptyList()
+        todoCounts = null
         todoWhy = null
-        todoSlow = false
-        val tick = launch {
-            delay(700)
-            todoSlow = true
+        val feeds = listOf(graph.affairList, graph.toReadList, graph.myAffairList, graph.handledList)
+        val got: List<Result<List<com.andaxin.data.brief.BriefRow>>> = coroutineScope {
+            feeds.map { f -> async { runCatching { f.rows() }.getOrElse { Result.failure(it) } } }
+                .map { it.await() }
         }
-        runCatching { graph.affairList.rows() }
-            .getOrElse { Result.failure(Exception("这一发没打出去")) }
-            .onSuccess { todo = it }
-            .onFailure { todoWhy = it.message ?: "没拉到" }
-        tick.cancel()
+        todoCounts = got.map { r -> r.getOrNull()?.size?.toString() ?: "—" }
+        todoWhy = got.firstNotNullOfOrNull { it.exceptionOrNull()?.message }
     }
 
     val d = state.data
@@ -335,35 +345,37 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 
             /*
              * 首页下半屏这一栏。以前是「求助电话」（三个报警号 + 一条校内电话），
-             * 10-23 深夜他一句"底下求助电话那一栏删了换成待办"换掉了 ——
-             * 号码那条接口照旧在数据层里，只是不再上屏；这一栏的位置给"今天要办的事"。
-             * 每一行点进去都是待办那一屏（这里只列最近四条，不在首页办事）。
+             * 10-23 深夜他一句"底下求助电话那一栏删了换成待办"换掉了 —— 号码那条接口照旧在数据层里，
+             * 只是不再上屏。排版按官方那一屏的待办事务模块：小标题 + 四个数各挂一个名字，点哪格进哪一栏。
              */
-            SectionBlock("待办")
-            val top = todo.take(4)
-            when {
-                top.isEmpty() && todoSlow -> Text("正在拉…", fontSize = Type.meta, color = ink.faint)
-                top.isEmpty() && todoWhy != null -> {
-                    LoadWhy(todoWhy, wide = false)
-                    Spacer(Modifier.height(Gap.sm))
-                    Chip("重试", picked = false) { todoTry++ }
-                }
-                top.isEmpty() -> Text("现在没有待办。", fontSize = Type.body, color = ink.faint)
-                else -> Sheet(modifier = Modifier.enterFade(top.size)) {
-                    top.forEachIndexed { i, r ->
-                        RowLine(
-                            title = r.title,
-                            sub = r.sub,
-                            right = r.right,
-                            flag = r.flag,
-                            onClick = { open(com.andaxin.shell.Route.AFFAIR) },
+            SectionBlock("待办事务")
+            Sheet(modifier = Modifier.enterFade(if (todoCounts == null) 0 else 1)) {
+                Row(Modifier.fillMaxWidth()) {
+                    todoTabs.forEachIndexed { i, name ->
+                        val v = todoCounts?.getOrNull(i) ?: "—"
+                        MetricCell(
+                            label = name,
+                            value = v,
+                            unit = "",
+                            accent = if (v != "—" && v != "0") MaterialTheme.colorScheme.primary else null,
+                            modifier = Modifier
+                                .weight(1f)
+                                .pressClick(shrink = false) { open(com.andaxin.shell.affairTab(i)) },
                         )
-                        if (i != top.lastIndex) {
-                            Spacer(Modifier.height(Gap.xs))
-                            Hairline()
-                            Spacer(Modifier.height(Gap.xs))
-                        }
+                        if (i != todoTabs.lastIndex) Spacer(Modifier.width(Gap.sm))
                     }
+                }
+            }
+            todoWhy?.let {
+                Spacer(Modifier.height(Gap.sm))
+                Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = it,
+                        fontSize = Type.meta,
+                        color = ink.faint,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Chip("重试", picked = false) { todoTry++ }
                 }
             }
             ShelfTail()
