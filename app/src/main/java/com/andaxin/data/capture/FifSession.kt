@@ -42,8 +42,8 @@ import org.json.JSONObject
  * FIF 那侧认的几个 id。名字像，来源完全不同，混了就是一脸问号。
  *
  * 【取证 · ② 我今天现打到的】`getAiktUserIdByMemberId` 回的 `data{}` 一条不差是：
- * `id="<8 位 FIF 账号 id·值从略>"(8) userType="student" name=<姓名> avatar phone="" email="" collegeId="3212"(4)
- * gender number="<10 位学号·值从略>"(10) userName="aiit+学号（值从略）"(14) userId=<32 hex> epasUserId=""
+ * `id="<8 位 FIF 账号 id>"(8) userType="student" name=<姓名> avatar phone="" email="" collegeId="3212"(4)
+ * gender number="<10 位学号>"(10) userName="aiit+学号"(14) userId=<32 hex> epasUserId=""
  * schoolId="2811000226000001678"(19) schoolName="安徽信息工程学院"`。
  * 注意 **`userName` 不是学号**，是 `aiit` 前缀 + 学号那个 14 位登录名；10 位学号在 `number`。
  * 清点表里 `userName:str(14)` 那几发（B21/C28/C31）要的就是前者。
