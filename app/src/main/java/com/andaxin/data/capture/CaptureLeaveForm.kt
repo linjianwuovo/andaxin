@@ -306,13 +306,14 @@ class CaptureLeaveForm(
                 "dateRange" -> {
                     val (sk, ek) = s.pairs[m] ?: ("" to "")
                     val f = s.formats[m].orEmpty()
+                    // 空着的必填先按"还没填"报，别让他看见一句"格式不对" —— 没填和填错是两件事
+                    if (values[sk].isNullOrBlank() && s.required.contains(m)) { missing += label; continue }
                     val a = parseTime(values[sk].orEmpty(), f)
                         ?: return Result.failure(Exception("${label}的开始时间格式不对，要像 ${example(f)}"))
                     val b = parseTime(values[ek].orEmpty(), f)
                         ?: return Result.failure(Exception("${label}的结束时间格式不对，要像 ${example(f)}"))
                     if (b.isBefore(a)) return Result.failure(Exception("${label}：结束时间不能早于开始时间"))
                     json.put(m, JSONArray().put(fmt(values[sk].orEmpty(), f)).put(fmt(values[ek].orEmpty(), f)))
-                    if (values[sk].isNullOrBlank() && s.required.contains(m)) missing += label
                 }
                 "formula" -> {
                     val ref = s.formulaRef[m]
