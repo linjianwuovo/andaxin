@@ -30,21 +30,29 @@ android {
     }
 
     /*
-     * 两条线：
-     *   beta   —— 带调试那一档（关于页连点十下、端内假 GPS、模拟路线、画线页）。
-     *            实现全在 `app/src/beta/java`，versionName 后缀 -beta。
-     *   stable —— 正式版。`app/src/stable/java` 里只有一份返回 null 的插座工厂，
-     *            那些类连编译都不参与，dex / 资源里搜不到"模拟路线"。
-     * 编哪条：assembleBetaRelease / assembleStableRelease。
+     * 两条线，不在同一个分支上：
+     *   stable —— main 这一支，公开仓只有它。`app/src/stable/java` 里只有一份返回 null
+     *            的插座工厂，另一条线那些类连编译都不参与。
+     *   beta   —— 单独分支，源码不进公开仓（本地分支 + 离线 bundle）。
+     *            versionName 后缀 -beta。
+     *
+     * 所以这个 flavor 是**按工作区里有没有那份源码来定**的，两个分支的这份文件写成一模一样：
+     * 有 `src/beta/java` 就两条都能编，没有就只剩 stable，
+     * 不会出现"挂着 beta 名字、实现却是空的"那种包。
+     * 编哪条：assembleStableRelease（哪一支都行）/ assembleBetaRelease（只在 beta 那一支）。
      */
     flavorDimensions += "channel"
     productFlavors {
-        create("beta") {
-            dimension = "channel"
-            versionNameSuffix = "-beta"
-        }
         create("stable") {
             dimension = "channel"
+        }
+        // 判 src/beta/java 这一层，不判 src/beta：删掉源码后空目录可能还留着，
+        // 空目录会把 flavor 定出来却没有工厂类，报的错还看不懂。
+        if (file("src/beta/java").isDirectory) {
+            create("beta") {
+                dimension = "channel"
+                versionNameSuffix = "-beta"
+            }
         }
     }
 
