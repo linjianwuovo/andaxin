@@ -1,10 +1,13 @@
 package com.andaxin.data.capture
 
+import com.andaxin.data.brief.Action
 import com.andaxin.data.brief.BriefDetail
 import com.andaxin.data.brief.BriefRow
 import com.andaxin.data.brief.DetailSource
 import com.andaxin.data.brief.Flag
 import com.andaxin.data.brief.ListSource
+import com.andaxin.data.brief.Prompt
+import com.andaxin.data.brief.PromptGroup
 import org.json.JSONObject
 
 /*
@@ -101,11 +104,20 @@ class CaptureRepairList(private val school: School) : ListSource {
 }
 
 class CaptureRepairDetail(private val school: School) : DetailSource {
+
+    private val bxdIdById = HashMap<String, String>()
+    private val wxryById = HashMap<String, String>()
+
     override suspend fun detail(id: String): Result<BriefDetail> {
         val root = school.repair("getBxdXqForSjd", "bxdh" to id).getOrElse { return Result.failure(it) }
         if (!root.optBoolean("flag", false)) return Result.failure(Exception(denied(root)))
         val d = root.optJSONObject("data")?.optJSONObject("data")
             ?: return Result.failure(Exception("没有这张报修单（服务端回 flag:true 但 data 是空的）"))
+
+        // 两颗写操作键要用的两个值，先按单号存下来（`bxdId` 是 `updateBxdByIdForSjd` 的 `id`，
+        // `wxry` 是「取消」那一发原样回传的值 —— 详情的 42 键里没有它时就是空串，跟他旧仓发出去的一样）
+        bxdIdById[id] = d.optString("bxdId")
+        wxryById[id] = d.optString("wxry")
 
         val flow = school.repair("getLctByBxdhForSjd", "bxdh" to id).getOrNull()
             ?.optJSONObject("data")?.optJSONObject("data")?.optJSONArray("list")
@@ -154,33 +166,81 @@ class CaptureRepairDetail(private val school: School) : DetailSource {
     }
 
     /**
-     * 这张单能不能在这儿取消。判据是官方那一页 `getDetails` 里写的一句：
-     * `dqzt=="4" || dqzt=="10"` 才把 `Withdrawals` 置 "1"，也就是**只有这两个状态下 H5 才画那颗取消键**。
-     * （`dqzt=="7"` 它自己会改写成 "5" + 名字"已取消"，所以那种单子根本不再给按钮。）
+     * 这张单上能按哪两颗键。门禁照他旧仓那份**已经跑通**的写法（`RepairDetailScreen` 顶上那两句注释）：
+     * 「取消」只在 `dqzt=="1"`（还没人接单）时给，「确认并评价」只在 `dqzt=="3"`（修完了等本人确认）时给。
+     * 我 10-23 从官方 bundle 里读到的是另一句 —— `"4" || "10"` 才把 `Withdrawals` 置 1，
+     * 那是那座桥上另一个标志、不是这两颗键的门禁；两处读法打架，按他真发过的那份。
+     *
+     * 评价那两个选项表也是从他那份抄的：`wcqk` 1=已完成 / 0=未完成，
+     * `fwpj` 1..4 = 非常满意/满意/一般/不满意，选「未完成」时 `fwpj` 发空串（H5 也这么发）。
      */
-    private fun actionsOf(d: JSONObject): List<com.andaxin.data.brief.Action> {
-        val st = d.optString("dqzt")
-        if (st != "4" && st != "10") return emptyList()
-        return listOf(com.andaxin.data.brief.Action(key = "cancel", label = "取消这张单", danger = true))
+    private fun actionsOf(d: JSONObject): List<Action> = when (d.optString("dqzt")) {
+        "1" -> listOf(Action(key = "cancel", label = "取消这张单", danger = true))
+        "3" -> listOf(
+            Action(
+                key = "evaluate",
+                label = "确认并评价",
+                prompt = Prompt(
+                    title = "这一单修得怎么样",
+                    groups = listOf(
+                        PromptGroup("wcqk", "完成情况", listOf("已完成", "未完成")),
+                        PromptGroup(
+                            "fwpj", "服务评价",
+                            listOf("非常满意", "满意", "一般", "不满意"),
+                            onlyWhen = "wcqk" to "已完成",
+                        ),
+                        PromptGroup("yjfk", "意见反馈", freeText = true, optional = true),
+                    ),
+                    note = "选「未完成」就不用给分，评价那一格学校收的是空串。",
+                ),
+            ),
+        )
+        else -> emptyList()
     }
 
     /**
-     * 「取消这张单」= `addLcbzForSjd.do`，body 只有 `bxdh` + `cz:8`。
-     *
-     * 【取证 · ① 官方 bundle 的调用点 + 10-20 现打校正】H5 那句还带了 `wxry: detailList.wxry` 和
-     * `userCode: detailList.wxyDlm`，而**详情那 42 个键里根本没有这两个名字**（详情里叫 `wxr`/`wxrDlm`），
-     * 所以它实际发的是两个 undefined、再被那座桥合并成报修人自己的 userCode。
-     * 我们就按"它真正发出去的那份"写：`bxdh` + `cz`，身份由 [School.repair] 补，不装知道 wxry 是什么。
-     * 成功响应没有实样 —— 按完回「我的报修」列表看那张单的状态，别看这里说了什么。
+     * 两颗键各自那一发，形状照他旧仓 `RepairRepository.cancel` / `evaluate`：
+     * 取消 = `addLcbzForSjd{bxdh, cz:8, wxry}`；确认并评价 = `updateBxdByIdForSjd{id: bxdId, wcqk, fwpj, yjfk}`。
+     * 判据只认外层 `flag`（`School.repair` 已经这么判），成了报两个字，详情由界面重新拉一次 ——
+     * 状态动没动看学校那一份，不看这里说了什么。一律不自动重试。
      */
-    override suspend fun act(id: String, action: String): Result<String> {
-        if (action != "cancel") return Result.failure(Exception("这张单上本机只有「取消」这一颗键"))
-        school.repair("addLcbzForSjd", "bxdh" to id, "cz" to "8")
-            .getOrElse { return Result.failure(it) }
-        return Result.success(
-            "学校回了 flag:true。官方那一页随后弹的是「已成功取消」—— 但这条纹我们没实样，" +
-                "回「我的报修」列表看这张单的状态变了没，变了才算取消掉",
-        )
+    override suspend fun act(id: String, action: String, answers: Map<String, String>): Result<String> {
+        return when (action) {
+            "cancel" -> {
+                return school.repair(
+                    "addLcbzForSjd",
+                    "bxdh" to id,
+                    "cz" to "8",
+                    "wxry" to wxryById[id].orEmpty(),
+                ).fold(onFailure = { e -> Result.failure(e) }, onSuccess = { Result.success("已取消") })
+            }
+            "evaluate" -> {
+                val bxdId = bxdIdById[id].orEmpty()
+                if (bxdId.isBlank()) {
+                    return Result.failure(Exception("这张单的详情没给 `bxdId`，评价发不过去 —— 退回列表再进一次"))
+                }
+                val done = answers["wcqk"]
+                if (done.isNullOrBlank()) return Result.failure(Exception("还没选：完成情况"))
+                val score = if (done == "已完成") SCORE[answers["fwpj"].orEmpty()] else null
+                if (done == "已完成" && score == null) return Result.failure(Exception("还没选：服务评价"))
+                return school.repair(
+                    "updateBxdByIdForSjd",
+                    "id" to bxdId,
+                    "wcqk" to if (done == "已完成") "1" else "0",
+                    "fwpj" to (score ?: ""),
+                    "yjfk" to answers["yjfk"].orEmpty().trim(),
+                ).fold(
+                    onFailure = { e -> Result.failure(e) },
+                    onSuccess = { Result.success(if (done == "已完成") "已确认完成" else "已确认未完成") },
+                )
+            }
+            else -> Result.failure(Exception("这张单上本机只有「取消」和「确认并评价」两颗键"))
+        }
+    }
+
+    private companion object {
+        /** 界面上那四句话 → 学校收的那四个数字（他旧仓 `RepairApi` 的注释就是这张表）。 */
+        val SCORE = mapOf("非常满意" to "1", "满意" to "2", "一般" to "3", "不满意" to "4")
     }
 
     private fun hasNested(flow: org.json.JSONArray): Boolean =

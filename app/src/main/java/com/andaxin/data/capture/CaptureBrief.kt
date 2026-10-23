@@ -234,5 +234,6 @@ class DetailSwitch(
         if (session.signedIn()) capture.detail(id) else local.detail(id)
 
     /** 写操作只走真接口那一侧；占位那侧本来就回"没接上报文"，不兜底。 */
-    override suspend fun act(id: String, action: String): Result<String> = capture.act(id, action)
+    override suspend fun act(id: String, action: String, answers: Map<String, String>): Result<String> =
+        capture.act(id, action, answers)
 }
