@@ -26,7 +26,12 @@ import org.json.JSONObject
  * 单条字段：`id / title / content / url / contentTypeCode / sendDate("2026-10-19 07:19") /
  * yearMonth("2026-10") / readFlag("0"|"1") / pushType / hours / minutes`。
  * 两个坑：① `createDate` 是 Java `LocalDateTime` 序列化出来的**对象**，不是字符串，别去 parse 它，
- * 要时间看 `sendDate`；② 我试过 `dealFlag=0` 不带 `sourceType`，回的是 0 条 —— 所以 `sourceType` 是必填。
+ * 要时间看 `sendDate`；② 那句"我试过 `dealFlag=0` 不带 `sourceType`、回 0 条，所以 `sourceType` 必填"
+ * **10-23 降级**：官方 App 自己那一发就是 `currentPage=1&pageSize=10&dealFlag=0`、也没带 `sourceType`，
+ * 回的同样是 `flag:true` + `totalRecords:0` + 空数组。0 条只证明那个组合是空集，不证明必填。
+ * `sourceType` 到底是必填还是换分类口径，没现打验过之前别再当结论用。
+ * 顺带一条 `_userType`：这一发官方打的是 **2**，不是登录响应里那个 1；同口的只有
+ * `checkServiceVersion`/`click`（"从服务入口进去那一侧"），App 外壳自己那 15 条口都是 1。
  *
  * 分类：10-20 现打 30 条全量定死了 —— **`contentTypeCode` 没有字典口**，`contentTypeName` 恒空串，
  * 那 28 条 `getSystemInfoDict.do` 管的是来源系统不是消息类型。所以只按有实样的短码分，

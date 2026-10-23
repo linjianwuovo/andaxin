@@ -44,8 +44,11 @@ data class Session(
 /**
  * 协议层要带的身份四件套。名字照校方字段来，别在中间层再翻一次命名。
  *
- * `userType` 是登录响应里那个 `userType`（学生是 "1"）。抓包里有一条消息列表打的是 "2"，
- * 那是安小信自己分系统消息时用的，不代表身份，别跟着改。
+ * `userType` 是登录响应里那个 `userType`（学生是 "1"）。官方 App 自己也有发 "2" 的时候，
+ * 10-23 逐屏抓完数出来了：scps 那 18 条带 `_userType` 的口里恰好三条发 2 ——
+ * `msgCenter/mesDetailListNew`、`appService/checkServiceVersion`、`userLogin/click`，
+ * 都是"从服务入口进去的那一侧"；App 外壳自己那 15 条全是 1。
+ * 我们这边所有口都照登录响应原样带 1，目前条条回得来数据，**别跟着改成 2**。
  */
 @Immutable
 data class SchoolIdentity(
