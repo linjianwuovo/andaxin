@@ -144,6 +144,8 @@ object Route {
     const val REPAIR_DETAIL = "repair/detail/{id}"
     const val REPAIR_FORM = "repair/form"
     const val AFFAIR = "affair"
+    /** 首页那四个数各进一栏：`affair/tab/1`（0 待办 / 1 待阅 / 2 我的申请 / 3 已办）。 */
+    const val AFFAIR_TAB = "affair/tab/{tab}"
     const val AFFAIR_DETAIL = "affair/detail/{id}"
     const val AFFAIR_FORM = "affair/form"
     const val AICLASS = "aiclass"
@@ -169,8 +171,16 @@ object Route {
     const val WEB = "web/{u}"
 }
 
+/** 首页「待办事务」那四个数各进哪一栏（0 待办 / 1 待阅 / 2 我的申请 / 3 已办）。 */
+fun affairTab(index: Int): String = "affair/tab/${index.coerceIn(0, 3)}"
+
 /** 详情路由都带一个 {id}，注册时统一走这个，省掉二十行重复。 */
 private const val ID_ARG = "id"
+
+private const val TAB_ARG = "tab"
+
+/** 首页数字格进哪一栏，参数就是个 0..3 的序号。 */
+private fun tabPattern() = androidx.navigation.navArgument(TAB_ARG) { defaultValue = "0" }
 
 private fun idPattern() = androidx.navigation.navArgument(ID_ARG) { defaultValue = "" }
 
@@ -294,6 +304,13 @@ fun RootShell() {
         }
         page(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
         page(Route.AFFAIR) { AffairTabsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
+        page(Route.AFFAIR_TAB, arguments = listOf(tabPattern())) { e ->
+            AffairTabsScreen(
+                startTab = e.arguments?.getString(TAB_ARG)?.toIntOrNull() ?: 0,
+                open = { nav.navigate(it) },
+                onBack = { nav.popBackStack() },
+            )
+        }
         page(Route.AFFAIR_DETAIL, arguments = listOf(idPattern())) { e ->
             AffairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
