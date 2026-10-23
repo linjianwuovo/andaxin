@@ -130,17 +130,26 @@ internal class DetailModel(private val source: DetailSource, private val id: Str
         }
     }
 
-    /** 详情里那颗写操作键。界面已经连按两次确认过才会走到这儿。 */
-    fun act(action: String) {
+    /**
+     * 详情里那颗写操作键。界面已经连按两次确认过才会走到这儿。
+     *
+     * 成了**立刻把这详情重新拉一次**（他旧仓也是这个顺序：`onSuccess = { writeOk = true; load() }`）——
+     * 状态有没有真动，看的是学校那一份，不是这里报了什么。重拉失败不影响刚那句"已同意"。
+     */
+    fun act(action: String, answers: Map<String, String> = emptyMap()) {
         if (_state.value.acting) return
         _state.value = _state.value.copy(acting = true, error = null)
         viewModelScope.launch {
-            val r = try { source.act(id, action) } catch (e: Exception) { Result.failure(e) }
+            val r = try { source.act(id, action, answers) } catch (e: Exception) { Result.failure(e) }
             _state.value = _state.value.copy(
                 acting = false,
                 done = r.getOrNull(),
                 error = r.exceptionOrNull()?.message,
             )
+            if (r.isSuccess) {
+                val again = runCatching { source.detail(id) }.getOrNull()
+                again?.getOrNull()?.let { _state.value = _state.value.copy(data = it) }
+            }
         }
     }
 }
@@ -258,6 +267,10 @@ fun BriefDetailPage(
     // 写操作要连按两次：第一次只是把按下的那颗变成"再按一次真的××"，第二次才发报文。
     // 记的是**哪一颗**被 arm 了 —— 三颗键挤在同一屏，按「驳回」却发出去「同意」是不能发生的事。
     var armedKey by remember { mutableStateOf<String?>(null) }
+    // 有的键按下去之前得先问两句（报修那两颗：完成情况 / 服务评价）。就地摊开问，
+    // 不跳二级页、也不弹窗 —— 这屏本来就在一层页上，弹层里再套确认容易按错。
+    val answers = remember { mutableStateMapOf<String, String>() }
+    var promptWhy by remember { mutableStateOf<String?>(null) }
 
     ScaffoldPage(title = state.data?.title ?: title, onBack = onBack) {
         val d = state.data
@@ -286,14 +299,49 @@ fun BriefDetailPage(
             if (d.actions.isNotEmpty()) Spacer(Modifier.height(Gap.md))
             d.actions.forEach { a ->
                 Spacer(Modifier.height(Gap.sm))
-                // armed 那档换成错误色，让"这一下是真发"在颜色上就看得出来，不靠多写一行字
                 val armed = armedKey == a.key
+                val prompt = a.prompt
+                if (prompt != null && armed) {
+                    // 第一次按下去先把要问的摊开，选齐了第二下才真发
+                    prompt.groups.filter { visibleGroup(it, answers) }.forEach { g ->
+                        Spacer(Modifier.height(Gap.sm))
+                        Text(g.label, fontSize = Type.meta, color = ink.muted)
+                        Spacer(Modifier.height(Gap.xs))
+                        if (g.freeText) {
+                            MiuixTextField(
+                                value = answers[g.key].orEmpty(),
+                                onValueChange = { answers[g.key] = it },
+                                label = g.options.firstOrNull().orEmpty(),
+                            )
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(Gap.xs)) {
+                                g.options.forEach { opt ->
+                                    Chip(opt, answers[g.key] == opt) { answers[g.key] = opt }
+                                }
+                            }
+                        }
+                    }
+                    prompt.note.takeIf { it.isNotBlank() }?.let {
+                        Spacer(Modifier.height(Gap.xs))
+                        Text(it, fontSize = Type.micro, color = ink.faint, lineHeight = Type.metaLine)
+                    }
+                }
                 MiuixButton(
                     onClick = {
                         if (armed) {
+                            // 该选的没选齐 —— 在这儿说清楚缺哪一句，**一发都不往外发**
+                            val miss = prompt?.groups
+                                ?.filter { visibleGroup(it, answers) && !it.optional && answers[it.key].isNullOrBlank() }
+                                ?.map { it.label }
+                            if (!miss.isNullOrEmpty()) {
+                                promptWhy = "还没选：" + miss.joinToString("、")
+                                return@MiuixButton
+                            }
+                            promptWhy = null
                             armedKey = null
-                            model.act(a.key)
+                            model.act(a.key, answers.toMap())
                         } else {
+                            promptWhy = null
                             armedKey = a.key
                         }
                     },
@@ -312,6 +360,10 @@ fun BriefDetailPage(
                     )
                 }
             }
+        }
+        promptWhy?.let {
+            Spacer(Modifier.height(Gap.sm))
+            Text(it, fontSize = Type.meta, color = MaterialTheme.colorScheme.error)
         }
         state.done?.let {
             Spacer(Modifier.height(Gap.md))
@@ -655,3 +707,13 @@ fun ScaffoldPage(
 
 @Composable
 private fun topBarBackdrop() = MiuixTheme.colorScheme.background
+
+/**
+ * 这一组现在要不要出现：`onlyWhen = (组key -> 必须选中的那一条)`。
+ * 报修那两颗就是这用法 —— 只有选了"已完成"才需要给评价分，选"未完成"时 H5 那边评价发的是空串。
+ */
+private fun visibleGroup(g: com.andaxin.data.brief.PromptGroup, answers: Map<String, String>): Boolean {
+    val (k, v) = g.onlyWhen ?: return true
+    return answers[k] == v
+}
+

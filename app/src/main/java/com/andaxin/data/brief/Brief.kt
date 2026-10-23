@@ -51,6 +51,31 @@ data class Action(
     val label: String,
     /** 红色那颗：删掉、驳回这种一旦发出去就退不回来的 */
     val danger: Boolean = false,
+    /** 按下去之前要先问的几个问题（比如报修的"确认并评价"）。空 = 直接连按两次就发。 */
+    val prompt: Prompt? = null,
+)
+
+/**
+ * 一颗写操作键要收的答案。界面上按 [groups] 的顺序画，回给 [DetailSource.act] 的是 `group.key -> 选中的原文`。
+ * 选项文字就是发出去的顺序索引由数据源自己翻 —— 界面只负责把选中的那条交回去。
+ */
+@Immutable
+data class Prompt(
+    val title: String,
+    val groups: List<PromptGroup>,
+    val note: String = "",
+)
+
+@Immutable
+data class PromptGroup(
+    val key: String,
+    val label: String,
+    /** 单选的几个选项；[freeText] 为真时这个列表可以空着 */
+    val options: List<String> = emptyList(),
+    val freeText: Boolean = false,
+    val optional: Boolean = false,
+    /** 这一组只有当选了某个值才要填（评价只在"已完成"时选） */
+    val onlyWhen: Pair<String, String>? = null,
 )
 
 /** 审批链的一环。四个字段全是校方给的原文，界面不加工。 */
@@ -115,10 +140,11 @@ interface DetailSource {
     suspend fun detail(id: String): Result<BriefDetail>
 
     /**
-     * 详情里某一颗写操作键。[action] 是 [Action.key]，界面已经连按两次确认过才会走到这儿。
+     * 详情里某一颗写操作键。[action] 是 [Action.key]，[answers] 是那颗键上 [Action.prompt] 收的答案
+     * （键 = `PromptGroup.key`，值 = 选中的那一条**原文**）；界面已经连按两次确认过才会走到这儿。
      * 默认不给：没接上报文的一律回 failure，界面就只显示那句原因，绝不静默成功。
      */
-    suspend fun act(id: String, action: String): Result<String> =
+    suspend fun act(id: String, action: String, answers: Map<String, String> = emptyMap()): Result<String> =
         Result.failure(Exception("这一屏没有可发的写操作"))
 }
 

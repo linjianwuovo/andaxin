@@ -787,19 +787,19 @@ class CaptureAffairDetail(
     /**
      * 发其中一颗键按下去的那一发。
      *
-     * 【取证】四条口都只有 ①（读它 H5 的调用点）+ 他旧仓 10-13/10-14 接通的同一形状，
-     * **成功响应一条实样都没有** —— 所以每颗键都在界面上连按两次才走到这儿，且一律不自动重试
-     * （重发一次就是多审一次、多删一次）。回 `flag:true` 只说"学校这么答了"，不替它宣布生效。
+     * 【取证】四条口的形状 = 读它 H5 的调用点 + **他旧仓里已经跑通的那一份**（10-13 接的同意/驳回/删除/批量已阅、
+     * 10-14 抓包定下来的销假），判据也只认外层 `flag`，跟他那份一模一样：不猜返回里还有什么别的键。
+     * 一律不自动重试（重发一次就是多审一次、多删一次），界面上每颗键连按两次才走到这儿。
+     * 成了就只报两个字，然后**把这详情重新拉一次** —— 状态有没有真动，看的是学校那一份，不是我这里说了什么。
      *
      * `agree`/`disagree` 的 `dataJson` 用的是 `getForm` 回显的**原文**，一个字都不重拼 ——
      * 拼错就等于替申请人改掉他填的东西。
      */
-    override suspend fun act(id: String, action: String): Result<String> {
+    override suspend fun act(id: String, action: String, answers: Map<String, String>): Result<String> {
         val a = affordById[id]
             ?: return Result.failure(Exception("这一条已经不在待办列表里了，回列表重进一次"))
         if (a.executionId.isBlank()) return Result.failure(Exception("这条是消息类，没有可提交的流程"))
         val stamp = System.currentTimeMillis().toString()
-        val why = "学校回了 flag:true —— 这四条口的成功响应我们都没有实样，回列表刷新一下看它到底动没动"
         return when (action) {
             "agree", "reject" -> {
                 val dataJson = dataJsonById[id]
@@ -812,7 +812,7 @@ class CaptureAffairDetail(
                     "ruTaskNodeId" to a.nodeId,
                     "remark" to "",
                     "_t" to stamp,
-                ).map { why }
+                ).map { if (action == "agree") "已同意" else "已驳回" }
             }
             "xj" -> {
                 val dataJson = dataJsonById[id]
@@ -824,16 +824,16 @@ class CaptureAffairDetail(
                     "ruTaskNodeId" to a.nodeId,
                     "stuQjsq" to """{"xjfjList":[]}""",
                     "_t" to stamp,
-                ).map { why }
+                ).map { "已销假" }
             }
             "withdraw" -> school.postH5(
                 "${School.YWLZ}/mobile/flowRuTask/withdrawExecution.do",
                 "executionId" to a.executionId,
-            ).map { why }
+            ).map { "已撤回" }
             "delete" -> school.postH5(
                 "${School.YWLZ}/mobile/flowRuTask/deleteExecution.do",
                 "executionId" to a.executionId,
-            ).map { "学校回了 flag:true。H5 弹的那句是「一经删除，该流程自动移除，请谨慎操作。」—— 回列表看看少了哪一条" }
+            ).map { "已删除" }
             else -> Result.failure(Exception("这一颗键本机没接"))
         }
     }
