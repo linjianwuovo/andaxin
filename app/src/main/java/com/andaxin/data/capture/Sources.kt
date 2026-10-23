@@ -23,6 +23,9 @@ class TimetableSource(
 ) : TimetableFeed {
     override suspend fun week(weekOffset: Int) =
         if (session.signedIn()) capture.week(weekOffset) else local.week(weekOffset)
+
+    // 周次表是真数据那一发才有的东西；没登录时那份占位没有周次表，界面上会退回「本周/下周」两颗
+    override suspend fun weeks() = if (session.signedIn()) capture.weeks() else local.weeks()
 }
 
 class MessageSource(

@@ -248,7 +248,9 @@ fun RootShell() {
     ) {
         page(Route.SHELF) { Gate(appearance, open = { nav.navigate(it) }) }
         page(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
-        page(Route.ABOUT) { AboutScreen(onBack = { nav.popBackStack() }) }
+        page(Route.ABOUT) {
+            AboutScreen(onBack = { nav.popBackStack() }, open = { nav.navigate(it) })
+        }
         page(Route.PROFILE) { ProfileScreen(onBack = { nav.popBackStack() }) }
         page(Route.SPORT) { SportStartScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
