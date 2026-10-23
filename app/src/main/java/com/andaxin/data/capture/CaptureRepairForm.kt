@@ -33,10 +33,21 @@ import org.json.JSONObject
  *    这一版没往界面上放 —— `FormSpec` 只有字段位，塞成一条输入框的提示文字太委屈它。
  *    要做就单独开一屏或做成详情页那种正文，下一版连提交一起做。
  *
- * **提交仍是死的**：`saveOrUpdateBxdForSjd` 是写口，形状读到了（`xqdm/lyId/qyfjh/xxdz/sjh/gzms/xm/userCode/tpId/bxlx`
- * ＋可选 `kssj/jssj/loginType`），一次没发 —— 那是往学校系统里造一张真单。
+ * **提交 10-23 夜里接上了**（见下面 [submit]）：十个键的形状是 `xqdm/lyId/qyfjh/xxdz/sjh/gzms/xm/userCode/tpId/bxlx`
+ * ＋可选 `kssj/jssj`，姓名和手机号提交时现问 `getSjhForSjd`。它是写口，界面上连按两次才发，
+ * 而且**成功响应没有实样** —— 按完只报"学校答了 flag:true"，有没有真成单指向「我的报修」列表去数。
+ * `loginType` 不发：官方那发带它，可我们没验过不给会怎样，而读那一族去掉它照样回全量。
  */
 class CaptureRepairForm(private val school: School) : FormSource {
+
+    /** 界面上给人选的是名字，提交要发的是 id —— 这两张对照表在 [spec] 里建、在 [submit] 里用。 */
+    private class Shape(
+        val typeIds: Map<String, String>,
+        val placeIds: Map<String, String>,
+    )
+
+    @Volatile
+    private var shape: Shape? = null
 
     override suspend fun spec(): Result<FormSpec> {
         val types = tree("getBxlxForSjd")
@@ -66,14 +77,80 @@ class CaptureRepairForm(private val school: School) : FormSource {
             }
             add(Field.Text(KEY_DESC, "问题描述", hint = "哪里坏了、什么时候开始的，越具体越好"))
         }
-        return Result.success(FormSpec(title = "新建报修", fields = fields, canSubmit = false))
+        shape = Shape(
+            typeOptions.toMap(),
+            placeOptions.toMap(),
+        )
+        return Result.success(
+            FormSpec(
+                title = "新建报修",
+                fields = fields,
+                footnote = "照片那一栏本机还没做（要往学校传文件那条口一次没现打过），" +
+                    "所以这张单是以「没有照片」交上去的。",
+            ),
+        )
     }
 
-    /** 提交时要用的是 id 不是名字，所以把"名字→id"的对照留在服务端侧：这里只回失败。 */
-    override suspend fun submit(values: Map<String, String>): Result<String> =
-        Result.failure(
-            Exception("提交那条（saveOrUpdateBxdForSjd）是写口，一次没发过 —— 要往学校系统里造真单，得你自己按"),
+    /**
+     * 提交这一张单。
+     *
+     * 【取证 · ① + 我们自己的现打】十个键逐个来自官方 bundle 里那段 `submitAllAjax`
+     * （`xqdm/lyId/qyfjh/xxdz/sjh/gzms/xm/userCode/tpId/bxlx`，期望时间 `kssj/jssj` 有才带），
+     * 三段 id 的取法（一级码 / 二级楼栋 / 三级楼层）和"发 id、回名字"那条不对称是 10-20 现打定死的。
+     * **成功响应没有实样** —— 这一条口一次没发过，所以按完只报"学校答了 flag:true"，
+     * 到底有没有成单一句话指向「我的报修」列表自己去数。
+     *
+     * 姓名和手机号是提交时现问 `getSjhForSjd` 的（H5 也是这么覆盖那两个框的），
+     * 界面上不摆、本机不落盘 —— 少了这两个键这张单没有联系人，学校那边多半不认。
+     */
+    override suspend fun submit(values: Map<String, String>): Result<String> {
+        val s = shape
+            ?: return Result.failure(Exception("这张表的字典还没解出来，退回列表再进一次"))
+        val bxlx = s.typeIds[values[KEY_TYPE].orEmpty()]
+            ?: return Result.failure(Exception("故障类型没选上（选中的那条在本机过滤掉的名单里）"))
+        val triple = s.placeIds[values[KEY_PLACE].orEmpty()]
+            ?: return Result.failure(Exception("报修地点没选上"))
+        val bits = triple.split("|")
+        val xqdm = bits.getOrElse(0) { "" }
+        val lyId = bits.getOrElse(1) { "" }
+        val qyfjh = bits.getOrElse(2) { "" }
+        if (xqdm.isBlank() || lyId.isBlank() || qyfjh.isBlank()) {
+            // H5 那边是"三段没选齐就直接 return false + 提示"，我们照它拦，不发半张单过去
+            return Result.failure(Exception("这一条地点校方只给到两段，学校要求校区·楼栋·楼层三段选齐 —— 换一条带楼层的"))
+        }
+        val addr = values[KEY_ADDR].orEmpty().trim()
+        if (addr.isBlank()) return Result.failure(Exception("详细地址还没填"))
+        val desc = values[KEY_DESC].orEmpty().trim()
+        if (desc.isBlank()) return Result.failure(Exception("问题描述还没写"))
+        val who = school.repairJson("getSjhForSjd").getOrNull()?.optJSONObject("data")
+        val sjh = who?.optString("sjh").orEmpty()
+        val xm = who?.optString("xm").orEmpty()
+        if (sjh.isBlank() || xm.isBlank()) {
+            return Result.failure(Exception("学校没回报修人的姓名和手机号（getSjhForSjd 那发是空的），这张单发过去会缺联系人"))
+        }
+        val fields = mutableListOf(
+            "xqdm" to xqdm,
+            "lyId" to lyId,
+            "qyfjh" to qyfjh,
+            "xxdz" to addr,
+            "sjh" to sjh,
+            "gzms" to desc,
+            "xm" to xm,
+            "userCode" to school.userCode(),
+            "tpId" to "",                      // 没有照片就是这个空串，不是没填这个键
+            "bxlx" to bxlx,
         )
+        values[KEY_START]?.takeIf { it.isNotBlank() }?.let { fields += "kssj" to it }
+        values[KEY_END]?.takeIf { it.isNotBlank() }?.let { fields += "jssj" to it }
+        val root = school.repairJson("saveOrUpdateBxdForSjd", *fields.toTypedArray())
+            .getOrElse { return Result.failure(it) }
+        val no = root.optJSONObject("data")?.optString("bxdh").orEmpty()
+        return Result.success(
+            if (no.isNotBlank()) "学校说成了，单号 $no —— 回「我的报修」列表核对一下它真在里面"
+            else "学校回了 flag:true，可没给单号。这一族的提交响应没有实样，" +
+                "回「我的报修」列表数一数有没有多出这一张才算数",
+        )
+    }
 
     private data class Node(val name: String, val parent: String, val value: String)
 

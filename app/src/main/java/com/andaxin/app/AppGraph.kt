@@ -42,6 +42,7 @@ import com.andaxin.data.capture.CaptureMessages
 import com.andaxin.data.capture.CaptureProfile
 import com.andaxin.data.capture.CampusCardClient
 import com.andaxin.data.capture.CaptureRepairDetail
+import com.andaxin.data.capture.CaptureToRead
 import com.andaxin.data.capture.CaptureRepairForm
 import com.andaxin.data.capture.CaptureRepairList
 import com.andaxin.data.capture.FormSwitch
@@ -204,6 +205,13 @@ class AppGraph(val context: Context) {
     }
     val handledList: ListSource by lazy {
         BriefSwitch(CaptureHandled(ywlz), com.andaxin.data.local.NeedLoginList(), session)
+    }
+    /**
+     * 「待阅」那一栏 = 待办同一条列表口、`approvedType=2`（10-13 从 H5 定死的 tab 号）。
+     * 这一栏顶上多一颗「全部标已阅」，所以界面要问 `bulkLabel()` 有没有值再画键。
+     */
+    val toReadList: ListSource by lazy {
+        BriefSwitch(CaptureToRead(school, ywlz), com.andaxin.data.local.NeedLoginList(), session)
     }
     val affairDetail: DetailSource by lazy {
         DetailSwitch(CaptureAffairDetail(school, ywlz, affairCapture), Affair.detail, session)

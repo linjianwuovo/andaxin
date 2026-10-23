@@ -217,6 +217,12 @@ class BriefSwitch(
 ) : ListSource {
     override suspend fun rows(): Result<List<BriefRow>> =
         if (session.signedIn()) capture.rows() else local.rows()
+
+    // 批量那颗键不给会话闸门：没登录时这一栏的 rows() 本来就失败、`byId` 是空的，
+    // 真接口那侧自己会回 null（`signedIn()` 是 suspend，不能在这种给界面问的同步口里调）
+    override fun bulkLabel(): String? = capture.bulkLabel() ?: local.bulkLabel()
+
+    override suspend fun bulk(): Result<String> = capture.bulk()
 }
 
 class DetailSwitch(
@@ -226,4 +232,7 @@ class DetailSwitch(
 ) : DetailSource {
     override suspend fun detail(id: String): Result<BriefDetail> =
         if (session.signedIn()) capture.detail(id) else local.detail(id)
+
+    /** 写操作只走真接口那一侧；占位那侧本来就回"没接上报文"，不兜底。 */
+    override suspend fun act(id: String, action: String): Result<String> = capture.act(id, action)
 }

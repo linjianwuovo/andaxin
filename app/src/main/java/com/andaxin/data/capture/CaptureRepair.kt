@@ -41,8 +41,10 @@ import org.json.JSONObject
  * **单号不存在时回的是 `flag:true` + `data.data:null`**（76 字节），不是失败。
  * 所以这里要按「没有这张报修单」处理，不能当成功有数据。
  *
- * 【没接的】新建报修的提交（`saveOrUpdateBxdForSjd`）、改单（`updateBxdByIdForSjd`）、
- * 加备注（`addLcbzForSjd`）、传图（`uploadForSjd`）—— 我们一次都没发过。
+ * 【10-23 夜里接上的】新建报修的提交在 `CaptureRepairForm.submit`（十个键 + `tpId` 空串），
+ * 「取消这张单」走 `addLcbzForSjd{bxdh, cz:8}`（见下面 `act`），两者都停在连按两次之后由人按。
+ * 【还是没接】传图（`uploadForSjd`）——那座桥发 multipart 时身份到底放头里还是放字段里，我们没有一手证据，
+ * 盲发一次不如不做；完工评价（`updateBxdByIdForSjd{wcqk,fwpj,yjfk}`）——那两个选项的**取值表**还在 JS 的数组里没抄全。
  *
  * 【10-23 更正 + 警告】`updateBxdByIdForSjd` 我以前注成"标已读"，那是猜的。官方 bundle 里它是**改单的通用口**：
  * 列表页 `toDetail` 每次点行**无条件**发 `{id, qtYqbz:1}` 然后才跳详情（无确认弹窗，回 65 字节
@@ -146,8 +148,38 @@ class CaptureRepairDetail(private val school: School) : DetailSource {
                 title = d.optString("gzms").ifBlank { "报修单 $id" },
                 fields = fields,
                 paragraphs = paragraphs,
-                writable = false,
+                actions = actionsOf(d),
             ),
+        )
+    }
+
+    /**
+     * 这张单能不能在这儿取消。判据是官方那一页 `getDetails` 里写的一句：
+     * `dqzt=="4" || dqzt=="10"` 才把 `Withdrawals` 置 "1"，也就是**只有这两个状态下 H5 才画那颗取消键**。
+     * （`dqzt=="7"` 它自己会改写成 "5" + 名字"已取消"，所以那种单子根本不再给按钮。）
+     */
+    private fun actionsOf(d: JSONObject): List<com.andaxin.data.brief.Action> {
+        val st = d.optString("dqzt")
+        if (st != "4" && st != "10") return emptyList()
+        return listOf(com.andaxin.data.brief.Action(key = "cancel", label = "取消这张单", danger = true))
+    }
+
+    /**
+     * 「取消这张单」= `addLcbzForSjd.do`，body 只有 `bxdh` + `cz:8`。
+     *
+     * 【取证 · ① 官方 bundle 的调用点 + 10-20 现打校正】H5 那句还带了 `wxry: detailList.wxry` 和
+     * `userCode: detailList.wxyDlm`，而**详情那 42 个键里根本没有这两个名字**（详情里叫 `wxr`/`wxrDlm`），
+     * 所以它实际发的是两个 undefined、再被那座桥合并成报修人自己的 userCode。
+     * 我们就按"它真正发出去的那份"写：`bxdh` + `cz`，身份由 [School.repair] 补，不装知道 wxry 是什么。
+     * 成功响应没有实样 —— 按完回「我的报修」列表看那张单的状态，别看这里说了什么。
+     */
+    override suspend fun act(id: String, action: String): Result<String> {
+        if (action != "cancel") return Result.failure(Exception("这张单上本机只有「取消」这一颗键"))
+        school.repair("addLcbzForSjd", "bxdh" to id, "cz" to "8")
+            .getOrElse { return Result.failure(it) }
+        return Result.success(
+            "学校回了 flag:true。官方那一页随后弹的是「已成功取消」—— 但这条纹我们没实样，" +
+                "回「我的报修」列表看这张单的状态变了没，变了才算取消掉",
         )
     }
 

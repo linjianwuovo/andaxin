@@ -31,9 +31,26 @@ data class BriefDetail(
     val paragraphs: List<String> = emptyList(),
     /** 审批链那种一环接一环的东西：界面上画成带圆点的竖线，不再是一段"1. … 2. …"的文字。 */
     val steps: List<Step> = emptyList(),
-    /** 界面上给不给"提交"这类写操作按钮。写操作一律停在最后一步由人按。 */
-    val writable: Boolean = false,
-    val writeLabel: String = "",
+    /**
+     * 这一条上校方允许做的写动作，界面上一个动作一颗键，**每颗都要连按两次**。
+     *
+     * 以前这里是单个 `writable` + `writeLabel`（只有销假用），所以"这一环到底有几个按钮"在界面上
+     * 表达不出来。现在把 [Action] 列表交出去，来源是 `process/getButtons.do` 给的按钮（有实样那条）
+     * 加上条目自己带的标记（`isWithdraw`、待销假那一环）。
+     */
+    val actions: List<Action> = emptyList(),
+)
+
+/**
+ * 详情里的一颗写操作键。[key] 是给 [DetailSource.act] 认的暗号，[label] 是给人看的话，
+ * 而且 **label 用校方给的原文**（`getButtons` 里那条 `label`），我们只在这张表里把它对上口。
+ */
+@Immutable
+data class Action(
+    val key: String,
+    val label: String,
+    /** 红色那颗：删掉、驳回这种一旦发出去就退不回来的 */
+    val danger: Boolean = false,
 )
 
 /** 审批链的一环。四个字段全是校方给的原文，界面不加工。 */
@@ -83,17 +100,25 @@ data class FormSpec(
 
 interface ListSource {
     suspend fun rows(): Result<List<BriefRow>>
+
+    /**
+     * 这一栏顶部那颗**批量写操作**键的名字；`null` = 这一栏没有批量动作。
+     * 现在只有「待阅」那一栏有（全部标已阅）。界面画它之前先问这个，别摆一颗按下去没反应的。
+     */
+    fun bulkLabel(): String? = null
+
+    /** 批量那颗键按下去要发的那一发。停在最后一步由人按、连按两次、不自动重试 —— 和详情里那几颗同一档规矩。 */
+    suspend fun bulk(): Result<String> = Result.failure(Exception("这一栏没有批量操作"))
 }
 
 interface DetailSource {
     suspend fun detail(id: String): Result<BriefDetail>
 
     /**
-     * 详情里那颗写操作键（`BriefDetail.writable` 为真时才露出来）。
+     * 详情里某一颗写操作键。[action] 是 [Action.key]，界面已经连按两次确认过才会走到这儿。
      * 默认不给：没接上报文的一律回 failure，界面就只显示那句原因，绝不静默成功。
-     * 真发之前界面要连按两次确认 —— 写操作停在最后一步由人按。
      */
-    suspend fun act(id: String): Result<String> =
+    suspend fun act(id: String, action: String): Result<String> =
         Result.failure(Exception("这一屏没有可发的写操作"))
 }
 

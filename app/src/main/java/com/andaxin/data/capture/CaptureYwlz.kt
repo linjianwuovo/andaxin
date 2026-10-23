@@ -1,5 +1,6 @@
 package com.andaxin.data.capture
 
+import com.andaxin.data.brief.Action
 import com.andaxin.data.brief.BriefDetail
 import com.andaxin.data.brief.BriefRow
 import com.andaxin.data.brief.DetailSource
@@ -41,10 +42,17 @@ data class YwlzTask(
     val receiveTime: String,
     val msgType: String,
     val url: String,
-    /** 「我的申请」那一发才有的三个标记：附件图、能不能催办、撤没撤。待办那一发里没这几个键，给默认值。 */
+    /**
+     * 「我的申请」那一发才有的三个标记：附件图、能不能催办、能不能撤回。待办那一发里没这几个键，给默认值。
+     *
+     * 【10-23 更正】第三个以前叫 `withdrawn`、界面上写成"已撤回" —— 那句是我的猜。
+     * 键是 `isWithdraw`，他旧仓那条已经跑通的列表把它当**可撤回**用（`withdrawable = isWithdraw == "1"`），
+     * 而我们现存实样两条都是 `isWithdraw="0"`、`statusTxt` 都是"已完结"，两种读法在那两条上根本分不出来。
+     * 所以按他验证过的那份读，并且**不再在屏上写"已撤回"** —— 状态一律看 `statusTxt`。
+     */
     val attachmentUrl: String = "",
     val urgeable: Boolean = false,
-    val withdrawn: Boolean = false,
+    val withdrawable: Boolean = false,
 ) {
     /** 详情按哪条主键找：待办类有节点 id 就用节点 id，「我的申请」那种只有流程 id。 */
     val key: String get() = nodeId.ifBlank { executionId }
@@ -132,6 +140,28 @@ class YwlzTasks(private val school: School) {
                 )
             }
 
+    /**
+     * 「待阅」那一栏 = 同一条列表口、`approvedType=2`。
+     *
+     * 【取证 · ③】10-13 从他旧仓那次抓包里定死的口径：`approvedType` 是 **tab 号**不是类型号
+     * （H5 的 `activeName` 初值 "1"，`onLoad` 直接把它当参数发出去）—— 待处理=1、待阅=2。
+     * 以前我们「待我处理」发的是 2，等于一直在显示抄送件，改回 1 之后待办立刻出真数据。
+     * 这一栏的请求形状和 [all] 完全同一条口，只是那个 tab 号不同，所以条目字段按 [parse] 那一套读。
+     */
+    suspend fun toRead(): Result<List<YwlzTask>> =
+        cached("read") {
+            school.postH5(
+                "$YWLZ/mobile/flowRuTask/getRunTaskByUserCode.do",
+                "approvedType" to "2",
+                "currentPageNo" to "1",
+                "pageSize" to PAGE,
+            ).mapCatching { root ->
+                val arr = School.rows(root)
+                (0 until arr.length()).mapNotNull { i -> parse(arr.optJSONObject(i)) }
+            }
+        }
+
+    /** 待办 / 待阅两条口共用的条目解析（同一条 endpoint、只差 `approvedType`）。 */
     private fun parse(o: JSONObject?): YwlzTask? {
         if (o == null) return null
         val node = o.optString("ruTaskNodeId")
@@ -192,7 +222,7 @@ class YwlzTasks(private val school: School) {
                         url = o.optString("url"),
                         attachmentUrl = o.optString("fileUrl"),
                         urgeable = o.optString("urgeButton") == "1",
-                        withdrawn = o.optString("isWithdraw") == "1",
+                        withdrawable = o.optString("isWithdraw") == "1",
                     )
                 }
             }
@@ -314,7 +344,7 @@ class YwlzTasks(private val school: School) {
             url = o.optString("url"),
             attachmentUrl = o.optString("fileUrl"),
             urgeable = o.optString("urgeButton") == "1",
-            withdrawn = o.optString("isWithdraw") == "1",
+            withdrawable = o.optString("isWithdraw") == "1",
         )
     }
 
@@ -348,6 +378,48 @@ class CaptureAffairs(private val tasks: YwlzTasks) : ListSource {
     }
 }
 
+/**
+ * 「待阅」那一栏（`approvedType=2`）。顶上多一颗「全部标已阅」，走 `flowRuTask/mobileReadBulk.do`。
+ *
+ * 【取证 · ① + 他旧仓实证】body 是 `ids=<这一栏所有 ruTaskNodeId 逗号拼>&approvedType="2"` 加身份五件套。
+ * 这条口我们一次没发过成功报文，形状来自两处：读它 H5 的 `markAllRead()` 调用点，
+ * 以及他自己项目里 10-13 接好的那版（同一串参数，跑通过）。
+ * 所以这一颗键照旧规矩：**连按两次、不自动重试**，服务端那句 `flag` 是不是真代表"已阅生效"没有实样，
+ * 按完界面刷新列表自己数，别看返回里说了什么。
+ */
+class CaptureToRead(
+    private val school: School,
+    private val tasks: YwlzTasks,
+) : ListSource {
+
+    internal val byId = HashMap<String, YwlzTask>()
+
+    override suspend fun rows(): Result<List<BriefRow>> = tasks.toRead().mapCatching { list ->
+        list.map { a ->
+            byId[a.nodeId] = a
+            BriefRow(
+                id = a.nodeId,
+                title = a.title.ifBlank { "（校方没给标题）" },
+                sub = listOf(a.creator, a.receiveTime).filter { it.isNotBlank() }.joinToString(" · "),
+                right = a.statusTxt,
+                flag = Flag.Unread,
+            )
+        }
+    }
+
+    override fun bulkLabel(): String? = if (byId.isEmpty()) null else "全部标已阅"
+
+    override suspend fun bulk(): Result<String> {
+        val ids = byId.keys.filter { it.isNotBlank() }.joinToString(",")
+        if (ids.isBlank()) return Result.failure(Exception("这一栏现在没有可标记的条目"))
+        return school.postH5(
+            "${School.YWLZ}/mobile/flowRuTask/mobileReadBulk.do",
+            "ids" to ids,
+            "approvedType" to "2",
+        ).map { "学校回了 flag:true；这一栏重新拉一遍，剩下的才是真没阅的" }
+    }
+}
+
 /** 查寝列表：同一份数据里挑 `msgType=2` 的，标题用 url 里的 viewTitle（真名"晚点名"）。 */
 class CaptureDorm(private val tasks: YwlzTasks) : ListSource {
     internal val byId = HashMap<String, YwlzTask>()
@@ -378,9 +450,8 @@ class CaptureMyAffairs(private val tasks: YwlzTasks) : ListSource {
                 id = a.key,
                 title = a.title.ifBlank { "（校方没给标题）" },
                 sub = listOf(a.category, a.receiveTime).filter { it.isNotBlank() }.joinToString(" · "),
-                right = a.statusTxt.ifBlank { if (a.withdrawn) "已撤回" else "" },
+                right = a.statusTxt,
                 flag = when {
-                    a.withdrawn -> Flag.Bad
                     a.urgeable -> Flag.Warn
                     else -> Flag.None
                 },
@@ -600,7 +671,7 @@ class CaptureAffairDetail(
 
         val exe = a.executionId
         // 审批链和表单这两发互不依赖 —— 串着发过一次 30 秒才出画面，并着发同一份数据 6 秒
-        val (chainR, form) = kotlinx.coroutines.coroutineScope {
+        val (chainR, form, offered) = kotlinx.coroutines.coroutineScope {
             val chain = async {
                 school.postH5(
                     "${School.YWLZ}/mobile/flowRuTask/getApprovedInfoByExeId.do",
@@ -617,7 +688,12 @@ class CaptureAffairDetail(
                     "ruTaskNodeId" to a.nodeId,
                 ).getOrNull()?.optJSONObject("data")
             }
-            chain.await() to formA.await()
+            val btn = async {
+                // 「这一环校方给不给按钮」唯一一条有实样的证据：`process/getButtons.do`。
+                // 界面上出现哪几颗写操作键由它说，不由我们看状态码猜。跟前两发并着发，不排队。
+                if (a.nodeId.isBlank()) emptyList() else tasks.buttons(exe, a.nodeId)
+            }
+            Triple(chain.await(), formA.await(), btn.await())
         }
         if (chainR.isFailure) return Result.failure(chainR.exceptionOrNull()!!)
         val nodes = School.rows(chainR.getOrThrow())
@@ -642,7 +718,6 @@ class CaptureAffairDetail(
             else "收到时间" to a.receiveTime.ifBlank { "—" })
             add("状态" to a.statusTxt.ifBlank { a.status })
             // 「我的申请」那一发才有的两个标记，待办那一发里没这两个键，所以有才写
-            if (a.withdrawn) add("撤回" to "已撤回")
             if (a.attachmentUrl.isNotBlank()) add("附件" to "有（校方给的是 fs.aiit 上的一张图）")
             form?.optString("isDealDone")?.takeIf { it.isNotBlank() }?.let { add("能不能办" to dealDone(it)) }
             keep(q, "请假类型", "f1677131069644")
@@ -679,38 +754,88 @@ class CaptureAffairDetail(
             }
         }
 
+        // 这一条能按哪几颗写操作键。能确定的判据只有这三条，其余一律不猜：
+        // ① 校方 `getButtons` 报了按钮 → 那颗键的**名字用校方给的 label**，我们只负责把它对上一条口；
+        // ② `getForm` 的 `isDealDone=="0"`（可办）→ 给「同意」「驳回」；
+        // ③ 审批链里有"待销假"那一环 → 给「销假」；条目自己说 `isWithdraw=="1"` → 给「撤回」；
+        //    「删除」只给「我的申请」那一栏的条目（他旧仓的门禁就是 tab==我的申请，别的栏不给）。
+        val dealable = a.nodeId.isNotBlank() && form?.optString("isDealDone") == "0"
+        val isMine = a.nodeId.isBlank() &&
+            tasks.mine().getOrNull()?.any { it.key == id } == true
+        fun schoolLabel(word: String): String? = offered.firstOrNull { it.first.contains(word) }?.first
+        val actions = buildList {
+            if (dealable) {
+                add(Action("agree", schoolLabel("同意") ?: "同意"))
+                add(Action("reject", schoolLabel("驳回") ?: "驳回", danger = true))
+            }
+            if (needXj) add(Action("xj", schoolLabel("销假") ?: "销假"))
+            if (a.withdrawable) add(Action("withdraw", schoolLabel("撤回") ?: "撤回"))
+            if (isMine) add(Action("delete", schoolLabel("删除") ?: "删除", danger = true))
+        }
+
         return Result.success(
             BriefDetail(
                 title = q?.optString("flowtitle")?.takeIf { it.isNotBlank() } ?: a.title.ifBlank { "单据详情" },
                 fields = fields,
                 paragraphs = paragraphs,
                 steps = steps,
-                writable = needXj,
-                writeLabel = "销假",
+                actions = actions,
             )
         )
     }
 
     /**
-     * 销假提交。【取证】xj2.flow 第 3 次是真 App 发出的 `process/agree.do`，报文形状：
-     * `dataJson`(getForm 回显原样) + `executionId` + `ruTaskNodeId` + `stuQjsq={"xjfjList":[]}` + `_t`。
-     * 那次销假没带附件、也没新增 IS_CJ 字段，所以这里照抄这个形状，不自己加字段。
-     * 写操作一律停在最后一步由人按：界面上要连按两次才走到这儿。
+     * 发其中一颗键按下去的那一发。
+     *
+     * 【取证】四条口都只有 ①（读它 H5 的调用点）+ 他旧仓 10-13/10-14 接通的同一形状，
+     * **成功响应一条实样都没有** —— 所以每颗键都在界面上连按两次才走到这儿，且一律不自动重试
+     * （重发一次就是多审一次、多删一次）。回 `flag:true` 只说"学校这么答了"，不替它宣布生效。
+     *
+     * `agree`/`disagree` 的 `dataJson` 用的是 `getForm` 回显的**原文**，一个字都不重拼 ——
+     * 拼错就等于替申请人改掉他填的东西。
      */
-    override suspend fun act(id: String): Result<String> {
+    override suspend fun act(id: String, action: String): Result<String> {
         val a = affordById[id]
             ?: return Result.failure(Exception("这一条已经不在待办列表里了，回列表重进一次"))
         if (a.executionId.isBlank()) return Result.failure(Exception("这条是消息类，没有可提交的流程"))
-        val dataJson = dataJsonById[id]
-            ?: return Result.failure(Exception("表单回显还没拉到，退出详情重进一次再销假"))
-        return school.postH5(
-            "${School.YWLZ}/mobile/process/agree.do",
-            "dataJson" to dataJson,
-            "executionId" to a.executionId,
-            "ruTaskNodeId" to a.nodeId,
-            "stuQjsq" to """{"xjfjList":[]}""",
-            "_t" to System.currentTimeMillis().toString(),
-        ).map { "服务端回了 flag:true（这条接口的成功响应我没有实样，判据是按信封惯例推的）" }
+        val stamp = System.currentTimeMillis().toString()
+        val why = "学校回了 flag:true —— 这四条口的成功响应我们都没有实样，回列表刷新一下看它到底动没动"
+        return when (action) {
+            "agree", "reject" -> {
+                val dataJson = dataJsonById[id]
+                    ?: return Result.failure(Exception("表单回显还没拉到，退出详情重进一次再" +
+                        if (action == "agree") "同意" else "驳回"))
+                school.postH5(
+                    "${School.YWLZ}/mobile/process/${if (action == "agree") "agree" else "disagree"}.do",
+                    "dataJson" to dataJson,
+                    "executionId" to a.executionId,
+                    "ruTaskNodeId" to a.nodeId,
+                    "remark" to "",
+                    "_t" to stamp,
+                ).map { why }
+            }
+            "xj" -> {
+                val dataJson = dataJsonById[id]
+                    ?: return Result.failure(Exception("表单回显还没拉到，退出详情重进一次再销假"))
+                school.postH5(
+                    "${School.YWLZ}/mobile/process/agree.do",
+                    "dataJson" to dataJson,
+                    "executionId" to a.executionId,
+                    "ruTaskNodeId" to a.nodeId,
+                    "stuQjsq" to """{"xjfjList":[]}""",
+                    "_t" to stamp,
+                ).map { why }
+            }
+            "withdraw" -> school.postH5(
+                "${School.YWLZ}/mobile/flowRuTask/withdrawExecution.do",
+                "executionId" to a.executionId,
+            ).map { why }
+            "delete" -> school.postH5(
+                "${School.YWLZ}/mobile/flowRuTask/deleteExecution.do",
+                "executionId" to a.executionId,
+            ).map { "学校回了 flag:true。H5 弹的那句是「一经删除，该流程自动移除，请谨慎操作。」—— 回列表看看少了哪一条" }
+            else -> Result.failure(Exception("这一颗键本机没接"))
+        }
     }
 
     /** 审批链里有没有"轮到你自己销假"的那一环。判据是实样里的 `statusMsg` / `xjStatus`。 */
