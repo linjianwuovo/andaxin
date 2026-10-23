@@ -24,6 +24,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -145,7 +146,12 @@ internal class DetailModel(private val source: DetailSource, private val id: Str
 }
 
 @Immutable
-internal data class FormUi(val spec: FormSpec? = null, val error: String? = null, val done: String? = null)
+internal data class FormUi(
+    val spec: FormSpec? = null,
+    val error: String? = null,
+    val done: String? = null,
+    val sending: Boolean = false,
+)
 
 internal class FormModel(private val source: FormSource) : ViewModel() {
     private val _state = MutableStateFlow(FormUi())
@@ -158,10 +164,25 @@ internal class FormModel(private val source: FormSource) : ViewModel() {
         }
     }
 
+    /**
+     * 这一发是**往学校造一张真单**，所以第二次按下之前先挡一道：
+     * 连点两下、或者失败后急着再点，绝不能变成两张单子。`busy` 在协程里置、回来才放，
+     * 界面上那颗键在 [FormUi.sending] 期间是灰的。
+     */
+    private var busy = false
+
     fun submit(values: Map<String, String>) {
+        if (busy) return
+        busy = true
         viewModelScope.launch {
+            _state.value = _state.value.copy(sending = true, error = null)
             val r = try { source.submit(values) } catch (e: Exception) { Result.failure(e) }
-            _state.value = _state.value.copy(done = r.getOrNull(), error = r.exceptionOrNull()?.message)
+            _state.value = _state.value.copy(
+                sending = false,
+                done = r.getOrNull(),
+                error = r.exceptionOrNull()?.message,
+            )
+            busy = false
         }
     }
 }
@@ -314,6 +335,14 @@ fun BriefFormPage(
     val scope = rememberCoroutineScope()
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     val dorm = session.dorm
+    // 学校给的预填值（学号、姓名、班级那一类）要**填进格子本身**：提交时这几格是跟着 dataJson 一起发过去的，
+    // 不是给人看的说明文字。只在格子是空的时候填，别把他改过的值又盖回去。
+    val defaults = state.spec?.defaults
+    LaunchedEffect(defaults) {
+        defaults?.forEach { (k, v) -> if (values[k].isNullOrBlank()) values[k] = v }
+    }
+    // 这颗键是"往学校造一张真单"，跟销假同一档规矩：连按两次才发，中间那下只把键变色
+    var armed by remember { mutableStateOf(false) }
 
     ScaffoldPage(title = state.spec?.title ?: title, onBack = onBack) {
         val sample = state.spec?.sample == true
@@ -359,12 +388,44 @@ fun BriefFormPage(
             )
             Spacer(Modifier.height(Gap.md))
         }
-        if (!sample) MiuixButton(
-            onClick = { model.submit(values.toMap()) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColorsPrimary(),
-        ) {
-            Text("提交", fontSize = Type.title, fontWeight = FontWeight.Medium)
+        if (!sample && state.spec?.canSubmit == false) {
+            // 提交那条写口还没接 —— 不摆一颗按下去只会报错的"提交"，直接说清楚
+            Text(
+                text = "这张表本机还交不出去：提交那一口（学校那边的写操作）还没接。填了也只是看看。",
+                fontSize = Type.meta,
+                color = ink.faint,
+                lineHeight = Type.metaLine,
+            )
+            Spacer(Modifier.height(Gap.md))
+        }
+        if (!sample && state.spec?.canSubmit != false) {
+            state.spec?.footnote?.let {
+                Text(it, fontSize = Type.meta, color = ink.faint, lineHeight = Type.metaLine)
+                Spacer(Modifier.height(Gap.md))
+            }
+            MiuixButton(
+                onClick = {
+                    if (armed) {
+                        armed = false
+                        model.submit(values.toMap())
+                    } else {
+                        armed = true
+                    }
+                },
+                enabled = !state.sending,
+                modifier = Modifier.fillMaxWidth(),
+                colors = if (armed) dangerColors() else ButtonDefaults.buttonColorsPrimary(),
+            ) {
+                Text(
+                    text = when {
+                        state.sending -> "正在发…"
+                        armed -> "再按一次，真的发给学校"
+                        else -> "提交"
+                    },
+                    fontSize = Type.title,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
         }
         state.done?.let {
             Spacer(Modifier.height(Gap.md))

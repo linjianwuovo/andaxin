@@ -66,7 +66,7 @@ class CaptureRepairForm(private val school: School) : FormSource {
             }
             add(Field.Text(KEY_DESC, "问题描述", hint = "哪里坏了、什么时候开始的，越具体越好"))
         }
-        return Result.success(FormSpec(title = "新建报修", fields = fields))
+        return Result.success(FormSpec(title = "新建报修", fields = fields, canSubmit = false))
     }
 
     /** 提交时要用的是 id 不是名字，所以把"名字→id"的对照留在服务端侧：这里只回失败。 */
