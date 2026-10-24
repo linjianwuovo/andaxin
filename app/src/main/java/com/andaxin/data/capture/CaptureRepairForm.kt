@@ -35,7 +35,10 @@ import org.json.JSONObject
  *
  * **提交 10-23 夜里接上了**（见下面 [submit]）：十个键的形状是 `xqdm/lyId/qyfjh/xxdz/sjh/gzms/xm/userCode/tpId/bxlx`
  * ＋可选 `kssj/jssj`，姓名和手机号提交时现问 `getSjhForSjd`。它是写口，界面上连按两次才发，
- * 而且**成功响应没有实样** —— 按完只报"学校答了 flag:true"，有没有真成单指向「我的报修」列表去数。
+ * 按完只报两个字，成没成回「我的报修」那一栏数 —— 判据照他旧仓跑通的那一份。
+ * `tpId` 现在恒为空串：官方那份是 `imgList.map(n => n.id).join(",")`，照片先过一发 `uploadForSjd` 换回 `data.file.id`。
+ * 那一发**不是 multipart** —— 图压缩后整个当 base64 数据 URL 塞进 `fileImg` 一个字段，
+ * URL 上还挂 `?timestap=<毫秒>`（学校拼错的那三个字母照抄）。原文出处见 `docs/接入清单.md` 一点三之二十八。
  * `loginType` 不发：官方那发带它，可我们没验过不给会怎样，而读那一族去掉它照样回全量。
  */
 class CaptureRepairForm(private val school: School) : FormSource {
