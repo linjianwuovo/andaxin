@@ -29,6 +29,7 @@ import com.andaxin.core.design.Type
 import com.andaxin.data.capture.LastUpdate
 import com.andaxin.data.capture.Release
 import com.andaxin.data.capture.plainOf
+import com.andaxin.data.capture.versionNewer
 import com.andaxin.feature.web.encodeUrl
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
@@ -67,7 +68,16 @@ internal fun UpdateCard(open: (String) -> Unit) {
 
     LaunchedEffect(Unit) {
         LastUpdate.fromJson(graph.store.peekString(graph.store.snapshot(), LastUpdate.KEY).orEmpty())
-            ?.let { (r, n, t) -> latest = r; newer = n; at = t }
+            ?.let { (r, _, t) ->
+                latest = r
+                at = t
+                /*
+                 * 存下来那个"是不是新版"不能照抄上屏：他从 0.8.28-beta 升到 0.8.29-beta 之后，
+                 * 本机版本变了而那条缓存没变，界面上就一直挂着"有新版：0.8.29"（10-25 凌晨他截的那张）。
+                 * 所以每次进这一屏，拿本机这版重新比一次。
+                 */
+                newer = versionNewer(r.version, cur)
+            }
     }
 
     SectionTitle("检测更新")
