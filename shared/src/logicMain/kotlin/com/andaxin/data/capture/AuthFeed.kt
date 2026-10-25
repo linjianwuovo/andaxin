@@ -49,8 +49,15 @@ class AuthFeed {
         HttpEngineConfig(connectTimeoutMs = 15_000, readTimeoutMs = 20_000),
     )
 
-    suspend fun login(userCode: String, password: String): Result<TokenBundle> =
-        post("$AUTH_BASE/mobile/getToken.do", "userCode" to userCode, "password" to Crypto.encryptPassword(password))
+    suspend fun login(userCode: String, password: String): Result<TokenBundle> {
+        // 加密这一步必须在 post 之前自己落进 Result 里。post 的 runCatching 只包得住 engine.execute，
+        // 而参数是进函数之前就求值完的 —— iOS 那把公钥解析一抛，异常直接穿过 login 逃进
+        // rememberCoroutineScope 起的协程，那层没人接，K/N 的默认处理器就 abort() 掉整个进程
+        // （真机 AndaXin-2026-10-26-020009.ips 栈顶是 rsaEncryptPkcs1Base64，就是这么死的）。
+        // 现在它变成一次 Result.failure，界面上走的是"学校那边不行"那条已有的提示分支。
+        val sealed = runCatching { Crypto.encryptPassword(password) }.getOrElse { return Result.failure(it) }
+        return post("$AUTH_BASE/mobile/getToken.do", "userCode" to userCode, "password" to sealed)
+    }
 
     /**
      * 过期前拿 refresh_token 换新的；换不动就退回登录页，别静默续。
