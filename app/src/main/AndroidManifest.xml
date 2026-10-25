@@ -74,6 +74,9 @@
           五枚都在那一排里可选，出厂立着的是「蓝底青杠」那条。
           （10-25 删掉了「临时标记」那枚方框和琥珀那一枚 —— 方框是骨架期的占位，
             它连带 `<application android:icon>` 一起换成了蓝底那套。）
+          以后这一排**只加不删**：要下架一枚，只从 LauncherIcons.ALL 里拿掉，这条 alias 留着写
+          enabled="false"。组件开关跨覆盖安装保留，删掉一条就是把选中过它的那批人的桌面入口
+          删成 0 条（0.8.40 那一次的实际后果；见同一文件头第 ③ 条）。
         -->
         <activity-alias
             android:name=".LauncherBlue"

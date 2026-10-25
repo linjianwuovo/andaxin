@@ -248,7 +248,8 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 private fun LauncherIconSection() {
     val ink = LocalInk.current
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    var now by remember { mutableStateOf(LauncherIcons.current(ctx)) }
+    // null = 桌面上现在一条入口都没有（只有别人以前选中过一枚后来被删掉的 alias 才会走到这）
+    var now by remember { mutableStateOf(LauncherIcons.currentOrNull(ctx)) }
     var why by remember { mutableStateOf<String?>(null) }
 
     /*
@@ -257,14 +258,14 @@ private fun LauncherIconSection() {
      * 圈可能还圈在旧的那枚上（10-25 他截图里就是这么个错位）。
      */
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        now = LauncherIcons.current(ctx)
+        now = LauncherIcons.currentOrNull(ctx)
     }
 
     Sheet {
         LauncherIcons.ALL.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(Gap.lg)) {
                 row.forEach { ic ->
-                    val on = ic.key == now.key
+                    val on = now?.key == ic.key
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.pressClick(shrink = false) {
@@ -272,7 +273,7 @@ private fun LauncherIconSection() {
                             LauncherIcons.apply(ctx, ic).fold(
                                 onSuccess = {
                                     now = ic
-                                    why = "已换上「${ic.label}」。桌面那枚一般马上变；" +
+                                    why = "已换上「${ic.label}」，系统那边回读过确实是开着的。桌面那枚一般马上变；" +
                                         "多出来那枚旧的是桌面缓存，重启桌面就没了。"
                                 },
                                 onFailure = { why = "没换成：${it.message ?: it.javaClass.simpleName}" },
@@ -293,8 +294,12 @@ private fun LauncherIconSection() {
             Spacer(Modifier.height(Gap.md))
         }
         Text(
-            text = why ?: "换的是桌面那枚和最近任务里那枚。MIUI 这类桌面换完会多留一枚旧的" +
-                "（旧那枚的名字可能还是以前那个），系统里其实只有一条入口 —— 重启桌面或重启手机就干净了。",
+            text = why ?: if (now == null)
+                "桌面上现在一条入口都没有（以前选中过的那枚图标后来被下架了，这种只剩这一种走法）：" +
+                    "点上面任意一枚就补回来。"
+            else
+                "换的是桌面那枚和最近任务里那枚。MIUI 这类桌面换完会多留一枚旧的" +
+                    "（旧那枚的名字可能还是以前那个），系统里其实只有一条入口 —— 重启桌面或重启手机就干净了。",
             fontSize = Type.micro,
             color = if (why == null) ink.faint else ink.muted,
             lineHeight = Type.metaLine,
