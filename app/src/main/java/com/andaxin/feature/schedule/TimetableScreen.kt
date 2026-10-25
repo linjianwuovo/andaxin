@@ -96,12 +96,12 @@ private const val HEADER_HEIGHT = 36
  * 换了字号或改了标题区，这 138dp 会跟着变，偏了的表现是"底下多一条窄白"或"贴住底栏"，
  * 都不是错位；真要跟着变，量一次这个数就行。
  *
- * `extraChrome` 是网格上面**这一周额外多出来的那一行**（目前只有"晨跑活动"那条：
- * 校方给的 `ksjc=0` 占位，没节次，不能塞进格子）。它多高，就从视口里再减多高。
+ * `extraRows` 是网格顶上「早」那一行占几格（校方 `ksjc=0` 那几条：晨跑、早自习，
+ * 没节次也没时间，不能塞进第 1 节）。占几格就从行数里多减几格，十节课加一行就是除以 11。
  */
-private fun rowHeightFor(viewport: Dp, extraChrome: Dp = 0.dp): Dp {
-    val gridRoom = viewport - 138.dp - extraChrome
-    return (gridRoom / PERIOD_TIMES.size.toFloat()).coerceIn(ROW_HEIGHT.dp, 66.dp)
+private fun rowHeightFor(viewport: Dp, extraRows: Int = 0): Dp {
+    val gridRoom = viewport - 138.dp
+    return (gridRoom / (PERIOD_TIMES.size + extraRows).toFloat()).coerceIn(ROW_HEIGHT.dp, 66.dp)
 }
 
 @Composable
@@ -181,25 +181,27 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             Spacer(Modifier.height(Gap.md))
 
             /*
-             * 校方课表里混着一条 `ksjc=0` 的「阳光晨跑 / 体育场」：那是"这天早上有晨跑"的占位，
-             * 没有节次也没有时间（10-21 下午拿活 token 现打第 8 周确认）。它不能进格子 ——
-             * 塞进第 1 节就是凭空多出一门 08:30 的课；但也不能悄悄扔掉，所以单独在网格上面
-             * 用一行"晨跑活动"标出来。课表上真正的课从 `startPeriod >= 1` 起算。
+             * 校方课表里除了课还挂着 `ksjc=0 / jsjc=0` 的那几条：第 8 周实测周二周四各一条
+             * 「阳光晨跑 / 体育场」，10-26 他说"其实还有早自习"。它们没有节次也没有时间，
+             * 塞进第 1 节就是凭空多出一门 08:30 的课（早期真就这么错，首页"今天几节"跟着翻倍、
+             * 上课提醒还给晨跑排了闹钟）。
+             *
+             * 摆法照官方那一版：网格顶上单独一行「早」，左边那一格只有"早"、没有钟点 ——
+             * 校方没给时间，我们就不编。原先是网格上面一条「晨跑活动」的横杠，那有两个毛病：
+             * 名字是写死的，早自习进来会被念成晨跑；而且它把好几条并成一句，只剩第一个地点。
+             * 现在一条一格，名字用校方给的那条 `kcmc` 原文。课表上真正的课仍从 `startPeriod >= 1` 起算。
              */
             val lessons = state.slots.filter { it.startPeriod >= 1 }
-            val runs = state.slots.filter { it.startPeriod < 1 }
-            val todayRuns = runs.filter { it.day == today }
-            if (runs.isNotEmpty()) {
-                RunNote(runs)
-                Spacer(Modifier.height(Gap.sm))
-            }
+            val mornings = state.slots.filter { it.startPeriod < 1 }
+            val todayMornings = mornings.filter { it.day == today }
+            val morningRows = mornings.groupBy { it.day }.values.maxOfOrNull { it.size }?.coerceAtMost(2) ?: 0
 
             if (showDayMode) {
-                DayList(lessons.filter { it.day == today }.ifEmpty { lessons }, today, todayRuns)
+                DayList(lessons.filter { it.day == today }.ifEmpty { lessons }, today, todayMornings)
             } else {
                 Grid(
-                    lessons, today, periodNow,
-                    rowHeightFor(viewport, if (runs.isEmpty()) 0.dp else 52.dp),
+                    lessons, mornings, today, periodNow,
+                    rowHeightFor(viewport, morningRows),
                     state.weekOffset, state.courseColors,
                 )
             }
@@ -219,38 +221,6 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
 }
 
 /**
- * 网格上面那一行「晨跑活动」。
- *
- * 它不是课，是校方课表里 `ksjc=0/ jsjc=0` 的占位（第 8 周真报文：`阳光晨跑 / 体育场`），
- * 所以不能给它编一个 08:30 塞进格子。这行只回答"哪几天早上有、在哪"，
- * 节次那一栏空着就是"校方没给时间"。
- */
-@Composable
-private fun RunNote(runs: List<TimetableSlot>) {
-    val ink = LocalInk.current
-    val accent = MaterialTheme.colorScheme.primary
-    val days = runs.map { it.day }.distinct().sorted()
-        .joinToString("、") { DAYS.getOrElse(it - 1) { "周?" } }
-    val room = runs.firstOrNull { it.room.isNotBlank() }?.room.orEmpty()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(Radius.field)
-            .background(accent.copy(alpha = if (ink.dark) 0.14f else 0.07f))
-            .padding(horizontal = Gap.md, vertical = Gap.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(6.dp).clip(CircleShape).background(accent))
-        Spacer(Modifier.width(Gap.sm))
-        Text(
-            text = listOf("晨跑活动", days, room).filter { it.isNotBlank() }.joinToString(" · "),
-            fontSize = Type.meta,
-            color = ink.muted,
-        )
-    }
-}
-
-/**
  * 周几 × 第几节的网格。
  *
  * 10-20 晚这一版改了三件事，全冲着"格子读不出来"去的：
@@ -265,10 +235,14 @@ private fun RunNote(runs: List<TimetableSlot>) {
  * 再往前一版不是这么排的：它把课塞进 `byCell[day*100+startPeriod]` 那张表里，
  * 每格固定一格高 —— 于是"第 1-2 节"的课只占第 1 节那一行，块的下沿停在 08:55
  * 而不是 09:55，整张表看着就是"区块没对准"。
+ *
+ * [mornings] 是校方那些没有节次的早上条目（晨跑、早自习），占顶上「早」那一行；
+ * 哪天一条都没有也得把这一行的高度垫出来，不然各列的第 1 节对不齐。
  */
 @Composable
 private fun Grid(
     slots: List<TimetableSlot>,
+    mornings: List<TimetableSlot>,
     today: Int,
     periodNow: Int?,
     rowH: Dp,
@@ -288,9 +262,16 @@ private fun Grid(
     val byDay = remember(slots) {
         slots.groupBy { it.day }.mapValues { (_, v) -> v.sortedBy { it.startPeriod } }
     }
+    // 早上那一行的条目：同一天可能两条（晨跑 + 早自习），按名字排，别按接口回来的顺序
+    val morningByDay = remember(mornings) {
+        mornings.groupBy { it.day }.mapValues { (_, v) -> v.sortedBy { it.course } }
+    }
+    // 这一行最高占两格：三格就往第 2 节那边挤得没边了，真排出三条的学期没见过
+    val morningRows = morningByDay.values.maxOfOrNull { it.size }?.coerceAtMost(2) ?: 0
     // 只留"这周真有课的几天" + 今天（今天没课也要留着，不然高亮没地方放）
-    val days = remember(slots, today) {
-        val busy = slots.map { it.day }.toSet()
+    // 只有早上条目（晨跑/早自习）的那一天也算"有东西"，不然那一格会被整列裁掉
+    val days = remember(slots, mornings, today) {
+        val busy = (slots + mornings).map { it.day }.toSet()
         (1..7).filter { it in busy || it == today }
     }
 
@@ -298,6 +279,20 @@ private fun Grid(
         // 左列：先垫一个和星期头等高的占位，节次才对得齐 —— 这一处就是原来错位的根
         Column(Modifier.width(GUTTER.dp)) {
             Spacer(Modifier.height(HEADER_HEIGHT.dp))
+            // 「早」这一格：只有两个字的位置，没有钟点 —— 校方那几条 `ksjc=0` 本来就没给时间
+            if (morningRows > 0) {
+                Box(
+                    Modifier.height(rowH * morningRows).fillMaxWidth(),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    Text(
+                        "早",
+                        fontSize = Type.micro,
+                        color = ink.muted,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
             PERIOD_TIMES.forEachIndexed { i, start ->
                 /*
                  * 左边这格：**节次 + 开始 + 结束三行，全部贴这一格的上沿**。
@@ -365,6 +360,18 @@ private fun Grid(
                             ) else Modifier
                         ),
                 ) {
+                    // 「早」那一行：一条一格，名字用校方给的 `kcmc` 原文（阳光晨跑 / 早自习…）。
+                    // 这一天一条都没有也要把高度垫满，否则各列的第 1 节就错开了。
+                    val am = morningByDay[day].orEmpty()
+                    am.forEach { slot ->
+                        CourseCell(
+                            slot, 1, false, rowH,
+                            colors[slot.course] ?: COURSE_COLORS[0],
+                        )
+                    }
+                    if (morningRows > 0 && am.size < morningRows) {
+                        Spacer(Modifier.height(rowH * (morningRows - am.size)))
+                    }
                     val list = byDay[day].orEmpty()
                     var cursor = 1
                     list.forEachIndexed { i, slot ->
@@ -484,11 +491,13 @@ private fun DayList(slots: List<TimetableSlot>, today: Int, runs: List<Timetable
         color = ink.muted,
         modifier = Modifier.padding(bottom = Gap.xs, start = Gap.xxs),
     )
-    // 今天有晨跑时，在这一档里也明说一句：它没有节次，不是"漏了一节"
-    val runRoom = runs.firstOrNull { it.room.isNotBlank() }?.room.orEmpty()
-    if (runs.isNotEmpty()) {
+    // 今天有晨跑 / 早自习这种没有节次的条目时，在这一档里也明说一句：它不是"漏了一节"。
+    // 一条一句，名字用校方给的那条 —— 以前写死"另有晨跑活动"，早自习进来就被念成晨跑了。
+    runs.groupBy { it.course }.forEach { (name, same) ->
+        val room = same.firstOrNull { it.room.isNotBlank() }?.room.orEmpty()
         Text(
-            text = "另有晨跑活动" + if (runRoom.isNotBlank()) " · $runRoom" else "",
+            text = "早 · " + listOfNotNull(name.takeIf { it.isNotBlank() }, room.takeIf { it.isNotBlank() })
+                .joinToString(" · "),
             fontSize = Type.meta,
             color = ink.faint,
             modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
