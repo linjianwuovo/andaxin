@@ -1,99 +1,119 @@
 package com.andaxin.feature.about
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.andaxin.shell.pressClick
 import com.andaxin.BuildConfig
 import com.andaxin.app.LocalAppGraph
+import com.andaxin.core.design.AppIconTile
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
-import com.andaxin.core.design.Radius
-import com.andaxin.shell.Hairline
-import com.andaxin.shell.Labeled
-import com.andaxin.shell.Sheet
-import com.andaxin.shell.SectionTitle
-import kotlinx.coroutines.launch
-import com.andaxin.shell.Chip
 import com.andaxin.core.design.Type
+import com.andaxin.core.launcher.LauncherIcons
+import com.andaxin.data.capture.UpdateFeed
+import com.andaxin.feature.brief.ScaffoldPage
+import com.andaxin.feature.web.encodeUrl
+import com.andaxin.shell.Hairline
+import com.andaxin.shell.RowLine
+import com.andaxin.shell.Sheet
+import com.andaxin.shell.pressClick
 
+/*
+ * 关于安大信。
+ *
+ * 10-25 他把自己旧项目那一屏发过来定成规格，又补一句"安大信上边再加上 app 图标"：
+ * 顶上是一整张居中的名片 —— 图标、名字、一句话、版本号，底下压着 MiSans 那条版权字。
+ * 那条版权字是《MiSans 字体知识产权许可协议》要求的"在软件中特别注明使用了 MiSans 字体"，
+ * 以前挂在"字体"那一行里（标签+值），现在照那张屏的写法原样摆在最下面。
+ *
+ * 图标画的是**桌面上现在立着的那一枚**（`LauncherIcons.current`），不是写死的蓝底 ——
+ * 他在主题那一屏换过配色，这一枚跟着换才对得上桌面。
+ *
+ * 版本号那一行仍是调试那一档唯一的入口：连点十下开门。正式版这边 `graph.debug` 是 null，
+ * 点了什么都不发生，界面上也没有那一格。
+ */
 @Composable
 fun AboutScreen(
     onBack: () -> Unit,
-    modifier: Modifier = Modifier,
     /** 跳应用内那个带会话的 WebView（release 页在那儿开，不甩到系统浏览器）。 */
     open: (String) -> Unit = {},
 ) {
     val ink = LocalInk.current
     val graph = LocalAppGraph.current
+    val context = LocalContext.current
     /*
      * 调试这一档整个不在 main 里：`graph.debug` 由 flavor 给 —— beta 那份给实现
      * （连点十下开门 + 关于页那一格 + 运动页「模拟路线」），正式版给 null。
      * 所以这里既没有计数、也没有那一格，只有一个"有面板就把事件递过去"的口子。
      */
     val debug = graph.debug
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
-    ) {
-        Spacer(Modifier.height(Gap.xl))
-        Text("‹ 返回", fontSize = Type.body, color = ink.muted, modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm))
-        Spacer(Modifier.height(Gap.sm))
-        Text("关于", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
 
-        Spacer(Modifier.height(Gap.xl))
+    ScaffoldPage(title = "关于安大信", onBack = onBack) {
         Sheet {
-            Labeled(label = "名称", value = "安大信")
-            Spacer(Modifier.height(Gap.sm))
-            Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            // 版本这一行是调试那一档唯一的入口：递一下计数，正式版这边 debug 是 null，什么都不发生
-            Labeled(
-                label = "版本",
-                value = BuildConfig.VERSION_NAME,
-                modifier = Modifier.pressClick(shrink = false) { debug?.versionTapped() },
-            )
-            Spacer(Modifier.height(Gap.sm))
-            Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "包名", value = BuildConfig.APPLICATION_ID)
-            Spacer(Modifier.height(Gap.sm))
-            Hairline()
-            Spacer(Modifier.height(Gap.sm))
-            // 《MiSans 字体知识产权许可协议》要求"在软件中特别注明使用了 MiSans 字体"
-            Labeled(label = "字体", value = "MiSans（小米，免费商用）")
+            Column(
+                Modifier.fillMaxWidth().padding(top = 30.dp, bottom = 26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                AppIconTile(LauncherIcons.current(context), size = 76.dp)
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "安大信",
+                    fontSize = Type.display,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("让安小信变大", fontSize = Type.meta, color = ink.muted)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    // 连点十下的入口在这一行上：字号、颜色都不给它特殊待遇，看不出来是按钮才对
+                    text = "v" + BuildConfig.VERSION_NAME,
+                    fontSize = Type.meta,
+                    color = ink.muted,
+                    modifier = Modifier
+                        .pressClick(shrink = false) { debug?.versionTapped() }
+                        .padding(horizontal = Gap.md, vertical = Gap.xs),
+                )
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    "本应用使用 MiSans 字体 Copyright © 2020-2023 Beijing Xiaomi Mobile Software Co., Ltd.",
+                    fontSize = Type.tinier,
+                    lineHeight = Type.metaLine,
+                    color = ink.faint,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = Gap.sm),
+                )
+            }
         }
 
         debug?.aboutCard?.invoke()
 
-        Spacer(Modifier.height(Gap.xl))
+        Spacer(Modifier.height(Gap.lg))
+        Sheet {
+            // 那张规格屏上这里有两行：GitHub 仓库、小红书·我的主页（右边写的是"复制链接"）。
+            // 小红书那一行等他把主页链接发过来再上屏 —— 摆一颗按不动的键比没有这一行更糟。
+            LINKS.forEachIndexed { i, (name, url) ->
+                if (i > 0) {
+                    Spacer(Modifier.height(Gap.xxs)); Hairline(); Spacer(Modifier.height(Gap.xxs))
+                }
+                RowLine(name, right = "›", onClick = { open("web/" + encodeUrl(url)) })
+            }
+        }
+
+        Spacer(Modifier.height(Gap.lg))
+        UpdateCard(open)
+
         Spacer(Modifier.height(Gap.lg))
         Text(
             text = "边界：不代你提交申请、不代你付款、不后台刷任何进度 —— 写操作一律停在最后一步，由你按下去。",
@@ -101,10 +121,18 @@ fun AboutScreen(
             lineHeight = Type.metaLine,
             color = ink.muted,
         )
-        Spacer(Modifier.height(Gap.lg))
-
-
-        UpdateCard(open)
-        Spacer(Modifier.height(Gap.xxl))
+        Spacer(Modifier.height(Gap.xs))
+        // 包名从名片里挪到这儿：它是查问题时要念给我听的那一个，不是每天要看的东西
+        Text("包名 ${BuildConfig.APPLICATION_ID}", fontSize = Type.micro, color = ink.faint)
+        Spacer(Modifier.height(Gap.xl))
     }
 }
+
+/**
+ * 关于页底下那一卡的两行去处。
+ *
+ * 他那张规格屏上第二行是「小红书 · 我的主页」（右边那颗写的是"复制链接"）。这一行先不上屏：
+ * 手上没有他那串主页地址，而摆一颗按下去什么都不发生的键，比这一行缺着更糟。
+ * 链接给我，填进这个表就是一行字。
+ */
+private val LINKS = listOf("GitHub 仓库" to UpdateFeed.BASE)

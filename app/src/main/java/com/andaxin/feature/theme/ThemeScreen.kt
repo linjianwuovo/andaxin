@@ -47,6 +47,7 @@ import com.andaxin.R
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.AppIconTile
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
@@ -304,40 +305,16 @@ private fun LauncherIconSection() {
 /**
  * 这一格画的就是桌面上那一枚会长的样子 —— 同一批数、同一个裁法。
  *
- * 桌面不是把 108 的画布整个铺满一格，而是取中间那扇 72×72 的窗放大 1.5 倍。这条是量出来的：
- * 米11 那一格 218 px 宽、里面那枚方框（资源里占 56/108）实测 170 px，52 变 78（百分比），比值正好 1.5。
- * 所以预览也按这扇窗画。而"预览那个大小"是他挑图标时看到的那个：要外面照里面来，
- * 动的是 `res/drawable/ic_launcher_fg_*.xml` 那六份的坐标（缩到 0.665），不是把预览改成桌面上那个。
+ * 数在 `core/design/AppIconTile.kt` 里（关于页顶上那枚用的是同一个），改一处两边都动。
+ * 为什么按那扇 72 的窗画、那批坐标为什么缩过 0.665，都写在那一份的注释里。
  */
 @Composable
 private fun IconPreview(ic: LauncherIcon, on: Boolean) {
-    val tile = 58.dp
-    val shape = RoundedCornerShape(26)
-    Box(
-        Modifier
-            .size(tile)
-            .clip(shape)
-            .background(Color(ic.bg.toInt()))
-            .then(if (on) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.size(tile)) {
-            // 一像素对多少 dp：桌面那套是"72 个视口单位铺满整格"，不是 108 铺满
-            val s = size.width / 72f
-            val dx = -18f * s
-            val dy = -18f * s
-            val line = Color(ic.ink.toInt())
-            val bar = Color(ic.bar.toInt())
-            // 数要和 res 里那五份 vector 一模一样（同一批坐标、同一根线宽 9.4）。
-            // 那批坐标是绕中心缩过一遍的（0.665）：桌面会把 108 中间 72 那扇窗放大 1.5 倍，
-            // 缩完再放大，落到桌面上才是这一排预览原来那个大小 —— 他要的是外面照里面改，
-            // 不是把里面改成外面那样，所以动的是资源，这里只是跟着抄。
-            val w = 9.4f * s
-            drawLine(line, Offset(dx + 36.42f * s, dy + 71.11f * s), Offset(dx + 54f * s, dy + 36.57f * s), w, StrokeCap.Round)
-            drawLine(line, Offset(dx + 54f * s, dy + 36.57f * s), Offset(dx + 70.25f * s, dy + 71.11f * s), w, StrokeCap.Round)
-            drawLine(bar, Offset(dx + 45.02f * s, dy + 57.92f * s), Offset(dx + 62.98f * s, dy + 57.92f * s), w, StrokeCap.Round)
-        }
-    }
+    AppIconTile(
+        ic,
+        size = 58.dp,
+        ring = if (on) MaterialTheme.colorScheme.primary else null,
+    )
 }
 
 private val ACCENTS = listOf(
