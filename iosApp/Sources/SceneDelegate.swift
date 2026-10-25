@@ -45,16 +45,32 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = w
         w.makeKeyAndVisible()
 
-        // 反应式 Gate：登录、"先不登录逛逛"、退出登录这三条路共用这一处换根。
-        // 之前只有 onDone（登录成功）一条命令式换根，所以「逛逛」那格点了只震一下。
-        // 回调里的布尔过桥是盒子化的 KotlinBoolean（不是 Swift Bool），判真假要取 .boolValue。
+        // 首帧走 resolveGate（93 验证过这条路能画出登录页），之后的变化走 watchRoot。
+        // 94 那发我把首帧也交给 watchRoot，结果进程活着、界面压根没上前台 —— 两张截屏都是桌面。
+        // 每一步都 NSLog 一句：CI 那步用 simctl launch --console 把 app 自己的 stderr 收进
+        // console.txt，走到哪儿断在哪儿，下一发的日志里就有（93 那句
+        // "Unbalanced calls to begin/end appearance transitions" 就是这么捞到的）。
+        NSLog("AndaXin 壳：窗口已 makeKeyAndVisible，等 Gate 第一答")
+        g.resolveGate { [weak self] signed in
+            guard let self else { return }
+            let tabs = signed.boolValue
+            NSLog("AndaXin 壳：Gate 回了 signed=\(tabs)，换根")
+            self.swap(toTabs: tabs, g)
+        }
         g.watchRoot { [weak self] showTabs in
             guard let self else { return }
             let tabs = showTabs.boolValue
-            if self.showingTabs == tabs { return }
-            self.showingTabs = tabs
-            self.window?.rootViewController = tabs ? self.makeTabs(g) : self.makeLogin(g)
+            NSLog("AndaXin 壳：Gate 变了 showTabs=\(tabs)")
+            self.swap(toTabs: tabs, g)
         }
+    }
+
+    /// 换根。showingTabs 存一份现状，别在重复回调里把用户当前那一格的导航栈掀掉。
+    private func swap(toTabs: Bool, _ g: IosAppGraph) {
+        if showingTabs == toTabs { return }
+        showingTabs = toTabs
+        window?.rootViewController = toTabs ? makeTabs(g) : makeLogin(g)
+    }
     }
 
     /// 场景刚接上那一瞬间的占位（查 signedIn 通常 <10ms，但也不能白屏闪）

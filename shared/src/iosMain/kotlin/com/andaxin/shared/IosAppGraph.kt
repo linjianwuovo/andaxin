@@ -34,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import platform.Foundation.NSLog
@@ -115,21 +116,35 @@ class IosAppGraph(documentsPath: String) {
     }
 
     /**
-     * 反应式 Gate：登录态或"逛逛"标志一变，就回主线程告诉 Swift 该用哪种根
-     * （true = 五格底栏，false = 登录页）。
+     * 启动期那一次换根：挂起查完登录态，回主线程告诉 Swift（isSignedIn 是普通 Boolean）。
      *
-     * 安卓那边 Gate 本来就是响应式的，iOS 之前只有"登录成功"这一条命令式换根，
-     * 所以「先不登录逛逛」和「我的 → 去登录」这两格点了都只震一下 —— 标志写进去了，
-     * 根没人换。现在这三条路（登录、逛逛、退出）共用这一处。
+     * 94 那发我把启动换根也交给 watchRoot，结果模拟器里进程活着、界面却压根没上前台，
+     * 而这条命令式的路是 93 验证过能画出登录页的 —— 所以首帧回到它，watchRoot 只管之后的变化。
+     */
+    fun resolveGate(onResolved: (isSignedIn: Boolean) -> Unit) {
+        scope.launch {
+            val signed = session.signedIn()
+            onResolved(signed)
+        }
+    }
+
+    /**
+     * 反应式 Gate：启动之后，登录态或"逛逛"标志一变就回主线程让 Swift 换根。
      *
-     * distinctUntilChanged 不能省：session 里还有宿舍、资料那些字段，
-     * 每改一次就掀一遍 rootViewController 等于把用户当前那一格的导航栈清空。
+     * 安卓那边 Gate 本来就是响应式的，iOS 之前只有"登录成功"一条命令式换根，
+     * 所以「先不登录逛逛」「我的 → 去登录」「退出登录」这三格点了都只震一下：
+     * 标志写进去了，根没人换。
+     *
+     * drop(1) 是把"首帧"让给 resolveGate（见上），别两条路抢同一次换根；
+     * distinctUntilChanged 是为了别在改宿舍/拉资料这种 session 更新时
+     * 把用户当前那一格的导航栈掀掉。
      */
     fun watchRoot(onChange: (showTabs: Boolean) -> Unit) {
         scope.launch {
             session.state
                 .map { it.loggedIn || it.browsing }
                 .distinctUntilChanged()
+                .drop(1)
                 .collect { onChange(it) }
         }
     }

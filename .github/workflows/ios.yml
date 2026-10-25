@@ -97,9 +97,12 @@ jobs:
           if kill -0 "$CPID" 2>/dev/null; then echo "8 秒：--console 还挂着 = app 活着"; else echo "8 秒：app 已经自己退了，这就是崩"; fi
           sleep 8
           xcrun simctl io "$UDID" screenshot iosApp/simulator-later.png || true
-          # 活没活问 ps，别再问 launchctl：模拟器里 app 不进 launchctl 那张表，
-          # 上一发"6 秒后 launchctl 里已经没有 AndaXin"是假信号，白绕了一圈。
-          xcrun simctl spawn "$UDID" ps -Ao pid,comm 2>/dev/null | grep -i andaxin || echo "16 秒后 ps 里没有 AndaXin"
+          # 活没活别问 ps 也别问 launchctl —— 这俩在模拟器里都看不见 app 进程：
+          # 93 那发 ps 报"没有 AndaXin"，而 16 秒截屏明明是登录页（假阴性）。
+          # 现在问 RunningBoard：它记"有没有真把 app 切到前台"，比进程表贴近我们要的答案。
+          xcrun simctl spawn "$UDID" log show --style compact --last 2m \
+            --predicate 'eventMessage CONTAINS[c] "com.andaxin.ios" AND (eventMessage CONTAINS[c] "activat" OR eventMessage CONTAINS[c] "foreground" OR eventMessage CONTAINS[c] "scene")' \
+            2>/dev/null | tail -25 || echo "统一日志里没查到前台切换记录"
           kill "$LPID" 2>/dev/null || true
           kill "$CPID" 2>/dev/null || true
           echo "--- app 自己的 stdout/stderr（$(wc -c < console.txt) 字节，崩因第一现场）"
@@ -129,7 +132,10 @@ jobs:
           done
           echo "--- 系统日志里的 AndaXin"
           xcrun simctl spawn "$UDID" log show --style compact --last 3m --predicate 'process == "AndaXin"' 2>/dev/null | tail -30 || true
-          xcrun simctl spawn "$UDID" ps -Ao pid,comm 2>/dev/null | grep -i andaxin || echo "收尾时 ps 里已经没有 AndaXin 进程"
+          # 这里原来还有一条 ps 探针，删了：它在模拟器里看不见 app 进程，
+          # 只会吐一句"已经没有 AndaXin"骗人。判断只看两样 ——
+          # 上面那段"有没有真把 app 切到前台"的 RunningBoard 记录，和 app 自己的 stderr。
+          echo "--- 收尾：app 自己的 stderr 现在 $(wc -c < console.txt) 字节（壳里每走一步都 NSLog 一句，断在哪儿就在这儿）"
           # 装进去的那份 plist 到底长什么样：xcodebuild 警告说缺启动屏，而仓库那份现在已改成由 project.yml 生成
           echo "--- 产物里的 Info.plist 关键键"
           plutil -p "$APP/Info.plist" 2>/dev/null | grep -iE "UILaunchScreen|UISupportedInterfaceOrientations|UIRequiresFullScreen|CFBundleIdentifier|MinimumOSVersion|NSExceptionDomains" || echo "读不到 $APP/Info.plist"
