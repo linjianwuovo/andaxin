@@ -85,7 +85,7 @@ targets:
         # iOS 这边 build 号单独再抬：修 RSA 那发（92）和「先不登录逛逛」那发（93）、深夜自查批次（94）同为 0.8.49，
         # 真机崩溃报告与「关于」页只带这个号，不抬就没法分清他手机上装的到底是哪一发。
         MARKETING_VERSION: "0.8.49"
-        CURRENT_PROJECT_VERSION: "97"
+        CURRENT_PROJECT_VERSION: "98"
     preBuildScripts:
       - name: BuildSharedFramework
         script: |

@@ -1,5 +1,12 @@
 package com.andaxin.shared
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.uikit.LocalUIViewController
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import com.andaxin.core.store.WhoIs
 import com.andaxin.feature.home.HeroLook
@@ -17,6 +24,7 @@ import com.andaxin.feature.notice.NoticeScreen
 import com.andaxin.feature.schedule.TimetableDeps
 import com.andaxin.feature.schedule.TimetableScreen
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.cinterop.useContents
 import platform.Foundation.NSBundle
 import platform.UIKit.UINavigationController
 import platform.UIKit.UIRectEdgeNone
@@ -44,16 +52,43 @@ import platform.UIKit.navigationItem
  * 默认那档（All + 半透明栏）会把子 VC 铺到整屏，内容从 y=0 开始画，于是第一张卡
  * 被系统那条栏压掉一截 —— 安卓那边不存在这问题，它的内容区是 pager 上一句
  * `.statusBarsPadding()` 顶出来的（RootShell.kt:483），iOS 这边以前一处避让都没有。
- * 栏是实心档（AppDelegate 里 configureWithOpaqueBackground），所以让开它、别钻底下才对。
+ *
+ * `bar = false` 是给五格用的：他要的是安卓那张的样子 —— 顶部没有系统标题栏，
+ * "上午好，黄铮辉"就是页面自己画的大标题。栏一藏，刘海那一截没人让了，
+ * 所以配下面的 [IosTopInset] 一起用，别去掉栏之后内容顶进挖孔。
  */
-private fun navigated(child: UIViewController, title: String): UINavigationController {
+private fun navigated(child: UIViewController, title: String, bar: Boolean = true): UINavigationController {
     child.navigationItem.title = title
     child.edgesForExtendedLayout = UIRectEdgeNone
     val nav = UINavigationController(rootViewController = child)
     // 大标题会把栏撑高、也跟他截图那版居中小标题不一样，按默认那档来
     nav.navigationBar.prefersLargeTitles = false
+    nav.setNavigationBarHidden(!bar, animated = false)
     return nav
 }
+
+/**
+ * 系统栏藏了之后，由宿主把状态栏/刘海那一截让出来。
+ *
+ * 共享层那五屏自己不处理这件事（logicMain 里 `statusBarsPadding` / `safeContentPadding`
+ * 0 命中），安卓是 RootShell 在 pager 上统一补的，iOS 照同一个思路补。
+ * 顺手 NSLog 出这个数 —— CI 那步把 app 自己的 stderr 收进 console.txt，
+ * 读图之前先看这个数对不对，别拿"看着还行"当证据。
+ */
+@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@Composable
+private fun IosTopInset(content: @Composable () -> Unit) {
+    val vc = LocalUIViewController.current
+    // this.top 不能写成 top：miuix 那个顶层包就叫 top，会先撞上它（编译器："package name found"）
+    val inset = vc.view.window?.safeAreaInsets?.useContents { this.top } ?: 0.0
+    if (topInsetLogged && inset > 0.0) {
+        topInsetLogged = false
+        platform.Foundation.NSLog("AndaXin 壳：安全区顶部 = $inset pt（系统栏已藏，这一截由宿主让）")
+    }
+    Box(Modifier.fillMaxSize().padding(top = inset.dp)) { content() }
+}
+
+private var topInsetLogged = true
 
 /** 本机这版是多少 —— 直接读包里的 Info.plist，别再手写一个会过期的数。 */
 private fun bundleVersion(): String =
@@ -63,70 +98,79 @@ private fun bundleVersion(): String =
 fun IosAppGraph.homeViewController(): UIViewController =
     navigated(
         ComposeUIViewController {
-            HomeScreen(
-                deps = HomeDeps(
-                    model = homeModel,
-                    session = session,
-                    heroStyle = MutableStateFlow(HeroLook.Auto),
-                    heroArt = null,
-                    // 校历那一发和「待办事务」四个数：以前这里是一句写死的失败 + 空列表，
-                    // 所以首页下半屏永远画四个「—」。安卓那侧 HomeTab 传的就是这四路，照搬。
-                    loadExtras = { home.load() },
-                    todoFeeds = listOf(affairList, toReadList, myAffairList, handledList),
-                ),
-                open = {},
-            )
+            IosTopInset {
+                HomeScreen(
+                    deps = HomeDeps(
+                        model = homeModel,
+                        session = session,
+                        heroStyle = MutableStateFlow(HeroLook.Auto),
+                        heroArt = null,
+                        // 校历那一发和「待办事务」四个数：以前这里是一句写死的失败 + 空列表，
+                        // 所以首页下半屏永远画四个「—」。安卓那侧 HomeTab 传的就是这四路，照搬。
+                        loadExtras = { home.load() },
+                        todoFeeds = listOf(affairList, toReadList, myAffairList, handledList),
+                    ),
+                    open = {},
+                )
+            }
         },
         "首页",
+        bar = false,
     )
 
-/** 课表。 */
+/** 课程表。 */
 fun IosAppGraph.timetableViewController(): UIViewController =
     navigated(
         ComposeUIViewController {
-            TimetableScreen(deps = TimetableDeps(model = timetableModel))
+            IosTopInset { TimetableScreen(deps = TimetableDeps(model = timetableModel)) }
         },
         "课程表",
+        bar = false,
     )
 
 /** 消息。 */
 fun IosAppGraph.messageViewController(): UIViewController =
     navigated(
         ComposeUIViewController {
-            MessageScreen(deps = MessageDeps(model = messageModel))
+            IosTopInset { MessageScreen(deps = MessageDeps(model = messageModel)) }
         },
         "消息",
+        bar = false,
     )
 
 /** 公告。 */
 fun IosAppGraph.noticeViewController(): UIViewController =
     navigated(
         ComposeUIViewController {
-            NoticeScreen(deps = NoticeDeps(model = noticeModel), open = {})
+            IosTopInset { NoticeScreen(deps = NoticeDeps(model = noticeModel), open = {}) }
         },
         "公告",
+        bar = false,
     )
 
 /** 我的。 */
 fun IosAppGraph.meViewController(): UIViewController =
     navigated(
         ComposeUIViewController {
-            MeScreen(
-                deps = MeDeps(
-                    session = session,
-                    // 缓存用图上那一份（= 进程级）。原来是每次进这屏 new 一个 WhoIs()，
-                    // 等于永远没缓存：从二级页退回来，学院/专业那一行先跳回兜底文案。
-                    who = this.who,
-                    loadProfile = { profile.load() },
-                    loadIntern = { home.intern() },
-                    avatar = null,
-                    entryIcon = null,
-                    versionName = bundleVersion(),
-                ),
-                open = {},
-            )
+            IosTopInset {
+                MeScreen(
+                    deps = MeDeps(
+                        session = session,
+                        // 缓存用图上那一份（= 进程级）。原来是每次进这屏 new 一个 WhoIs()，
+                        // 等于永远没缓存：从二级页退回来，学院/专业那一行先跳回兜底文案。
+                        who = this.who,
+                        loadProfile = { profile.load() },
+                        loadIntern = { home.intern() },
+                        avatar = null,
+                        entryIcon = null,
+                        versionName = bundleVersion(),
+                    ),
+                    open = {},
+                )
+            }
         },
         "我的",
+        bar = false,
     )
 
 /**
