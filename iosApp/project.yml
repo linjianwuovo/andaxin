@@ -39,12 +39,14 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
-        # scene 生命周期声明。这个键不是可选的整洁问题，是"起不起得来"的问题：
-        # Compose Multiplatform 在第一次建 ComposeUIViewController 时跑 PlistSanityCheck，
-        # 查的就是 Info.plist 里有没有 UIApplicationSceneManifest —— 没有就抛未捕获 Kotlin
-        # 异常把自己 abort() 掉（真机 .ips：#13 PlistSanityCheck$performIfNeeded → #02 abort，
-        # EXC_CRASH/SIGABRT，byProc 是 AndaXin 自己）。窗口由 SceneDelegate 建，见
-        # iosApp/Sources/SceneDelegate.swift。
+        # 这个键才是 PlistSanityCheck 真正查的那个。1.12.0 那份 klib 的字符串池里，
+        # 它只 objectForInfoDictionaryKey: 读 CADisableMinimumFrameDurationOnPhone 一个键，
+        # 读不到或为 false 就抛 IllegalStateException —— K/N 的 TerminateHandler 接着 abort()。
+        # 真机 .ips 和模拟器 console 两处都是它（b432067 那发模拟器把原话打出来了）。
+        # 不给它 true，高刷屏上 Compose 的帧率会被按 60Hz 钳住。
+        CADisableMinimumFrameDurationOnPhone: true
+        # scene 生命周期声明：这个不是 CMP 要的，是 Apple 要的（iOS 26/27 起不再给
+        # "AppDelegate 单窗口"那条老路留活口），窗口由 SceneDelegate 建。
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations:

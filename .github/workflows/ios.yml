@@ -197,14 +197,17 @@ jobs:
           IPA="AndaXin-$SHORT-unsigned.ipa"
           cp AndaXin-unsigned.ipa "$IPA"
           echo "这一发的包：$IPA（$(wc -c < "$IPA") 字节）"
-          BODY="未签名 ipa：在 Windows 上用 Sideloadly 或爱思拿免费 Apple ID 重签再装。提交 $SHORT；模拟器截屏在 Actions 的 ios-artifacts 产物包里。"
-          # 上一版把 JSON 直接写在 -d "..." 里，两发都回 400 "Problems parsing JSON"，
-          # 可同一串在本地 json.loads 是过的 —— 说明问题在"这串到底有没有跟着请求出去"，不在中文。
-          # 改成 heredoc 落成文件再 --data-binary @ 上去：不经引号/续行这一路，且把字节数打出来当证据。
-          cat > rel_body.json <<EOF
-          {"tag_name":"$TAG","name":"iOS 骨架 $SHORT","target_commitish":"$GITHUB_REF_NAME","prerelease":true,"body":"$BODY"}
-          EOF
+          # 发版这步连着四发都回 400 "Problems parsing JSON"。上一发拿到了硬证据：
+          # 我这边按同样内容算出来 275 字节，runner 上 wc -c 报 267 —— 那串中文经
+          # heredoc 出去就不是原来那串了。不追这个差异了，直接改成纯 ASCII：
+          # printf 一行出 JSON，没有 heredoc、没有多字节字符、没有跨引号续行。
+          BODY="Unsigned ipa for commit $SHORT. Re-sign it on Windows (Sideloadly / i4Tools, free Apple ID) and install. Simulator screenshots and console capture are in the ios-artifacts package of this run."
+          printf '{"tag_name":"%s","name":"iOS build %s","target_commitish":"%s","prerelease":true,"body":"%s"}' \
+            "$TAG" "$SHORT" "$GITHUB_REF_NAME" "$BODY" > rel_body.json
+          # 自证：非 ASCII 字节必须为 0，且这串必须能被 JSON 解析器读过去
           echo "payload 字节: $(wc -c < rel_body.json)"
+          LC_ALL=C grep -q '[^ -~]' rel_body.json && echo "里面有非 ASCII 字节（不该发生）" || echo "纯 ASCII：过"
+          python3 -c "import json;json.load(open('rel_body.json'));print('JSON 解析：过')" || echo "JSON 解析：没过（继续往下走，让 HTTP 码说话）"
           code=$(curl -sS -o rel.json -w '%{http_code}' -X POST "$API/releases" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Content-Type: application/json" \
