@@ -87,6 +87,9 @@ data class Step(
     val head: String = "",
 )
 
+/** 选项里的一堆：`name` 是这一堆的标题（"电"、"3 号宿舍楼"），`options` 是堆里那几条**整条原文**。 */
+data class ChoiceGroup(val name: String, val options: List<String>)
+
 sealed class Field {
     abstract val key: String
     abstract val label: String
@@ -99,7 +102,23 @@ sealed class Field {
      */
     data class Note(override val key: String, override val label: String, val text: String = "") : Field()
     data class Number(override val key: String, override val label: String, val unit: String = "") : Field()
-    data class Choice(override val key: String, override val label: String, val options: List<String>) : Field()
+    /**
+     * 一排选项。
+     *
+     * [groups] 给了就换一种画法：**先挑组，再挑组里那一条**。
+     * 报修那张表的字典是校方给的 —— 故障类型 57 条、地点 98 条，全平铺就是一整屏的丸子
+     * （他 10-25 晚上那句"这一页太杂了你整合一下"）。可提交要的是**整条原文**去查那张 id 对照表，
+     * 所以这里只是把同一批选项**分堆摆**，[options] 一个字没动、值还是整条，
+     * 数据层那两张对照表照旧。
+     *
+     * 组里的 `options` 必须是 [options] 的子集（界面按这个假设画：挑中组里那条 = 挑中整条）。
+     */
+    data class Choice(
+        override val key: String,
+        override val label: String,
+        val options: List<String>,
+        val groups: List<ChoiceGroup> = emptyList(),
+    ) : Field()
     data class Date(override val key: String, override val label: String) : Field()
     data class Person(override val key: String, override val label: String) : Field()
     /**

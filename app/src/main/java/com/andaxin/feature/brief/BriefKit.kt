@@ -751,21 +751,77 @@ private fun FieldRow(
         is Field.Choice -> Column {
             Text(field.label, fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.sm))
-            // 必须是会换行的流式排：原来是一整排不折行的 Row，
-            // 「学院」这种十几个选项被硬挤进一屏宽 —— 每颗字都竖着排成三四行，
-            // 高的那颗撑到 600 多像素，后面几颗直接挤出屏幕外看不见。
-            androidx.compose.foundation.layout.FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-                verticalArrangement = Arrangement.spacedBy(Gap.sm),
-            ) {
-                field.options.forEach { opt ->
-                    // 原来这一排每个选项都是同一层 hairline，选了哪个完全看不出来
-                    Chip(opt, get(field.key) == opt) { put(field.key, opt) }
+            if (field.groups.isEmpty()) {
+                // 必须是会换行的流式排：原来是一整排不折行的 Row，
+                // 「学院」这种十几个选项被硬挤进一屏宽 —— 每颗字都竖着排成三四行，
+                // 高的那颗撑到 600 多像素，后面几颗直接挤出屏幕外看不见。
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                    verticalArrangement = Arrangement.spacedBy(Gap.sm),
+                ) {
+                    field.options.forEach { opt ->
+                        // 原来这一排每个选项都是同一层 hairline，选了哪个完全看不出来
+                        Chip(opt, get(field.key) == opt) { put(field.key, opt) }
+                    }
+                }
+            } else {
+                /*
+                 * 分两排：上面一排是"堆"，下面一排是这一堆里的条目。
+                 *
+                 * 报修那张表是校方字典，故障类型 57 条、地点 98 条，全平铺就是一整屏丸子
+                 * （他 10-25 晚上那句"这一页太杂了你整合一下"）。堆是数据层按字典自己的一级分好的，
+                 * 值仍是**整条原文** —— 提交时那张"整条 → id"的对照表一个字没改。
+                 */
+                val cur = get(field.key)
+                // 他自己点开的那一堆（没点过就跟着已选那条走，再没有就第一堆）
+                val pinned = remember(field.key) { mutableStateOf<String?>(null) }
+                val home = field.groups.firstOrNull { cur in it.options }?.name
+                val open = pinned.value ?: home ?: field.groups.first().name
+                val group = field.groups.firstOrNull { it.name == open } ?: field.groups.first()
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                    verticalArrangement = Arrangement.spacedBy(Gap.sm),
+                ) {
+                    field.groups.forEach { g ->
+                        val one = g.options.size == 1
+                        Chip(g.name, g.name == open) {
+                            pinned.value = g.name
+                            // 一堆里就一条的（校方那棵树里有些楼栋没有楼层）：点堆就等于选中它，
+                            // 不再逼人多按一次去点下面那颗孤零零的丸子
+                            if (one) put(field.key, g.options.first())
+                        }
+                    }
+                }
+                if (group.options.size > 1) {
+                    Spacer(Modifier.height(Gap.sm))
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                        verticalArrangement = Arrangement.spacedBy(Gap.sm),
+                    ) {
+                        group.options.forEach { opt ->
+                            Chip(optionTail(group.name, opt), cur == opt) { put(field.key, opt) }
+                        }
+                    }
+                }
+                // 已选那条在别的一堆里时，这一屏看不见它 —— 得说一句，不然看着像没选上
+                if (cur.isNotBlank() && cur !in group.options) {
+                    Spacer(Modifier.height(Gap.xs))
+                    Text("已选 $cur", fontSize = Type.micro, color = ink.faint)
                 }
             }
         }
     }
 }
+
+/**
+ * 第二排那几颗丸子上不必把堆名再念一遍：「电 · 插座」在"电"这一堆底下只显示"插座"。
+ *
+ * 只管显示 —— 值仍是整条原文（提交要拿它去查那张 id 对照表）。两种脱法对应两族字典的写法：
+ * 故障类型是「一级 · 二级」，地点是「楼栋 楼层」。脱完变空串（整条就等于堆名，比如没楼层的楼栋）
+ * 就退回原文，免得摆一颗没有字的丸子。
+ */
+private fun optionTail(group: String, opt: String): String =
+    opt.removePrefix("$group · ").removePrefix("$group ").ifBlank { opt }
 
 /**
  * M3 的 DatePicker 给的是 **UTC 零点**的毫秒数，所以这里也按 UTC 格式化。

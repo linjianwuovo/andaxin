@@ -1,6 +1,7 @@
 package com.andaxin.data.capture
 
 import kotlin.concurrent.Volatile
+import com.andaxin.data.brief.ChoiceGroup
 import com.andaxin.data.brief.Field
 import com.andaxin.data.brief.FormSource
 import com.andaxin.data.brief.FormSpec
@@ -79,18 +80,31 @@ class CaptureRepairForm(
         val t1 = types.filter { it.parent.isBlank() || it.parent == "0" }
         val t1values = t1.map { it.value }.toSet()
         val leaves = types.filter { it.parent in t1values }
-        val typeOptions = leaves.mapNotNull { l ->
-            val top = t1.firstOrNull { it.value == l.parent } ?: return@mapNotNull null
-            "${top.name} · ${l.name}" to l.value
+        // 一堆 = 校方字典的一个一级（电 / 给排水 / 木 / IT…），堆里那几条仍是「一级 · 二级」整条原文。
+        // 分堆只是**摆法**：提交查的还是"整条原文 → 二级 value"那张表，一个键没多、没少。
+        val typeId = LinkedHashMap<String, String>()
+        val typeGroups = t1.mapNotNull { top ->
+            val kids = leaves.filter { it.parent == top.value }.map {
+                val whole = "${top.name} · ${it.name}"
+                typeId[whole] = it.value
+                whole
+            }
+            if (kids.isEmpty()) null else ChoiceGroup(top.name, kids)
         }
-        if (typeOptions.isEmpty()) return Result.failure(Exception("故障类型字典回空了（66 条那棵树没解出来）"))
+        if (typeId.isEmpty()) return Result.failure(Exception("故障类型字典回空了（66 条那棵树没解出来）"))
 
-        val placeOptions = placeLeaves(places)
-        if (placeOptions.isEmpty()) return Result.failure(Exception("报修地点字典回空了（99 条那棵树没解出来）"))
+        // 地点：一堆 = 一栋楼，堆里 = 这栋楼的楼层（整条仍是"楼栋 楼层"）；没楼层的楼自己当叶子
+        val flat = placeLeaves(places)
+        val placeId = LinkedHashMap<String, String>()
+        flat.forEach { (group, whole, ids) -> placeId[whole] = ids }
+        val placeGroups = flat.map { it.first }.distinct().map { g ->
+            ChoiceGroup(g, flat.filter { it.first == g }.map { it.second })
+        }
+        if (placeGroups.isEmpty()) return Result.failure(Exception("报修地点字典回空了（99 条那棵树没解出来）"))
 
         val fields = buildList {
-            add(Field.Choice(KEY_TYPE, "故障类型", typeOptions.map { it.first }))
-            add(Field.Choice(KEY_PLACE, "报修地点", placeOptions.map { it.first }))
+            add(Field.Choice(KEY_TYPE, "故障类型", typeId.keys.toList(), typeGroups))
+            add(Field.Choice(KEY_PLACE, "报修地点", placeId.keys.toList(), placeGroups))
             add(Field.Text(KEY_ADDR, "详细地址", hint = "门牌/房间号，自由文本"))
             if (times.isNotEmpty()) {
                 add(Field.Choice(KEY_START, "期望上门·开始", times))
@@ -99,10 +113,7 @@ class CaptureRepairForm(
             add(Field.Text(KEY_DESC, "问题描述", hint = "哪里坏了、什么时候开始的，越具体越好"))
             add(Field.Photos(KEY_PHOTOS, "现场照片", REPAIR_MAX_PHOTOS))
         }
-        shape = Shape(
-            typeOptions.toMap(),
-            placeOptions.toMap(),
-        )
+        shape = Shape(typeId, placeId)
         return Result.success(
             FormSpec(
                 title = "新建报修",
@@ -214,21 +225,22 @@ class CaptureRepairForm(
         }
     }
 
-    /**
+/**
      * 地点叶子 = 有子节点的楼栋下面每条楼层 + 没有子节点的楼栋自己。
-     * 值带的是**三段 id**（校区码 / 楼栋 id / 楼层 id），提交时正好对上 `xqdm`/`lyId`/`qyfjh`。
+     * 一条给三个数：属于哪一堆（楼栋）、给人看的整条原文、提交要发的**三段 id**
+     * （校区码 / 楼栋 id / 楼层 id，正好对上 `xqdm`/`lyId`/`qyfjh`）。
      */
-    private fun placeLeaves(nodes: List<Node>): List<Pair<String, String>> {
+    private fun placeLeaves(nodes: List<Node>): List<Triple<String, String, String>> {
         val campus = nodes.filter { it.parent == "0" }
         val buildings = nodes.filter { n -> campus.any { it.value == n.parent } }
-        val out = ArrayList<Pair<String, String>>()
+        val out = ArrayList<Triple<String, String, String>>()
         buildings.forEach { b ->
             val floors = nodes.filter { it.parent == b.value }
             val code = campus.first { it.value == b.parent }.value
             if (floors.isEmpty()) {
-                out.add("${b.name}" to "$code|${b.value}|")
+                out.add(Triple(b.name, b.name, "$code|${b.value}|"))
             } else {
-                floors.forEach { f -> out.add("${b.name} ${f.name}" to "$code|${b.value}|${f.value}") }
+                floors.forEach { f -> out.add(Triple(b.name, "${b.name} ${f.name}", "$code|${b.value}|${f.value}")) }
             }
         }
         return out

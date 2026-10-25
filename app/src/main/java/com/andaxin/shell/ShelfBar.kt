@@ -435,10 +435,12 @@ fun ShelfBar(
             val h = slotHPx * bulgeY()
             val left = padPx + drag.value * cellWidth + panelShift + (cellWidth - w) / 2f
             val top = (barHPx - slotHPx) / 2f + (slotHPx - h) / 2f
-            // 再往里让 10dp：贴着栏子边那一圈是 1dp 的墨色描边，夹到边上等于把那条边
-            // 拉成一条灰带子（10-22 深夜那版夹完，珠子下沿就是一圈灰）。让开描边，
-            // 带子里取到的就是栏子内部的糊字 —— 那才是折射该弯的东西
-            val m = with(density) { 10.dp.toPx() }
+            // 只让开 1dp：那道 1dp 的墨色描边不该被拉进带子里，但以前让的是 10dp ——
+            // 珠子静止就占着栏子中间 5..59dp 这一段，夹住的范围只有 10..54dp，
+            // 于是珠子上下各 5dp 一圈取不到样，边上攒出一条彩虹缝，看着就是"珠子分了两圈"
+            // （他 10-25 那句）。何况 shader 那一层现在改成"要出界就把位移收到 0"，
+            // 不再钉在边界上拉平铺，所以这 10dp 的保护没必要留那么大。
+            val m = with(density) { 1.dp.toPx() }
             if (ltr) floatArrayOf(-left + m, -top + m, barWidth - left - m, barHPx - top - m)
             else floatArrayOf(-1e6f, -1e6f, 1e6f, 1e6f)
         }
@@ -494,7 +496,23 @@ fun ShelfBar(
                     )
                     // 一圈 1dp 描边：底栏底下常压着白卡片、玻璃本身也是白的，没有这圈线
                     // 就成了一块"纯色圆角块"（他 11:38 那句"tab 怎么不是悬浮的"说的就是这个）。
-                    .border(1.dp, ink.hairline, Capsule())
+                    //
+                    // 但这圈线**不能整条画**：珠子身子底下正压着它，折射会把这条硬边弯进带里，
+                    // 观感就是珠子里又套了一圈 —— 外圈是珠子自己的边，内圈是这条被弯的栏边，
+                    // 两圈对不上（他 10-25 那句「水滴怎么分了两圈很有割裂感」的另一半，
+                    // 前一半是取样夹出的那条亮缝，见 LiquidLens）。
+                    // 所以珠子经过那一段让这条线淡到 0：珠子走到哪儿，栏边在那一段就"让开"。
+                    .hairlineYielding(
+                        color = ink.hairline,
+                        // 珠子左沿，**栏体自己的坐标**：这一层已经被 panelShift 平移过了，
+                        // 再算一遍就会把让开的位置往右多推一格（珠子走到最左那格时看得出来）。
+                        from = {
+                            val w = cellWidth * bulgeX()
+                            padPx + drag.value * cellWidth + (cellWidth - w) / 2f
+                        },
+                        width = { cellWidth * bulgeX() },
+                        span = { barWidth },
+                    )
                     .height(BAR_HEIGHT.dp)
                     .fillMaxWidth(),
             ) {}
@@ -655,6 +673,41 @@ fun ShelfBar(
             onSelect = {},
         )
     }
+}
+
+/**
+ * 栏体那圈 1dp 描边，但**珠子压住的那一段让开**（淡到 0）。
+ *
+ * 这圈线本身是要的（没有它，玻璃栏在白纸页面上就成了一块"纯色圆角块"）。
+ * 问题是珠子采的正是"栏体+五格"这一层：这条硬边一进折射带就被弯成一道弧，
+ * 于是珠子里外两圈 —— 外圈是珠子自己的边，内圈是这条被弯的栏边，两圈对不上，
+ * 就是他那句「水滴怎么分了两圈很有割裂感」（前一半是取样夹出来的亮缝，见 `LiquidLens`）。
+ *
+ * 所以用一支横向渐变把珠子脚下那一段擦掉：珠子走到哪儿，线就让到哪儿；
+ * 栏子两端该有线的地方照旧有线 —— "悬浮"那口气本来靠的是左右两端的弧。
+ */
+private fun Modifier.hairlineYielding(
+    color: Color,
+    /** 珠子左沿（这一层自己的坐标，绘制期读：每帧都动，不能当参数传出去） */
+    from: () -> Float,
+    width: () -> Float,
+    span: () -> Float,
+): Modifier = drawWithContent {
+    drawContent()
+    val total = span().coerceAtLeast(1f)
+    val w = width()
+    // 左右各再放宽 0.35 倍珠宽做渐变，淡入淡出没台阶
+    val lo = ((from() - w * 0.35f) / total).coerceIn(0f, 1f)
+    val hi = ((from() + w * 1.35f) / total).coerceIn(0f, 1f)
+    val clear = color.copy(alpha = 0f)
+    val a = lo
+    val b = (if (hi <= lo) (lo + 0.001f).coerceAtMost(1f) else hi)
+    // 圆角 = 短边一半，画出来就是 Capsule 那条轮廓（不另走 drawOutline，省一个 import）
+    drawRoundRect(
+        brush = Brush.horizontalGradient(0f to color, a to clear, b to clear, 1f to color),
+        cornerRadius = CornerRadius(size.height / 2f),
+        style = Stroke(width = 1.dp.toPx()),
+    )
 }
 
 /**

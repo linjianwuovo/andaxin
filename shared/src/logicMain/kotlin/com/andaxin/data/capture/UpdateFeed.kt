@@ -119,7 +119,8 @@ class UpdateFeed {
 
     private fun now(): String = hhmm(Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()))
 
-    private companion object {
+    companion object {
+        /** 仓的首页。检测更新拼直链用它，关于页那一行「GitHub 仓库」点的也是它。 */
         const val BASE = "https://github.com/linjianwuovo/andaxin"
         const val ATOM = "$BASE/releases.atom"
 
