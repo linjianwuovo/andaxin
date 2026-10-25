@@ -19,6 +19,7 @@ import com.andaxin.feature.schedule.TimetableScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import platform.Foundation.NSBundle
 import platform.UIKit.UINavigationController
+import platform.UIKit.UIRectEdgeNone
 import platform.UIKit.UIViewController
 import platform.UIKit.navigationController
 import platform.UIKit.navigationItem
@@ -36,9 +37,18 @@ import platform.UIKit.navigationItem
  * 返回是原生那颗（跟着 App 语言出中文），右滑手势也才认得。
  */
 
-/** 把一屏包进导航栈，标题走系统那条栏。 */
+/**
+ * 把一屏包进导航栈，标题走系统那条栏。
+ *
+ * `edgesForExtendedLayout = None` 是修他早上那句"上面有遮挡"：
+ * 默认那档（All + 半透明栏）会把子 VC 铺到整屏，内容从 y=0 开始画，于是第一张卡
+ * 被系统那条栏压掉一截 —— 安卓那边不存在这问题，它的内容区是 pager 上一句
+ * `.statusBarsPadding()` 顶出来的（RootShell.kt:483），iOS 这边以前一处避让都没有。
+ * 栏是实心档（AppDelegate 里 configureWithOpaqueBackground），所以让开它、别钻底下才对。
+ */
 private fun navigated(child: UIViewController, title: String): UINavigationController {
     child.navigationItem.title = title
+    child.edgesForExtendedLayout = UIRectEdgeNone
     val nav = UINavigationController(rootViewController = child)
     // 大标题会把栏撑高、也跟他截图那版居中小标题不一样，按默认那档来
     nav.navigationBar.prefersLargeTitles = false
@@ -59,8 +69,10 @@ fun IosAppGraph.homeViewController(): UIViewController =
                     session = session,
                     heroStyle = MutableStateFlow(HeroLook.Auto),
                     heroArt = null,
-                    loadExtras = { Result.failure(Exception("校历那一路 iOS 还没接")) },
-                    todoFeeds = emptyList(),
+                    // 校历那一发和「待办事务」四个数：以前这里是一句写死的失败 + 空列表，
+                    // 所以首页下半屏永远画四个「—」。安卓那侧 HomeTab 传的就是这四路，照搬。
+                    loadExtras = { home.load() },
+                    todoFeeds = listOf(affairList, toReadList, myAffairList, handledList),
                 ),
                 open = {},
             )
@@ -74,7 +86,7 @@ fun IosAppGraph.timetableViewController(): UIViewController =
         ComposeUIViewController {
             TimetableScreen(deps = TimetableDeps(model = timetableModel))
         },
-        "课表",
+        "课程表",
     )
 
 /** 消息。 */
@@ -102,9 +114,11 @@ fun IosAppGraph.meViewController(): UIViewController =
             MeScreen(
                 deps = MeDeps(
                     session = session,
-                    who = WhoIs(),
-                    loadProfile = { Result.failure(Exception("还没接")) },
-                    loadIntern = { Result.failure(Exception("还没接")) },
+                    // 缓存用图上那一份（= 进程级）。原来是每次进这屏 new 一个 WhoIs()，
+                    // 等于永远没缓存：从二级页退回来，学院/专业那一行先跳回兜底文案。
+                    who = this.who,
+                    loadProfile = { profile.load() },
+                    loadIntern = { home.intern() },
                     avatar = null,
                     entryIcon = null,
                     versionName = bundleVersion(),

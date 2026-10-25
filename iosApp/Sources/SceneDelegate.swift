@@ -23,6 +23,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// 现在这一格根上是五格还是登录页。Kotlin 侧已经 distinctUntilChanged，
     /// 这儿再存一份是为了别在重复回调里重建整棵导航栈。
     private var showingTabs: Bool?
+    /// 底栏那台，留着两处用：红点要按 index 找 item、切格回调要知道自己贴在哪台上。
+    /// weak —— 它是 window.rootViewController 那棵树的一部分，不该由这儿续命。
+    private weak var tabsController: UITabBarController?
 
     func scene(
         _ scene: UIScene,
@@ -89,11 +92,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// 五格底栏：标题跟 Android 那五格一致；图标用系统 SF Symbols（不再等美术出图）。
     private func makeTabs(_ g: IosAppGraph) -> UITabBarController {
         let tabs = UITabBarController()
+        tabs.delegate = self          // 切格重拉，见下面的 UITabBarControllerDelegate
+        tabsController = tabs
 
         // 每屏在 Kotlin 侧已经包进自己的 UINavigationController，这里只贴底栏那一格
         let items: [(UIViewController, String, String)] = [
             (g.homeViewController(), "首页", "house"),
-            (g.timetableViewController(), "课表", "calendar"),
+            (g.timetableViewController(), "课程表", "calendar"),
             (g.messageViewController(), "消息", "envelope"),
             (g.noticeViewController(), "公告", "megaphone"),
             (g.meViewController(), "我的", "person.crop.circle"),
@@ -108,6 +113,26 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         tabs.viewControllers = items.map { $0.0 }
         tabs.tabBar.isTranslucent = true
+
+        // 「消息」那一格的红点：数由 Kotlin 侧 Unread.messages 写，这边只是贴上去。
+        // 安卓底栏读的是同一个流（RootShell 那句 badges = listOf(0,0,unreadMsgs,0,0)）。
+        g.watchUnread { [weak self] text in
+            let s = text as String
+            guard let items = self?.tabsController?.tabBar.items, items.count > 2 else { return }
+            items[2].badgeValue = s.isEmpty ? nil : s
+        }
         return tabs
+    }
+}
+
+// MARK: - 切格重拉
+
+extension SceneDelegate: UITabBarControllerDelegate {
+
+    /// 切到哪一格就重拉哪一格。iOS 的装配图是常驻的（安卓是"进屏才建 VM"），
+    /// 不补这一下，登录后看到的还是登录之前那一次拉回来的空态。
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+        let i = tabBarController.viewControllers?.firstIndex(of: viewController) ?? -1
+        graph?.refreshTab(index: Int32(i))
     }
 }
