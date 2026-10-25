@@ -2,17 +2,18 @@ import UIKit
 import shared
 
 /*
- * iOS 原生壳：UITabBarController 做底栏（系统毛玻璃和切联动效白送），五个 tab 各挂
+ * iOS 原生壳（AppDelegate 这一半）：只管进程级的事——系统那条栏的外观、把场景配置交出去。
+ *
+ * 窗口和 rootViewController 全在 SceneDelegate 里建，这儿一份都不留：
+ * Compose Multiplatform 的 PlistSanityCheck 要求 app 是 scene 生命周期的，
+ * 少了 UIApplicationSceneManifest 它就在第一帧抛未捕获异常把自己 abort 掉
+ * （真机 .ips 已定性，见 SceneDelegate.swift 顶部那段）。
+ * UITabBarController 做底栏（系统毛玻璃和切联动效白送），五个 tab 各挂
  * 一个 ComposeUIViewController（内容区 = 共享层的 Compose 屏，与 Android 同一套代码）。
- * Gate 骨架口径：signedIn 是 suspend（DataStore 现查），启动时在全局协程里查完再定根——
- * 没登录给登录页，onDone 换五格底栏。真实 Gate（onboarded/到期/顶号）下一批接。
  */
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
-
-    var window: UIWindow?
-    private var graph: IosAppGraph?
 
     func application(
         _ application: UIApplication,
@@ -24,69 +25,21 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         bar.configureWithOpaqueBackground()
         UINavigationBar.appearance().standardAppearance = bar
         UINavigationBar.appearance().scrollEdgeAppearance = bar
-
-        // 拿不到 Documents 就退到 Caches、再退到临时目录：
-        // 之前兜底成空串，路径会变成 "/andaxin.preferences_pb"（文件系统根），
-        // 读有 runCatching 兜着看不出来，一写就炸。
-        let docs = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first
-            ?? NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).first
-            ?? NSTemporaryDirectory()
-        let g = IosAppGraph(documentsPath: docs)
-        graph = g
-
-        window = UIWindow(frame: UIScreen.main.bounds)
-        window?.rootViewController = splashHolder()
-        window?.makeKeyAndVisible()
-
-        // Gate 的挂起细节全在 Kotlin 侧消化，Swift 只拿同步回调。
-        // 回调里的布尔过桥是盒子化的 KotlinBoolean（不是 Swift Bool），所以判真假要取 .boolValue ——
-        // 直接 `if signed` 编不过：cannot convert value of type 'KotlinBoolean' to 'Bool'。
-        g.resolveGate { [weak self] signed in
-            if signed.boolValue {
-                self?.window?.rootViewController = self?.makeTabs(g)
-            } else {
-                self?.window?.rootViewController = self?.makeLogin(g)
-            }
-        }
         return true
     }
 
-    /// 启动那一瞬间的占位（查 signedIn 通常 <10ms，但也不能白屏闪）
-    private func splashHolder() -> UIViewController {
-        let vc = UIViewController()
-        vc.view.backgroundColor = .systemBackground
-        return vc
-    }
-
-    /// 登录页：成功 onDone 换五格底栏
-    private func makeLogin(_ g: IosAppGraph) -> UIViewController {
-        g.loginViewController { [weak self] in
-            self?.window?.rootViewController = self?.makeTabs(g)
-        }
-    }
-
-    /// 五格底栏：标题跟 Android 那五格一致；图标用系统 SF Symbols（不再等美术出图）。
-    private func makeTabs(_ g: IosAppGraph) -> UITabBarController {
-        let tabs = UITabBarController()
-
-        // 每屏在 Kotlin 侧已经包进自己的 UINavigationController，这里只贴底栏那一格
-        let items: [(UIViewController, String, String)] = [
-            (g.homeViewController(), "首页", "house"),
-            (g.timetableViewController(), "课表", "calendar"),
-            (g.messageViewController(), "消息", "envelope"),
-            (g.noticeViewController(), "公告", "megaphone"),
-            (g.meViewController(), "我的", "person.crop.circle"),
-        ]
-        for (vc, title, symbol) in items {
-            vc.tabBarItem = UITabBarItem(
-                title: title,
-                image: UIImage(systemName: symbol),
-                selectedImage: UIImage(systemName: symbol)
-            )
-        }
-
-        tabs.viewControllers = items.map { $0.0 }
-        tabs.tabBar.isTranslucent = true
-        return tabs
+    /// 场景配置：类名在代码里给死，不靠 Info.plist 那串 "$(PRODUCT_MODULE_NAME).SceneDelegate" 去解析。
+    /// plist 里的 UIApplicationSceneManifest 仍然要写 —— PlistSanityCheck 查的是那个键在不在。
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let cfg = UISceneConfiguration(
+            name: "Default Configuration",
+            sessionRole: connectingSceneSession.role
+        )
+        cfg.delegateClass = SceneDelegate.self
+        return cfg
     }
 }

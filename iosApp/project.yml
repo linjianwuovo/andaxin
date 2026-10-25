@@ -32,7 +32,28 @@ targets:
         CFBundleDevelopmentRegion: zh_CN
         CFBundleName: AndaXin
         CFBundleDisplayName: 安大信
+        # 版本号要真落到 plist 里才算：MARKETING_VERSION / CURRENT_PROJECT_VERSION 只是构建设定，
+        # 这份 Info.plist 由 XcodeGen 现生成、里面没有这两个键，Xcode 就不会替我展开 ——
+        # 结果 60c026a 那发的崩溃报告里 app_version 是 1.0 / build 1（系统默认值），
+        # "我的"页那行 bundleVersion() 也跟着读空。$() 会在 Process Info.plist 那步展开成上面的值。
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        # scene 生命周期声明。这个键不是可选的整洁问题，是"起不起得来"的问题：
+        # Compose Multiplatform 在第一次建 ComposeUIViewController 时跑 PlistSanityCheck，
+        # 查的就是 Info.plist 里有没有 UIApplicationSceneManifest —— 没有就抛未捕获 Kotlin
+        # 异常把自己 abort() 掉（真机 .ips：#13 PlistSanityCheck$performIfNeeded → #02 abort，
+        # EXC_CRASH/SIGABRT，byProc 是 AndaXin 自己）。窗口由 SceneDelegate 建，见
+        # iosApp/Sources/SceneDelegate.swift。
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                # 类名走 @objc(SceneDelegate) 那个注册名，不写 $(PRODUCT_MODULE_NAME).：
+                # 这文件是 XcodeGen 现生成的，那串变量在这儿展开不可靠；
+                # AppDelegate 里还同时把 delegateClass 给死了，两条路都通。
+                UISceneDelegateClassName: SceneDelegate
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         # 只给跑量那台明文 http 的服务器开例外（对齐 Android 那份 network_security_config 的口径，不开全局放行）
