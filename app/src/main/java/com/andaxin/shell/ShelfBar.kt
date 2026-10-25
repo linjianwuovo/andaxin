@@ -435,10 +435,12 @@ fun ShelfBar(
             val h = slotHPx * bulgeY()
             val left = padPx + drag.value * cellWidth + panelShift + (cellWidth - w) / 2f
             val top = (barHPx - slotHPx) / 2f + (slotHPx - h) / 2f
-            // 再往里让 10dp：贴着栏子边那一圈是 1dp 的墨色描边，夹到边上等于把那条边
-            // 拉成一条灰带子（10-22 深夜那版夹完，珠子下沿就是一圈灰）。让开描边，
-            // 带子里取到的就是栏子内部的糊字 —— 那才是折射该弯的东西
-            val m = with(density) { 10.dp.toPx() }
+            // 只让开 1dp：那道 1dp 的墨色描边不该被拉进带子里，但以前让的是 10dp ——
+            // 珠子静止就占着栏子中间 5..59dp 这一段，夹住的范围只有 10..54dp，
+            // 于是珠子上下各 5dp 一圈取不到样，边上攒出一条彩虹缝，看着就是"珠子分了两圈"
+            // （他 10-25 那句）。何况 shader 那一层现在改成"要出界就把位移收到 0"，
+            // 不再钉在边界上拉平铺，所以这 10dp 的保护没必要留那么大。
+            val m = with(density) { 1.dp.toPx() }
             if (ltr) floatArrayOf(-left + m, -top + m, barWidth - left - m, barHPx - top - m)
             else floatArrayOf(-1e6f, -1e6f, 1e6f, 1e6f)
         }
