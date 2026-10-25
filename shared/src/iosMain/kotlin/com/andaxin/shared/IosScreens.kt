@@ -118,9 +118,10 @@ fun IosAppGraph.meViewController(): UIViewController =
 /**
  * 登录页（Gate 判未登录时进）。
  *
- * `onBack` 现在是真的：这一屏在导航栈里往回退得动（从引导页推进来时），
- * 而它自己就是根的那条路（没登录直接进）没有可退的，系统也就不会画那颗返回 ——
- * 不再是原来那颗点了没反应的 "‹ 返回"。
+ * `onBack` 分两条：这一屏在导航栈里往回退得动（从引导页推进来时）就真退；
+ * 它自己就是根的那条路（没登录直接进）没有可退的，系统也就不画那颗返回 ——
+ * 于是这条 onBack 只剩一个来源：「先不登录，随便看看」。那就等浏览标志落盘、
+ * 换五格底栏（原来这儿只 pop，根上 pop 不动，表现就是震一下什么也没发生）。
  */
 fun IosAppGraph.loginViewController(onDone: () -> Unit): UIViewController {
     var host: UIViewController? = null
@@ -134,7 +135,14 @@ fun IosAppGraph.loginViewController(onDone: () -> Unit): UIViewController {
                 consumeKicked = {},
             ),
             onDone = onDone,
-            onBack = { host?.navigationController?.popViewControllerAnimated(true) },
+            onBack = {
+                val nav = host?.navigationController
+                if (nav != null && nav.viewControllers.size > 1) {
+                    nav.popViewControllerAnimated(true)
+                } else {
+                    browseAsGuest(onDone)
+                }
+            },
         )
     }
     host = child

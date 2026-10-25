@@ -87,6 +87,20 @@ class IosAppGraph(documentsPath: String) {
     }
 
     /**
+     * 「先不登录，随便看看」：先把浏览标志写完，再回主线程让宿主换根。
+     *
+     * 不能直接复用 LoginScreen 里那条 launch —— 它是异步的，而 `onBack()` 紧跟着就返回；
+     * 安卓那边 Gate 是响应式的，标志一落自然重算，iOS 这边换根是命令式的
+     * （换 rootViewController），换早了五格那几屏会按"没在逛"去取数。
+     */
+    fun browseAsGuest(onReady: () -> Unit) {
+        scope.launch {
+            session.browseWithoutLogin()
+            onReady()
+        }
+    }
+
+    /**
      * 启动期的 Gate：挂起查完登录态，回主线程把结果告诉 Swift（isSignedIn 是普通 Boolean）。
      * Swift 侧一个 await/try 都不用写。
      */
