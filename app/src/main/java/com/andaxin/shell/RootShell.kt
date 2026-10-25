@@ -240,6 +240,22 @@ fun RootShell() {
         .collectAsStateWithLifecycle(initialValue = Appearance())
     val nav = rememberNavController()
 
+    /*
+     * 点通知要求落到某一格（10-25 他"消息tab里的通知也要通知"那条的落点）。
+     * 这一层只管一件事：先把二级页退回底栏那一屏 —— 人从通知栏点进来，结果停在课件页里面、
+     * 底下那排格子看不见，那不算"落到消息那一格"。格子本身由 ShelfHost 滚过去。
+     */
+    val jump by graph.tabJump.collectAsStateWithLifecycle()
+    LaunchedEffect(jump) {
+        if (jump < 0) return@LaunchedEffect
+        while (nav.currentDestination?.route != null &&
+            nav.currentDestination?.route != Route.SHELF &&
+            nav.popBackStack()
+        ) {
+            // 一直退到底栏那一屏；popBackStack 回 false 时循环自己停
+        }
+    }
+
     // 底栏和整屏共用同一份 Appearance：明暗在最外层（MainActivity）决定
     NavHost(
         navController = nav,
@@ -452,6 +468,16 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val iconsOn = Shelf.entries.map { it.iconOnRes }
     // 五格里只有「消息」那一格有未读概念（公告那份数据里没有已读未读），顺序对齐 Shelf
     val unreadMsgs by com.andaxin.core.store.Unread.messages.collectAsStateWithLifecycle()
+
+    // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
+    val graph = LocalAppGraph.current
+    val jump by graph.tabJump.collectAsStateWithLifecycle()
+    LaunchedEffect(jump) {
+        if (jump < 0) return@LaunchedEffect
+        pager.scrollToPage(jump.coerceIn(0, Shelf.entries.size - 1))
+        // 落完就把这个请求作废，不然每次重组回到这一屏都会再跳一次
+        graph.tabJump.value = -1
+    }
 
     Box(Modifier.fillMaxSize()) {
         HorizontalPager(
