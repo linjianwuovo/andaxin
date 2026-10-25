@@ -137,6 +137,20 @@ jobs:
           cp -R "$APP" Payload/
           zip -qry AndaXin-unsigned.ipa Payload
           unzip -l AndaXin-unsigned.ipa | head -5
+          # 拆过 60c026a 那发：包里带 Payload/AndaXin.app/Frameworks/shared.framework/shared，
+          # 一个 33,128 字节的空壳 —— 而符号早在主二进制里（47,891,544 字节、一次都没有 @rpath）。
+          # 静态 framework 不该被嵌入；真机 amfi 校验这空壳过不去，就是重签后启动闪退。
+          # 这条检查先把关：以后再嵌进去，CI 直接红，不用等你在手机上复现。
+          #  listing 先落文件再 grep，不走管道 —— 这一步开了 pipefail，grep -q 提前退出
+          #  会让 unzip 吃 SIGPIPE，把"检查通过"变成"流水线失败"。
+          unzip -l AndaXin-unsigned.ipa > ipa_list.txt
+          echo "主二进制: $(wc -c < "$APP/AndaXin") 字节"
+          echo "包里 Frameworks 相关条目: $(grep -c 'Payload/AndaXin.app/Frameworks/' ipa_list.txt) 条"
+          if grep -q 'Payload/AndaXin.app/Frameworks/' ipa_list.txt; then
+            echo "包内仍有嵌套 framework —— 真机重签后会闪退，这一发不发"
+            exit 1
+          fi
+          echo "OK：只链接未嵌入，包里没有 Frameworks/"
 
       - name: 打包 framework 产物
         if: always()

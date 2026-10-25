@@ -42,9 +42,18 @@ targets:
               NSExceptionAllowsInsecureHTTPLoads: true
               NSIncludesSubdomains: true
     dependencies:
-      # 固定路径的静态 framework：脚本相位在每次构建前按 SDK/配置把对应 flavor
-      # 拷到这里替换（见 preBuildScripts），CI 在 xcodegen 之前会先放一份占位。
+      # 固定路径的 framework：脚本相位在每次构建前按 SDK/配置把对应 flavor 拷到这里替换
+      # （见 preBuildScripts），CI 在 xcodegen 之前会先放一份占位。
+      #
+      # embed: false —— 这份是 Kotlin/Native 的**静态** framework（shared/build.gradle.kts 里
+      # isStatic = true），符号已经链进主二进制（拆真机包看过：主二进制 47,891,544 字节，
+      # 里面一次都没有 `@rpath/shared.framework/shared`）。再"嵌入"一遍，Xcode 就给那个没有
+      # 二进制的空壳注入一个 33,128 字节的桩子放进 Frameworks/：模拟器不校验签名，照样跑；
+      # 真机上 amfi 要校验包内每一份嵌套可执行文件，重签工具（轻松签/Sideloadly/爱思）面对
+      # 这个空壳补不出有效签名 → 启动即 Code Signature Invalid，就是你说的闪退。
+      # 只链接不嵌入，包里就不该有 Frameworks/ 这一坨。
       - framework: ../shared/build/xcodeFrameworks/shared.framework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.andaxin.ios
