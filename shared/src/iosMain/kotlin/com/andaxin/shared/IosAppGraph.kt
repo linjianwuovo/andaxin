@@ -28,10 +28,28 @@ import com.andaxin.state.MessageModel
 import com.andaxin.state.HomeModel
 import com.andaxin.state.NoticeModel
 import com.andaxin.state.TimetableModel
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import platform.Foundation.NSLog
+
+/**
+ * iOS 上"没人接的协程异常"等于进程没了：K/N 的默认处理器直接 abort()，
+ * 表现就是闪退（真机两份 .ips 都是这条链 —— 一份 PlistSanityCheck、一份 RSA 建钥失败）。
+ * 安卓那边同样的异常只是这一次操作失败，界面还在。
+ * 所以图里这个 scope 挂一个 handler：异常进系统日志，进程活着。
+ * 注意它只护得住从本 scope 起的协程；界面里 rememberCoroutineScope() 起的那批
+ * 归 Compose 的作用域管，够不着（Login.kt 那几处裸写就在这条缝上，见 browseAsGuest 的注释）。
+ */
+private val graphFailure = CoroutineExceptionHandler { _, e ->
+    // 不用 %@/%s 传参：K/N 的 vararg 过桥对格式符敏感，拼成一条整串最省事也最不容易骗自己
+    NSLog("AndaXin 协程异常（已接住，进程继续跑）：" + e)
+}
 
 /**
  * iOS 侧的装配图（AppGraph 的 iOS 分身）。
@@ -42,7 +60,7 @@ import kotlinx.coroutines.launch
  */
 class IosAppGraph(documentsPath: String) {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + graphFailure)
 
     val store: Store = Store(documentsPath + "/andaxin.preferences_pb")
     val session: SessionStore = SessionStore(store)
@@ -87,27 +105,32 @@ class IosAppGraph(documentsPath: String) {
     }
 
     /**
-     * 「先不登录，随便看看」：先把浏览标志写完，再回主线程让宿主换根。
-     *
-     * 不能直接复用 LoginScreen 里那条 launch —— 它是异步的，而 `onBack()` 紧跟着就返回；
-     * 安卓那边 Gate 是响应式的，标志一落自然重算，iOS 这边换根是命令式的
-     * （换 rootViewController），换早了五格那几屏会按"没在逛"去取数。
+     * 「先不登录，随便看看」这一格在 iOS 上的保险：LoginScreen 自己那条 launch 起在 Compose
+     * 的作用域里，那儿插不进异常处理器 —— 存储一抛就是闪退。这条走图里的 scope（有 graphFailure
+     * 接着），同一个键写第二遍：值是 "1"，幂等，不 corrupt。
+     * 换根本身不归它管，见 watchRoot。
      */
-    fun browseAsGuest(onReady: () -> Unit) {
-        scope.launch {
-            session.browseWithoutLogin()
-            onReady()
-        }
+    fun browseAsGuest() {
+        scope.launch { session.browseWithoutLogin() }
     }
 
     /**
-     * 启动期的 Gate：挂起查完登录态，回主线程把结果告诉 Swift（isSignedIn 是普通 Boolean）。
-     * Swift 侧一个 await/try 都不用写。
+     * 反应式 Gate：登录态或"逛逛"标志一变，就回主线程告诉 Swift 该用哪种根
+     * （true = 五格底栏，false = 登录页）。
+     *
+     * 安卓那边 Gate 本来就是响应式的，iOS 之前只有"登录成功"这一条命令式换根，
+     * 所以「先不登录逛逛」和「我的 → 去登录」这两格点了都只震一下 —— 标志写进去了，
+     * 根没人换。现在这三条路（登录、逛逛、退出）共用这一处。
+     *
+     * distinctUntilChanged 不能省：session 里还有宿舍、资料那些字段，
+     * 每改一次就掀一遍 rootViewController 等于把用户当前那一格的导航栈清空。
      */
-    fun resolveGate(onResolved: (isSignedIn: Boolean) -> Unit) {
+    fun watchRoot(onChange: (showTabs: Boolean) -> Unit) {
         scope.launch {
-            val signed = session.signedIn()
-            onResolved(signed)
+            session.state
+                .map { it.loggedIn || it.browsing }
+                .distinctUntilChanged()
+                .collect { onChange(it) }
         }
     }
 }

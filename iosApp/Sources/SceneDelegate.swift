@@ -2,26 +2,27 @@ import UIKit
 import shared
 
 /*
- * 场景代理：窗口在这儿建，不在 AppDelegate 里建。两个理由都是硬的：
+ * 场景代理：窗口在这儿建，不在 AppDelegate 里建。
  *
- *  1) Compose Multiplatform 在第一次创建 ComposeUIViewController 时会跑
- *     androidx.compose.ui.uikit.PlistSanityCheck —— Info.plist 里没有
- *     UIApplicationSceneManifest 就抛未捕获的 Kotlin 异常，K/N 的 TerminateHandler
- *     直接 abort()。真机那份 .ips（AndaXin-2026-10-26-003753.ips）栈就是这条：
- *       #13 kfun:androidx.compose.ui.uikit.PlistSanityCheck$performIfNeeded$1
- *       #07 (anonymous namespace)::TerminateHandler::kotlinHandler()
- *       #02 abort  → EXC_CRASH / SIGABRT，byProc 是自己
- *     之前那版把窗口建在 AppDelegate 里，plist 又是 XcodeGen 生成的，压根没这个键。
- *  2) iOS 26/27 起系统侧也不给"AppDelegate 单窗口"那条老路留活口了（TN3187 的收口）。
+ * 为什么是 scene 生命周期（这次别再记错）：
+ *  1) Apple 在收口 —— iOS 26/27 起不再给"AppDelegate 单窗口"那条老路留活口（TN3187）。
+ *  2) Compose Multiplatform 自己也要用 UIWindowScene 读方向、安全区、焦点
+ *     （klib 里 CMPUIWindowSceneUtils / sceneFocusObserver(getScene:) 全指着它）。
  *
- * 顺带：CMP 自己要用 UIWindowScene 读方向、安全区、焦点（klib 里那几个
- * CMPUIWindowSceneUtils / sceneFocusObserver(getScene:) 全指着它），没有 scene 那些都是空的。
+ * 它**不是** PlistSanityCheck 的要求。那一段启动检查实读的是
+ * `CADisableMinimumFrameDurationOnPhone`（把 1.12.0 的 ui-iosArm64Main.klib 字符串池抠出来
+ * 核对过，它只 objectForInfoDictionaryKey: 读这一个键，连 UIApplicationSceneManifest
+ * 这个串都不在里面）。之前那份注释把它归给 scene，害我拿"缺 scene manifest"当闪退主因
+ * 排了一轮 —— 名字不是证据。
  */
 @objc(SceneDelegate)
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     var window: UIWindow?
     private var graph: IosAppGraph?
+    /// 现在这一格根上是五格还是登录页。Kotlin 侧已经 distinctUntilChanged，
+    /// 这儿再存一份是为了别在重复回调里重建整棵导航栈。
+    private var showingTabs: Bool?
 
     func scene(
         _ scene: UIScene,
@@ -44,14 +45,15 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = w
         w.makeKeyAndVisible()
 
-        // Gate 的挂起细节全在 Kotlin 侧消化，Swift 只拿同步回调。
-        // 回调里的布尔过桥是盒子化的 KotlinBoolean（不是 Swift Bool），所以判真假要取 .boolValue。
-        g.resolveGate { [weak self] signed in
-            if signed.boolValue {
-                self?.window?.rootViewController = self?.makeTabs(g)
-            } else {
-                self?.window?.rootViewController = self?.makeLogin(g)
-            }
+        // 反应式 Gate：登录、"先不登录逛逛"、退出登录这三条路共用这一处换根。
+        // 之前只有 onDone（登录成功）一条命令式换根，所以「逛逛」那格点了只震一下。
+        // 回调里的布尔过桥是盒子化的 KotlinBoolean（不是 Swift Bool），判真假要取 .boolValue。
+        g.watchRoot { [weak self] showTabs in
+            guard let self else { return }
+            let tabs = showTabs.boolValue
+            if self.showingTabs == tabs { return }
+            self.showingTabs = tabs
+            self.window?.rootViewController = tabs ? self.makeTabs(g) : self.makeLogin(g)
         }
     }
 

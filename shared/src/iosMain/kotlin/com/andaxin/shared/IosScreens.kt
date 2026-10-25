@@ -140,7 +140,9 @@ fun IosAppGraph.loginViewController(onDone: () -> Unit): UIViewController {
                 if (nav != null && nav.viewControllers.size > 1) {
                     nav.popViewControllerAnimated(true)
                 } else {
-                    browseAsGuest(onDone)
+                    // 它就是根（没登录直接进来那条路）：这一格是「先不登录，随便看看」。
+                    // 换根由 watchRoot 负责，这儿只补一条有异常兜底的写标志路径。
+                    browseAsGuest()
                 }
             },
         )
