@@ -308,8 +308,15 @@ class AppGraph(val context: Context) {
     /** 录播看到第几分（服务端那两条进度上报实测被拒，所以本机存，见 core/media/PlayProgress）。 */
     val playProgress by lazy { com.andaxin.core.media.PlayProgress(context.filesDir) }
 
-    /** 消息轮询：应用活着的时候每五分钟拉一次 */
-    val poller: Poller by lazy { Poller(messages, engineScope) }
+    /** 消息轮询：应用活着的时候每五分钟拉一次，有新消息顺手报一条通知（core/notify/MessageNotify） */
+    val poller: Poller by lazy { Poller(messages, context, store, engineScope) }
+
+    /**
+     * 点通知要求落到第几格（`Shelf` 的序号），-1 = 没人要求跳。
+     * 走这一份而不是 intent 参数：App 已经开着的时候点通知不会再走 onCreate，
+     * 那条 intent 得在 onNewIntent 里落进来，两边都往这儿写一次就行。
+     */
+    val tabJump = kotlinx.coroutines.flow.MutableStateFlow(-1)
 
     /** 真 GPS。beta 那份还接一路端内假 GPS（他自己写的那套），正式版这份 mock 是 null。 */
     val gps: GpsFeed by lazy { GpsFeed(context, debug?.mock) }
