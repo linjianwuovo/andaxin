@@ -134,13 +134,19 @@ half4 main(float2 coord) {
     //  那一项正好是 0 —— 也就是**珠子最该出彩边的地方恰好没有色散**，
     //  他那句"色散低了"就是这个。系数也从写死的 1f 改成了滑杆给的量。）
     float2 off = d * grad;
-    // 采样点钉回可用范围里：出去的那一段改成贴边取，宁可得一条边也不能糊一坨黑
-    float2 rp = clamp(off * (1.0 + chromaticAberration) + coord, bounds.xy, bounds.zw) - coord;
-    float2 bp = clamp(off * (1.0 - chromaticAberration) + coord, bounds.xy, bounds.zw) - coord;
-    float2 gp = clamp(off + coord, bounds.xy, bounds.zw) - coord;
-    half4 r = content.eval(coord + rp);
-    half4 g = content.eval(coord + gp);
-    half4 b = content.eval(coord + bp);
+    // 位移要探出录下来那一层就**按比例收回去，收到 0** —— 宁可不弯，也不许留一条夹住的边。
+    // 以前这里是 `clamp(...)`：珠子探出栏子那几 dp 全被钉在边界那一像素上，
+    // 观感就是珠子外圈一条空环 + 内圈一条彩虹缝，两圈对不上 ——
+    // 他 10-25 那句「水滴怎么分了两圈很有割裂感」就是这条缝。
+    // 收位移而不是夹坐标：出界那一圈改成"原样不弯"，边上不再攒出彩边
+    // （色散系数乘的是同一个 t，所以彩边也跟着一起淡到 0）。
+    float2 worst = off * (1.0 + chromaticAberration);
+    float2 room = mix(coord - bounds.xy, bounds.zw - coord, step(0.0, worst));
+    float t = clamp(min(room.x / max(abs(worst.x), 1e-4), room.y / max(abs(worst.y), 1e-4)), 0.0, 1.0);
+    float2 o = off * t;
+    half4 r = content.eval(coord + o * (1.0 + chromaticAberration));
+    half4 g = content.eval(coord + o);
+    half4 b = content.eval(coord + o * (1.0 - chromaticAberration));
     // 透明度跟着采样走，**不许写死 1.0**：珠子按住时上下各探出轨道 ~9dp，那几行的采样
     // 落在录下来那层的外面 = 全透明，写死 1.0 就是把透明当黑色画上去 ——
     // 实测珠子下沿一条 42px 宽、值 (106,106,107) 的死灰带，就是它（他说的「松手会闪一下」）
