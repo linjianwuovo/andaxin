@@ -71,7 +71,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         showingTabs = toTabs
         window?.rootViewController = toTabs ? makeTabs(g) : makeLogin(g)
     }
-    }
 
     /// 场景刚接上那一瞬间的占位（查 signedIn 通常 <10ms，但也不能白屏闪）
     private func splashHolder() -> UIViewController {
