@@ -112,7 +112,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         tabs.viewControllers = items.map { $0.0 }
-        tabs.tabBar.isTranslucent = true
+
+        // 原来这儿有一句 tabs.tabBar.isTranslucent = true —— 删了。
+        // 那是 iOS 15 那档"贴底半透明条"的开关，正好属于会把 iOS 26 浮起液态玻璃压回
+        // 死胶囊的那类设置（那篇适配文警告过：给它设背景/透明，连 clear 都算）。
+        // 我们没设过 UITabBarAppearance 的 backgroundColor，所以什么都不设，
+        // 系统就按 iOS 26 那档画：浮起那条玻璃 + 选中那颗会形变的水滴珠子。
+        if #available(iOS 26.0, *) {
+            // 往下翻让位、往上翻回来 —— 跟他安卓那条"抬手才换页 + 整条栏橡皮条"的手感对齐
+            tabs.tabBarMinimizeBehavior = .onScrollDown
+        }
 
         // 「消息」那一格的红点：数由 Kotlin 侧 Unread.messages 写，这边只是贴上去。
         // 安卓底栏读的是同一个流（RootShell 那句 badges = listOf(0,0,unreadMsgs,0,0)）。
