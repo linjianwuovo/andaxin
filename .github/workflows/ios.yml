@@ -173,10 +173,17 @@ jobs:
           cp AndaXin-unsigned.ipa "$IPA"
           echo "这一发的包：$IPA（$(wc -c < "$IPA") 字节）"
           BODY="未签名 ipa：在 Windows 上用 Sideloadly 或爱思拿免费 Apple ID 重签再装。提交 $SHORT；模拟器截屏在 Actions 的 ios-artifacts 产物包里。"
+          # 上一版把 JSON 直接写在 -d "..." 里，两发都回 400 "Problems parsing JSON"，
+          # 可同一串在本地 json.loads 是过的 —— 说明问题在"这串到底有没有跟着请求出去"，不在中文。
+          # 改成 heredoc 落成文件再 --data-binary @ 上去：不经引号/续行这一路，且把字节数打出来当证据。
+          cat > rel_body.json <<EOF
+          {"tag_name":"$TAG","name":"iOS 骨架 $SHORT","target_commitish":"$GITHUB_REF_NAME","prerelease":true,"body":"$BODY"}
+          EOF
+          echo "payload 字节: $(wc -c < rel_body.json)"
           code=$(curl -sS -o rel.json -w '%{http_code}' -X POST "$API/releases" \
-            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"$TAG\",\"name\":\"iOS 骨架 $SHORT\",\"target_commitish\":\"$GITHUB_REF_NAME\",\"prerelease\":true,\"body\":\"$BODY\"}")
+            --data-binary "@rel_body.json")
           echo "建 Release: HTTP $code"
           if [ "$code" = "422" ]; then
             # 同一发重跑过（tag 已在）：改拿那份的上传地址，别把整条流水线判死
