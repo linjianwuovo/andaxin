@@ -32,6 +32,13 @@ targets:
         CFBundleDevelopmentRegion: zh_CN
         CFBundleName: AndaXin
         CFBundleDisplayName: 安大信
+        # 相机：AI 课堂「扫码签到」那一格要开 AVCaptureSession（ScanScreen.ios.kt）。
+        # 缺这个键，requestAccessForMediaType 不会弹框、直接回 false，那格就永远停在"没给权限"。
+        NSCameraUsageDescription: 扫一下课桌上那张码就能签到，画面只在本机识别、不上传。
+        # 定位：运动那一格要 CoreLocation 三秒一个点算里程配速（跑步这条线要 UIBackgroundModes 里
+        # 带 location，见下面 capability 那段；Apple 明说 allowsBackgroundLocationUpdates=true
+        # 而 plist 没这个模式 = 直接终止进程，所以两样要一起给）。
+        NSLocationWhenInUseUsageDescription: 记录你跑出去的路线和配速，只在 App 开着的时候取。
         # 版本号要真落到 plist 里才算：MARKETING_VERSION / CURRENT_PROJECT_VERSION 只是构建设定，
         # 这份 Info.plist 由 XcodeGen 现生成、里面没有这两个键，Xcode 就不会替我展开 ——
         # 结果 60c026a 那发的崩溃报告里 app_version 是 1.0 / build 1（系统默认值），
@@ -85,7 +92,7 @@ targets:
         # iOS 这边 build 号单独再抬：修 RSA 那发（92）和「先不登录逛逛」那发（93）、深夜自查批次（94）同为 0.8.49，
         # 真机崩溃报告与「关于」页只带这个号，不抬就没法分清他手机上装的到底是哪一发。
         MARKETING_VERSION: "0.8.49"
-        CURRENT_PROJECT_VERSION: "102"
+        CURRENT_PROJECT_VERSION: "103"
     preBuildScripts:
       - name: BuildSharedFramework
         script: |
