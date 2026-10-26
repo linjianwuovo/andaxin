@@ -183,7 +183,7 @@ private fun PlanCard(plan: SportPlan?, ink: InkSet) {
     val primary = MaterialTheme.colorScheme.primary
     val planKm = plan?.planKm
     val doneKm = plan?.doneKm
-    val ratio = if (planKm != null && planKm > 0 && doneKm != null) {
+    val ratio = if (planKm != null && planKm > 0 && doneKm != null && doneKm.isFinite()) {
         (doneKm / planKm).toFloat().coerceIn(0f, 1f)
     } else null
     val left = plan?.leftKm ?: if (planKm != null && doneKm != null) (planKm - doneKm) else null
@@ -373,7 +373,9 @@ private fun validity(plan: SportPlan?): String {
 private fun km1(v: Double?): String = v?.let { f1(it) } ?: "—"
 private fun km2(v: Double?): String = v?.let { f2(it) } ?: "—"
 private fun num(v: Double): String =
-    if (v == v.toLong().toDouble()) v.toLong().toString() else f1(v)
+    // 这一句原来直接 v.toLong()：非有限值（校方回的 "NaN" 解析出来的那种）在 K/N 里
+    // 一碰 toLong() 就抛 ArithmeticException，而它是在排版里被调的 —— 兜底的协程接不住
+    if (!v.isFinite()) "—" else if (v == v.toLong().toDouble()) v.toLong().toString() else f1(v)
 private fun md(s: String?): String =
     s?.takeIf { it.length >= 5 }?.takeLast(5) ?: ""
 

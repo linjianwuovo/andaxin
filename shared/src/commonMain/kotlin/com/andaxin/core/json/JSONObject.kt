@@ -51,21 +51,32 @@ internal fun JsonElement?.coerceString(): String = when (this) {
 
 internal fun JsonElement?.coerceInt(default: Int): Int = when (this) {
     null, is JsonNull -> default
-    is JsonPrimitive -> content.trim().toDoubleOrNull()?.toInt() ?: default
+    is JsonPrimitive -> content.asFiniteDouble()?.toLong()?.toInt() ?: default
     else -> default
 }
 
 internal fun JsonElement?.coerceLong(default: Long): Long = when (this) {
     null, is JsonNull -> default
-    is JsonPrimitive -> content.trim().toDoubleOrNull()?.toLong() ?: default
+    is JsonPrimitive -> content.asFiniteDouble()?.toLong() ?: default
     else -> default
 }
 
 internal fun JsonElement?.coerceDouble(default: Double): Double = when (this) {
     null, is JsonNull -> default
-    is JsonPrimitive -> content.trim().toDoubleOrNull() ?: default
+    is JsonPrimitive -> content.asFiniteDouble() ?: default
     else -> default
 }
+
+/**
+ * 字符串 → 有限 Double，读不出来或非有限就回 null。
+ *
+ * 为什么不直接用 `toDoubleOrNull()`：它**认** "NaN" 和 "Infinity" 这两种写法（校方是 Java
+ * 后端，自己算出 0/0 序列化出来就是 "NaN"），回的不是 null。这种值一到 Int/Long 转换，
+ * 在 Kotlin/Native 上就是抛 `ArithmeticException`（JVM 那边饱和成 0，不抛）—— 10-27 凌晨
+ * 运动那两屏的真机闪退报告头两帧就是 `ThrowArithmeticException ← feature.sport.fixed`。
+ * 这一层是所有屏共用的读数口，所以在这兜住：非有限 = 读不出来 = 回 default。
+ */
+internal fun String?.asFiniteDouble(): Double? = this?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
 
 internal fun JsonElement?.coerceBoolean(default: Boolean): Boolean = when (this) {
     null, is JsonNull -> default
@@ -167,14 +178,16 @@ class JSONObject {
     fun getInt(name: String): Int {
         val v = map[name]
         if (v == null || v is JsonNull || v !is JsonPrimitive) throw IllegalArgumentException("JSONObject[$name] 不是数字")
-        return v.content.trim().toDoubleOrNull()?.toInt()
+        // 经一次 Long 再收窄：非有限值在 K/N 里直接 toInt() 是抛 ArithmeticException，
+        // 那会把"这键不是数字"这件本该由下面那句说清楚的事，变成一次没人接的崩溃
+        return v.content.asFiniteDouble()?.toLong()?.toInt()
             ?: throw IllegalArgumentException("JSONObject[$name] 不是数字")
     }
 
     fun getDouble(name: String): Double {
         val v = map[name]
         if (v == null || v is JsonNull || v !is kotlinx.serialization.json.JsonPrimitive) throw IllegalArgumentException("JSONObject[name] 不是数字")
-        return v.content.trim().toDoubleOrNull() ?: throw IllegalArgumentException("JSONObject[name] 不是数字")
+        return v.content.asFiniteDouble() ?: throw IllegalArgumentException("JSONObject[$name] 不是数字")
     }
 
     /** 返回 this 便于链式；value 为 null = 移除该键（org.json 的口径）。 */

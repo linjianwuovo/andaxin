@@ -169,7 +169,7 @@ class CaptureSports(
                 val o = rows.optJSONObject(i) ?: return@mapNotNull null
                 val start = o.optString("startDate")
                 if (start.isBlank()) return@mapNotNull null
-                val km = o.optString("exerciseMile").toDoubleOrNull() ?: return@mapNotNull null
+                val km = o.optString("exerciseMile").finiteOrNull() ?: return@mapNotNull null
                 RunRecord(
                     id = o.optString("id"),
                     date = start,
@@ -232,8 +232,8 @@ class CaptureSports(
         val info = root.optJSONObject("data")?.optJSONObject("extraInfo")
             ?: return Result.failure(IOException(reason(root).ifBlank { "这条明细没回 extraInfo" }))
         val start = info.optString("startDate")
-        val km = info.optString("mile").toDoubleOrNull()
-            ?: info.optString("exerciseMile").toDoubleOrNull() ?: 0.0
+        val km = info.optString("mile").finiteOrNull()
+            ?: info.optString("exerciseMile").finiteOrNull() ?: 0.0
         val minutes = hmsMinutes(info.optString("time"))
         val state = info.optString("state")
         val remark = info.optString("remark")
@@ -430,7 +430,7 @@ class CaptureSports(
     }
 
     private fun JSONObject?.num(key: String): Double? =
-        this?.optString(key)?.trim()?.toDoubleOrNull()
+        this?.optString(key)?.trim().finiteOrNull()
 
     private fun JSONObject?.str(key: String): String =
         this?.optString(key).orEmpty()
@@ -476,6 +476,9 @@ class CaptureSports(
         }
 
         fun pace(km: Double, minutes: Double): String {
+            // 非有限值先挡：NaN 过不了下面那两个 <= 比较（NaN 比大小永远 false），
+            // 一路走到 per.toInt() 就是在 K/N 里抛 ArithmeticException
+            if (!km.isFinite() || !minutes.isFinite()) return "—"
             if (km <= 0.0 || minutes <= 0.0) return "—"
             val per = minutes / km
             val m = per.toInt()
@@ -494,3 +497,16 @@ class CaptureSports(
         }
     }
 }
+
+/**
+ * 校方这些里程/速度字段是**字符串**，而 Kotlin 的 `toDoubleOrNull()` 认 "NaN"、"Infinity"
+ * 这两种写法（Java 后端自己算出 0/0，序列化出来就是 "NaN"）—— 它回的不是 null，是一个
+ * 非有限的 Double。这种值一进模型，iOS 上就是一个闪退：10-27 凌晨那两份真机报告
+ * （`AndaXin-2026-10-27-015804/015808.ips`）的 `lastExceptionBacktrace` 头两帧是
+ * `ThrowArithmeticException ← com.andaxin.feature.sport.fixed`，一帧在运动首页那张计划卡、
+ * 一帧在运动记录那一行 —— 崩在**排版**里，不在拉数据里，所以之前那层协程兜底根本管不到它。
+ *
+ * 所以：非有限值一律当"校方没给准数"，回 null，走各界面本来就有的那条缺数路
+ * （界面上是"—"，不是 0 —— 0 是"真的没跑"，两件事）。
+ */
+private fun String?.finiteOrNull(): Double? = this?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
