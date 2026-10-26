@@ -354,6 +354,21 @@ class FifSession(
         }.getOrDefault(base)   // 码里那串不是合法 URL（少见）就别自己加工，照原样发
     }
 
+    /**
+     * 发那一发用的客户端：跟主那条一样，但**不带 cookie 罐**。
+     *
+     * 为什么单独开一个：OkHttp 的 `BridgeInterceptor` 在请求过一遍时会拿
+     * `cookieJar.loadForRequest(url)` 的结果去**覆盖** `Cookie` 头。我们这一层的罐子
+     * 存的键是 `https://sttp.fifedu.com`（`saveIdentityCookies` 写的），而 `loadForRequest`
+     * 读的是 `sttp.fifedu.com` —— 对不上，所以现在它每次都回空、我手填那条侥幸活着。
+     * 侥幸不是设计：签到这一发的 `id`/`studentId` 就是会话的一部分，
+     * 不能靠另一个方法的键写错来保。这里把罐子摘掉，`Cookie` 头由 `qrCookies` 一个人说了算。
+     * （罐子本身不动 —— 那会影响 FIF 另外十来发，那是另一件事，等能现打的时候再收。）
+     */
+    private val qrClient: OkHttpClient by lazy {
+        client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+    }
+
     /** 发那一发，回 `HTTP 码 → Location`。网络本身挂了回 null。 */
     private suspend fun qrSignOnce(url: String): Pair<Int, String>? = withIo {
         val builder = Request.Builder().url(url).get()
@@ -365,7 +380,7 @@ class FifSession(
         builder.header("Visit-Type", "mobile")
         qrCookies(url).takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
         runCatching {
-            client.newCall(builder.build()).execute().use { it.code to (it.header("Location").orEmpty()) }
+            qrClient.newCall(builder.build()).execute().use { it.code to (it.header("Location").orEmpty()) }
         }.getOrNull()
     }
 
