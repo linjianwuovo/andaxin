@@ -1,13 +1,19 @@
 package com.andaxin.feature.brief
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.content.FileProvider
 import com.andaxin.core.net.Images
 import com.andaxin.data.capture.RepairPhotos
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -79,5 +85,64 @@ object AndroidPhotoHost {
             }
             launch
         }
+
+        // 「拍一张签到照片」：查寝那一屏（共享层 DormTaskScreen）只要字节 + 文件名 + 预览，
+        // 文件、FileProvider、uri 全留在这侧 —— 跟 iOS 的 IosCamera 交回同样三样，接口那头不分叉。
+        com.andaxin.feature.brief.BriefEnv.takePhoto = @Composable { onPhoto ->
+            // 相机是"往一个已经建好的文件里写"，所以文件名在按下去那一刻就定了；
+            // 回调是下一轮才来的，用 remember 住的格子把那个文件递过去，别指望闭包能更新。
+            val target = remember { arrayOfNulls<File>(1) }
+            val launcher = rememberLauncherForActivityResult(
+                ActivityResultContracts.TakePicture(),
+            ) { ok ->
+                val f = target[0]
+                target[0] = null
+                if (!ok) {
+                    // 取消：相机没写进去就只是个空文件，删掉，别在缓存里堆一堆 0 字节的 jpg
+                    f?.takeIf { it.length() == 0L }?.delete()
+                    return@rememberLauncherForActivityResult
+                }
+                if (f == null || f.length() == 0L) {
+                    onPhoto(ByteArray(0), f?.name.orEmpty(), null)
+                } else {
+                    onPhoto(f.readBytes(), f.name, decodeCheckinPreview(f))
+                }
+            }
+            val shoot: () -> Unit = {
+                runCatching {
+                    val dir = File(app.cacheDir, "checkin").apply { mkdirs() }
+                    val f = File(dir, "signin_${System.currentTimeMillis()}.jpg")
+                    target[0] = f
+                    launcher.launch(
+                        FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", f),
+                    )
+                }.onFailure {
+                    target[0] = null
+                    // 回一个空字节，让那一屏把它当"没拍到"说明白，而不是按了没反应
+                    onPhoto(ByteArray(0), "", null)
+                }
+            }
+            shoot
+        }
     }
+
+    /**
+     * 只用来预览，真正上传的是文件里那份原图。降采样到长边约 900，
+     * 10-26 深夜从原来那屏（`app/.../DormTaskScreen.kt`）搬过来，一行逻辑没改。
+     */
+    private fun decodeCheckinPreview(file: File): ImageBitmap? = runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            val source = ImageDecoder.createSource(file)
+            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                val w = info.size.width.coerceAtLeast(1)
+                val h = info.size.height.coerceAtLeast(1)
+                decoder.setTargetSampleSize((minOf(w, h) / 900).coerceAtLeast(1))
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.isMutableRequired = false
+            }.asImageBitmap()
+        } else {
+            val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+            BitmapFactory.decodeFile(file.absolutePath, opts)?.asImageBitmap()
+        }
+    }.getOrNull()
 }

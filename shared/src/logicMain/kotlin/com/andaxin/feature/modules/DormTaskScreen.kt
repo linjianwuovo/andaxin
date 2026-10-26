@@ -1,15 +1,8 @@
 package com.andaxin.feature.modules
 
-import android.Manifest
-import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,41 +20,41 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.core.concurrency.parsePatternTime
+import com.andaxin.core.concurrency.todayLocalDate
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Type
 import com.andaxin.core.location.Fix
-import com.andaxin.core.location.GpsFeed
+import com.andaxin.core.location.SportHost
 import com.andaxin.core.map.Geo
 import com.andaxin.data.capture.DormTaskInfo
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.feature.brief.ScaffoldPage
+import com.andaxin.feature.sport.latLng5
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
-import java.io.File
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.time.Clock
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 
-/**
- * 一场查寝/晚点名的详情与签到。
+/*
+ * 一场查寝/晚点名的详情与签到 —— 10-26 深夜从 `app/.../DormTaskScreen.kt` 搬进来，
+ * 安卓那一扇现在推的就是这一份，iOS 靠 `dorm/task/{id}` 落地。
  *
  * 这一屏的写操作只有一处：用户自己按「提交签到」。照片先走
  * `app/file/uploadFileToFastdfs`（multipart 的 `file`），再把 `data.path` 填进
@@ -70,13 +63,25 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
  * 这里只换成新仓的网络壳和排版，别另发明一套键名。
  *
  * 不自动签、不代点：进屏只读到详情和当前位置，最后那一下留给人。
+ *
+ * 搬动时换掉的只有三样平台东西，别的逐字照旧：
+ * ① 相机 —— 原来 `TakePicture` + `FileProvider` + `File`，现在 `BriefEnv.takePhoto`
+ *    那根插槽（安卓在 `AndroidPhotoHost.install` 里插，iOS 在 `IosCamera.install` 里插），
+ *    交回的是**字节 + 文件名 + 一张能直接画的预览**，这一屏不再碰文件；
+ * ② 定位权限 —— 原来 `RequestMultiplePermissions` 的 launcher，现在 `SportHost.askLocation`
+ *    （运动那几屏先用的同一根缝）；
+ * ③ 时间 —— `java.time` 换 kotlinx-datetime，`String.format("%.5f")` 换 `latLng5`
+ *    （五位是小数点后五位，差一位就是差十米，别拿 f2 凑）。
  */
+
+/** 拍到的那一张：字节递给 `uploadPhoto`，名字是 multipart 那一栏的文件名，预览只用来画。 */
+private class Shot(val bytes: ByteArray, val name: String, val preview: ImageBitmap?)
+
 @Composable
 fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val base = remember(dateId) { graph.dormBoard.lastTasks[dateId] }
 
     var info by remember { mutableStateOf<DormTaskInfo?>(null) }
@@ -87,10 +92,7 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
     var locating by remember { mutableStateOf(false) }
     var locWhy by remember { mutableStateOf<String?>(null) }
 
-    // 相机拍出来的原图；pending 是"已经建好文件、等相机写"，取消时删掉，别留一堆空文件
-    var pending by remember { mutableStateOf<File?>(null) }
-    var photo by remember { mutableStateOf<File?>(null) }
-    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    var photo by remember { mutableStateOf<Shot?>(null) }
 
     var submitting by remember { mutableStateOf(false) }
     var submitted by remember { mutableStateOf(false) }
@@ -127,48 +129,25 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
         }
     }
 
-    val askLocation = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { granted ->
-        if (granted[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            granted[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        ) {
-            locate()
-        } else {
-            locWhy = "没给定位权限，签到这一步需要它"
-        }
+    // 要权限那个动作：宿主没插（不该发生）就直接说明，不静默什么都不干
+    val askLoc: (() -> Unit)? = SportHost.askLocation?.invoke { granted ->
+        if (granted) locate() else locWhy = "没给定位权限，签到这一步需要它"
+    }
+    fun askOrLocate() {
+        if (graph.gps.available) locate() else askLoc?.invoke() ?: run { locWhy = "没给定位权限" }
     }
 
-    val takePicture = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicture(),
-    ) { ok ->
-        if (ok) {
-            val f = pending
-            photo = f
-            preview = f?.let(::decodePreview)
-            if (preview == null && f != null) {
-                note = "照片读不出来，重拍一张"
-                noteBad = true
-            }
-        } else {
-            pending?.takeIf { it.length() == 0L }?.delete()
-        }
-        pending = null
-    }
-
-    fun snap() {
-        runCatching {
-            val dir = File(context.cacheDir, "checkin").apply { mkdirs() }
-            val f = File(dir, "signin_${System.currentTimeMillis()}.jpg")
-            pending = f
-            takePicture.launch(
-                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f),
-            )
-        }.onFailure {
-            pending?.delete()
-            pending = null
-            note = "打不开相机：${it.message ?: it.javaClass.simpleName}"
+    // 拍照：插槽交回的是"按一下就开相机"那个动作；没插就等于这一端开不动相机，明说一句。
+    // 空字节当"没拍到"处理 —— 递一个 0 字节的文件上去，学校那头只会回一句看不懂的话。
+    val shoot: (() -> Unit)? = BriefEnv.takePhoto?.invoke { bytes, name, preview ->
+        if (bytes.isEmpty() || preview == null) {
+            photo = null
+            note = "照片读不出来，重拍一张"
             noteBad = true
+        } else {
+            photo = Shot(bytes, name, preview)
+            note = null
+            noteBad = false
         }
     }
 
@@ -186,13 +165,12 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
             note = null
             var photoUrl = ""
             if (d.needPhoto) {
-                val file = photo
-                if (file == null) {
+                val shot = photo
+                if (shot == null) {
                     submitting = false
                     return@launch
                 }
-                val r = graph.dormBoard.uploadPhoto(file.readBytes(), file.name)
-                r.fold(
+                graph.dormBoard.uploadPhoto(shot.bytes, shot.name).fold(
                     onSuccess = { photoUrl = it },
                     onFailure = {
                         submitting = false
@@ -231,16 +209,7 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
     }
 
     LaunchedEffect(dateId) { load() }
-    LaunchedEffect(Unit) {
-        if (graph.gps.available) locate() else {
-            askLocation.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                ),
-            )
-        }
-    }
+    LaunchedEffect(Unit) { askOrLocate() }
 
     ScaffoldPage(title = "签到", onBack = onBack, onRefresh = { load() }) {
         val d = info
@@ -268,12 +237,12 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
             return@ScaffoldPage
         }
 
-        val now = LocalDateTime.now()
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
         val start = parseAt(d.date, d.startAt)
         val end = parseAt(d.date, d.endAt)
-        val sameDay = d.date == now.toLocalDate().toString()
-        val before = start != null && now.isBefore(start)
-        val after = end != null && now.isAfter(end)
+        val sameDay = d.date == todayLocalDate().toString()
+        val before = start != null && now < start
+        val after = end != null && now > end
         val open = !d.signed && d.signinMode == "1" && sameDay &&
             (if (start != null && end != null) !before && !after else d.status == "0")
         val phase = when {
@@ -385,7 +354,7 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
             Sheet {
                 Text("签到照片", fontSize = Type.title, fontWeight = FontWeight.Medium, color = ink.strong)
                 Spacer(Modifier.height(Gap.sm))
-                val bmp = preview
+                val bmp = photo?.preview
                 if (bmp != null) {
                     Image(
                         bitmap = bmp,
@@ -409,24 +378,32 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(Gap.md))
-                MiuixButton(
-                    onClick = { snap() },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                ) {
+                if (shoot == null) {
                     Text(
-                        if (bmp == null) "拍一张" else "重拍一张",
-                        fontSize = Type.title,
-                        fontWeight = FontWeight.Medium,
+                        "这一端没接相机，要照片的签到只能在系统相机那侧完成。",
+                        fontSize = Type.meta,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else {
+                    MiuixButton(
+                        onClick = { shoot() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) {
+                        Text(
+                            if (bmp == null) "拍一张" else "重拍一张",
+                            fontSize = Type.title,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    Spacer(Modifier.height(Gap.xs))
+                    Text(
+                        "按学校的签到要求拍：以宿舍为背景，至少和一名室友合拍。",
+                        fontSize = Type.micro,
+                        color = ink.faint,
+                        lineHeight = Type.microLine,
                     )
                 }
-                Spacer(Modifier.height(Gap.xs))
-                Text(
-                    "按学校的签到要求拍：以宿舍为背景，至少和一名室友合拍。",
-                    fontSize = Type.micro,
-                    color = ink.faint,
-                    lineHeight = Type.microLine,
-                )
             }
         }
 
@@ -446,7 +423,7 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                     Text("精度 ±${f.accuracyMeters.roundToInt()} 米", fontSize = Type.micro, color = ink.faint)
                 }
                 Text(
-                    text = String.format(Locale.US, "%.5f, %.5f", bd.longitude, bd.latitude),
+                    text = latLng5(bd.longitude, bd.latitude),
                     fontSize = Type.micro,
                     color = ink.faint,
                 )
@@ -463,14 +440,7 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                 fontSize = Type.body,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.pressClick(shrink = false) {
-                    if (graph.gps.available) locate() else askLocation.launch(
-                        arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION,
-                        ),
-                    )
-                },
+                modifier = Modifier.pressClick(shrink = false) { askOrLocate() },
             )
         }
 
@@ -507,11 +477,10 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
     }
 }
 
+/** 校方给的是"日期 + 时分"两段，拼成一条 ISO 交给共享层那个解析器（读不出来回 null）。 */
 private fun parseAt(date: String, time: String): LocalDateTime? {
     if (date.isBlank() || time.isBlank()) return null
-    return runCatching {
-        LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time))
-    }.getOrNull()
+    return parsePatternTime("$date $time")
 }
 
 private fun withMeter(raw: String): String {
@@ -521,20 +490,3 @@ private fun withMeter(raw: String): String {
 
 private fun locReasonBad(reason: String?, locating: Boolean): Boolean =
     !locating && !reason.isNullOrBlank() && (reason.contains("没给") || reason.contains("没拿到"))
-
-/** 只用来预览，真正上传的仍是相机写下的原图。 */
-private fun decodePreview(file: File): ImageBitmap? = runCatching {
-    if (Build.VERSION.SDK_INT >= 28) {
-        val source = ImageDecoder.createSource(file)
-        ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-            val w = info.size.width.coerceAtLeast(1)
-            val h = info.size.height.coerceAtLeast(1)
-            decoder.setTargetSampleSize((minOf(w, h) / 900).coerceAtLeast(1))
-            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            decoder.isMutableRequired = false
-        }.asImageBitmap()
-    } else {
-        val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-        BitmapFactory.decodeFile(file.absolutePath, opts)?.asImageBitmap()
-    }
-}.getOrNull()

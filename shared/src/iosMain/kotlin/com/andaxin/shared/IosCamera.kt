@@ -41,7 +41,11 @@ object IosCamera {
     fun install() {
         BriefEnv.takePhoto = @Composable { onPhoto ->
             val host = LocalUIViewController.current
-            val handler = remember(onPhoto) { PickerHandler(onPhoto) }
+            // handler 只按 host 记一次：`remember(onPhoto)` 那种写法每轮组合都换一个全新
+            // handler，而 picker 的 delegate 是 weak —— 正在拍照那一瞬旧 handler 被换掉
+            // 就会被回收，快门按了回调不来。所以把"往哪儿写"做成一个可换的 var。
+            val handler = remember(host) { PickerHandler() }
+            handler.onPhoto = onPhoto
             val shoot: () -> Unit = {
                 val picker = UIImagePickerController()
                 picker.sourceType = UIImagePickerControllerSourceType.UIImagePickerControllerSourceTypeCamera
@@ -52,20 +56,22 @@ object IosCamera {
         }
     }
 
-    /** 一次拍照一个实例：`remember` 住，否则组合一刷新委托就被回收（delegate 是 weak）。 */
-    private class PickerHandler(
-        private val onPhoto: (ByteArray, String, ImageBitmap?) -> Unit,
-    ) : NSObject(), UIImagePickerControllerDelegateProtocol, UINavigationControllerDelegateProtocol {
+    /** 一个 VC 一个实例：`remember` 住，否则组合一刷新委托就被回收（delegate 是 weak）。 */
+    private class PickerHandler :
+        NSObject(), UIImagePickerControllerDelegateProtocol, UINavigationControllerDelegateProtocol {
+
+        var onPhoto: ((ByteArray, String, ImageBitmap?) -> Unit)? = null
 
         override fun imagePickerController(
             picker: UIImagePickerController,
             didFinishPickingMediaWithInfo: Map<Any?, *>,
         ) {
             picker.dismissViewControllerAnimated(true, null)
+            val cb = onPhoto ?: return
             val image = didFinishPickingMediaWithInfo[UIImagePickerControllerOriginalImage] as? UIImage ?: return
             val bytes = jpeg(image) ?: return
             val name = "signin_${NSUUID.UUID().UUIDString}.jpg"
-            onPhoto(bytes, name, IosImages.decodeBytes(bytes))
+            cb(bytes, name, IosImages.decodeBytes(bytes))
         }
 
         override fun imagePickerControllerDidCancel(picker: UIImagePickerController) {

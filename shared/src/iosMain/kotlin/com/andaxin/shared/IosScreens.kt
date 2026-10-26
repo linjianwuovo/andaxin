@@ -37,6 +37,7 @@ import com.andaxin.feature.modules.AffairTabsScreen
 import com.andaxin.feature.modules.CreditDetailScreen
 import com.andaxin.feature.modules.CreditListScreen
 import com.andaxin.feature.modules.DormDetailScreen
+import com.andaxin.feature.modules.DormTaskScreen
 import com.andaxin.feature.modules.ExamDetailScreen
 import com.andaxin.feature.modules.ExamListScreen
 import com.andaxin.feature.modules.HolidayDetailScreen
@@ -318,6 +319,11 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         key.startsWith("repair/detail/") -> IosRoute("报修单") { RepairDetailScreen(id = detailId, onBack = {}) }
         key == "repair/form" -> IosRoute("新建报修") { RepairFormScreen(onBack = {}) }
         key.startsWith("dorm/detail/") -> IosRoute("查寝详情") { DormDetailScreen(id = detailId, onBack = {}) }
+        // 一场查寝的详情 + 签到。10-26 深夜这屏搬进共享层了，相机走 IosCamera、定位走 IosGps，
+        // 所以 key == "dorm" 那条注释里"点了不动是预期的"这一句，对 dorm/task 已经不再成立。
+        key.startsWith("dorm/task/") -> IosRoute("签到") {
+            DormTaskScreen(dateId = key.substringAfter("dorm/task/"), onBack = {})
+        }
 
         // 10-26 第二批：查寝看板、校园卡、AI 课堂这三块屏本身搬进共享层了（它们脚下那批
         // capture 类早就在共享层）。这三扇之内的行要是再往"扫码 / 播放器 / 任务详情"里跳，
