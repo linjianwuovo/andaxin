@@ -80,6 +80,9 @@ class IosAppGraph(documentsPath: String) {
     val auth: AuthFeed = AuthFeed()
     val school: School = School(session)
 
+    // 共享层那批列表/详情/表单屏要 session（见 logicMain 的 BriefEnv）：安卓在 AppGraph 插，iOS 在这儿插
+    private val briefEnv = com.andaxin.feature.brief.BriefEnv.also { it.session = session }
+
     // 数据源开关（照 AppGraph 的 Source(capture, local, session) 三件套）
     private val localTimetable = LocalTimetable()
     private val localMessages = LocalMessages()

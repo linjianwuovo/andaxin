@@ -118,7 +118,11 @@ class AppGraph(val context: Context) {
     val auth: AuthFeed by lazy { AuthFeed() }
 
     /** 免责声明看过没有、登没登录、宿舍填没填 */
-    val session: SessionStore by lazy { SessionStore(store) }
+    // 10-26：BriefKit 搬进共享层后，它要 session 但不想一路穿参数 —— 谁第一次建 session
+    // 谁顺手把插槽插上（放 lazy 里面而不是建图那行，是为了不在启动时提前碰磁盘）。
+    val session: SessionStore by lazy {
+        SessionStore(store).also { com.andaxin.feature.brief.BriefEnv.session = it }
+    }
 
     /** token 到点前换成新的，换不动就请回登录页并带上原因 */
     /** 「记住密码」那把不可导出的 AES 密钥。构造失败也不该影响启动，所以是 lazy。 */

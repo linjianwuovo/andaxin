@@ -1,8 +1,8 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.andaxin.feature.brief
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,15 +36,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
-import com.andaxin.data.capture.RepairPhotos
-import com.andaxin.core.net.Images
-import java.io.File
-import kotlinx.coroutines.Dispatchers
+import com.andaxin.core.concurrency.ioDispatcher
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,12 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
-import com.andaxin.shell.LoadWhy
+import com.andaxin.core.ui.SharedViewModel
+import androidx.compose.runtime.collectAsState
 import com.andaxin.shell.pressClick
-import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -74,7 +66,6 @@ import com.andaxin.data.brief.FormSource
 import com.andaxin.data.brief.ListSource
 import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
-import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
@@ -101,12 +92,12 @@ private fun dangerColors() = ButtonDefaults.buttonColors(
 @Immutable
 internal data class ListUi(val rows: List<BriefRow> = emptyList(), val error: String? = null, val loading: Boolean = true)
 
-internal class ListModel(private val source: ListSource) : ViewModel() {
+internal class ListModel(private val source: ListSource) : SharedViewModel() {
     private val _state = MutableStateFlow(ListUi())
     val state: StateFlow<ListUi> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        scope.launch {
             val r = try { source.rows() } catch (e: Exception) { Result.failure(e) }
             _state.value = ListUi(rows = r.getOrDefault(emptyList()), error = r.exceptionOrNull()?.message, loading = false)
         }
@@ -127,12 +118,12 @@ internal data class DetailUi(
     val loading: Boolean = true,
 )
 
-internal class DetailModel(private val source: DetailSource, private val id: String) : ViewModel() {
+internal class DetailModel(private val source: DetailSource, private val id: String) : SharedViewModel() {
     private val _state = MutableStateFlow(DetailUi())
     val state: StateFlow<DetailUi> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        scope.launch {
             val r = try { source.detail(id) } catch (e: Exception) { Result.failure(e) }
             _state.value = DetailUi(
                 data = r.getOrNull(),
@@ -151,7 +142,7 @@ internal class DetailModel(private val source: DetailSource, private val id: Str
     fun act(action: String, answers: Map<String, String> = emptyMap()) {
         if (_state.value.acting) return
         _state.value = _state.value.copy(acting = true, error = null)
-        viewModelScope.launch {
+        scope.launch {
             val r = try { source.act(id, action, answers) } catch (e: Exception) { Result.failure(e) }
             _state.value = _state.value.copy(
                 acting = false,
@@ -174,12 +165,12 @@ internal data class FormUi(
     val sending: Boolean = false,
 )
 
-internal class FormModel(private val source: FormSource) : ViewModel() {
+internal class FormModel(private val source: FormSource) : SharedViewModel() {
     private val _state = MutableStateFlow(FormUi())
     val state: StateFlow<FormUi> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        scope.launch {
             val r = try { source.spec() } catch (e: Exception) { Result.failure(e) }
             _state.value = FormUi(spec = r.getOrNull(), error = r.exceptionOrNull()?.message)
         }
@@ -195,7 +186,7 @@ internal class FormModel(private val source: FormSource) : ViewModel() {
     fun submit(values: Map<String, String>) {
         if (busy) return
         busy = true
-        viewModelScope.launch {
+        scope.launch {
             _state.value = _state.value.copy(sending = true, error = null)
             val r = try { source.submit(values) } catch (e: Exception) { Result.failure(e) }
             _state.value = _state.value.copy(
@@ -220,8 +211,8 @@ fun BriefListPage(
     newLabel: String? = null,
     onNew: (() -> Unit)? = null,
 ) {
-    val model = adxViewModel { ListModel(source) }
-    val state by model.state.collectAsStateWithLifecycle()
+    val model = remember { ListModel(source) }
+    val state by model.state.collectAsState()
     val ink = LocalInk.current
 
     ScaffoldPage(title = title, onBack = onBack) {
@@ -261,7 +252,7 @@ fun BriefListPage(
                 }
             }
         }
-        LoadWhy(state.error)
+        LoadWhy(state.error, BriefEnv.session)
         Spacer(Modifier.height(Gap.sm))
     }
 }
@@ -273,8 +264,8 @@ fun BriefDetailPage(
     id: String,
     onBack: () -> Unit,
 ) {
-    val model = adxViewModel { DetailModel(source, id) }
-    val state by model.state.collectAsStateWithLifecycle()
+    val model = remember { DetailModel(source, id) }
+    val state by model.state.collectAsState()
     val ink = LocalInk.current
     // 写操作要连按两次：第一次只是把按下的那颗变成"再按一次真的××"，第二次才发报文。
     // 记的是**哪一颗**被 arm 了 —— 三颗键挤在同一屏，按「驳回」却发出去「同意」是不能发生的事。
@@ -301,8 +292,7 @@ fun BriefDetailPage(
             if (d.images.isNotEmpty()) {
                 // 校方那一侧存着的附图：报修人传的在前、维修过程中传的在后，顺序就是两个数组的先后
                 Spacer(Modifier.height(Gap.md))
-                val cacheDir = LocalContext.current.cacheDir
-                d.images.forEach { AttachedPhoto(url = it, cacheDir = cacheDir) }
+                d.images.forEach { AttachedPhoto(url = it) }
             }
             if (d.steps.isNotEmpty()) {
                 Spacer(Modifier.height(Gap.md))
@@ -399,13 +389,12 @@ fun BriefFormPage(
     source: FormSource,
     onBack: () -> Unit,
 ) {
-    val model = adxViewModel { FormModel(source) }
-    val state by model.state.collectAsStateWithLifecycle()
+    val model = remember { FormModel(source) }
+    val state by model.state.collectAsState()
     val values = remember { mutableStateMapOf<String, String>() }
     val ink = LocalInk.current
-    val graph = LocalAppGraph.current
     val scope = rememberCoroutineScope()
-    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    val session by BriefEnv.session.state.collectAsState(com.andaxin.core.store.Session())
     val dorm = session.dorm
     // 学校给的预填值（学号、姓名、班级那一类）要**填进格子本身**：提交时这几格是跟着 dataJson 一起发过去的，
     // 不是给人看的说明文字。只在格子是空的时候填，别把他改过的值又盖回去。
@@ -443,7 +432,7 @@ fun BriefFormPage(
             )
             Spacer(Modifier.height(Gap.lg))
             MiuixButton(
-                onClick = { scope.launch { graph.session.leaveBrowsing() } },
+                onClick = { scope.launch { BriefEnv.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColorsPrimary(),
             ) {
@@ -506,7 +495,7 @@ fun BriefFormPage(
         }
         if (state.error != null) {
             Spacer(Modifier.height(Gap.md))
-            LoadWhy(state.error)
+            LoadWhy(state.error, BriefEnv.session)
         }
         Spacer(Modifier.height(Gap.md))
     }
@@ -520,12 +509,12 @@ fun BriefFormPage(
  * （本账号三张单全没附图），地址前缀那一层是推出来的。
  */
 @Composable
-private fun AttachedPhoto(url: String, cacheDir: File) {
+private fun AttachedPhoto(url: String) {
     val ink = LocalInk.current
     var bmp by remember(url) { mutableStateOf<ImageBitmap?>(null) }
     var tried by remember(url) { mutableStateOf(false) }
     LaunchedEffect(url) {
-        bmp = Images.load(cacheDir, url)
+        bmp = PhotoHost.attached?.invoke(url)
         tried = true
     }
     val shown = bmp
@@ -563,11 +552,11 @@ private val PhotoTile = 76.dp
  */
 @Composable
 private fun PhotoThumb(uri: String, modifier: Modifier = Modifier) {
-    val ctx = LocalContext.current
+
     val ink = LocalInk.current
     val px = with(LocalDensity.current) { (PhotoTile * 2).roundToPx() }
     val bmp by produceState<ImageBitmap?>(null, uri) {
-        value = withContext(Dispatchers.IO) { RepairPhotos.thumb(ctx, uri, px) }?.asImageBitmap()
+        value = withContext(ioDispatcher) { PhotoHost.thumb?.invoke(uri, px) }
     }
     bmp?.let {
         Image(
@@ -623,10 +612,8 @@ private fun FieldRow(
         is Field.Photos -> {
             var over by remember { mutableStateOf(false) }
             val picked = get(field.key).split(',').map { it.trim() }.filter { it.isNotBlank() }
-            val pick = rememberLauncherForActivityResult(
-                ActivityResultContracts.PickMultipleVisualMedia(field.max),
-            ) { got ->
-                val merged = (picked + got.map { it.toString() }).distinct()
+            val launch = PhotoHost.pickLauncher?.invoke(field.max) { got ->
+                val merged = (picked + got.map { it }).distinct()
                 over = merged.size > field.max
                 put(field.key, merged.take(field.max).joinToString(","))
             }
@@ -649,19 +636,13 @@ private fun FieldRow(
                         )
                     }
                 }
-                if (picked.size < field.max) {
+                if (launch != null && picked.size < field.max) {
                     Box(
                         modifier = Modifier
                             .size(PhotoTile)
                             .clip(Radius.tag)
                             .background(ink.offFill)
-                            .pressClick {
-                                pick.launch(
-                                    PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly,
-                                    ),
-                                )
-                            },
+                            .pressClick { launch?.invoke() },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text("＋", fontSize = Type.title, color = ink.muted)
@@ -827,10 +808,16 @@ private fun optionTail(group: String, opt: String): String =
  * M3 的 DatePicker 给的是 **UTC 零点**的毫秒数，所以这里也按 UTC 格式化。
  * 换成机器时区的话，在东八区没事、在西五区就会把用户点的日期整整挪后一天。
  */
-private fun formatUtcDay(millis: Long): String =
-    java.time.Instant.ofEpochMilli(millis)
-        .atZone(java.time.ZoneOffset.UTC)
-        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+private fun formatUtcDay(millis: Long): String {
+    // 原来是 java.time 那三行（Instant/ZoneOffset/DateTimeFormatter），共享层编不过；
+    // 换成 kotlinx-datetime，仍然按 UTC 算 —— M3 的 DatePicker 给的就是 UTC 零点的毫秒数，
+    // 换成机器时区会在西五区把用户点的日期整整挪后一天（原注释那句仍然成立）。
+    val d = kotlinx.datetime.Instant.fromEpochMilliseconds(millis)
+        .toLocalDateTime(TimeZone.UTC)
+    // `"%04d…".format(…)` 是 JVM 那侧的 String.format，共享层（common 可见性）没有，
+    // 手动补零，结果一模一样。
+    return "${d.year}-${d.monthNumber.toString().padStart(2, '0')}-${d.dayOfMonth.toString().padStart(2, '0')}"
+}
 
 /**
  * 审批链的一环：左边一个圆点 + 一根连到下一环的竖线，右边"环节 · 谁 · 状态 · 时间"。
