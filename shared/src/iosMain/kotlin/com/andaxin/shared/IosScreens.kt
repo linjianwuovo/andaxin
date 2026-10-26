@@ -301,7 +301,10 @@ private fun IosAppGraph.routeViewController(host: UIViewController?, key: String
 fun IosAppGraph.push(host: UIViewController?, key: String) {
     val nav = host?.navigationController ?: return
     val vc = routeViewController(host, key) ?: return
-    nav.setNavigationBarHidden(false, animated = true)
+    // 栏的显隐不在这儿动：SceneDelegate 那个 willShow 回调是唯一的出口，一次转场只让它改一次。
+    // 原来这里先补一句 setNavigationBarHidden(false, animated = true)，紧接着 delegate 又按
+    // animated:false 改一遍 —— 一次进场两次外观变更，正是"Unbalanced calls to begin/end
+    // appearance transitions"和侧滑卡住的来路。
     nav.pushViewController(vc, animated = true)
 }
 fun IosAppGraph.onboardingViewController(onAgree: () -> Unit): UIViewController =

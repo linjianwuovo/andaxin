@@ -173,9 +173,14 @@ extension SceneDelegate: UINavigationControllerDelegate {
     func navigationController(_ navigationController: UINavigationController,
                               willShow viewController: UIViewController,
                               animated: Bool) {
+        // `animated` 要照传。原来这里写死 false，而 push() 那边又先按 animated:true 改了一遍 ——
+        // 一次转场两次外观变更，93 那发 console.txt 里那句
+        // "Unbalanced calls to begin/end appearance transitions" 就是这么来的。
+        // 交互式转场（侧滑返回）期间做一次非动画的 setNavigationBarHidden，UIKit 会把那一次
+        // transition 的驱动弄丢：栏抽走了，页面却停在半路。跟着转场一起走才是系统自己的做法。
         navigationController.setNavigationBarHidden(
             viewController === navigationController.viewControllers.first,
-            animated: false
+            animated: animated
         )
     }
 }
