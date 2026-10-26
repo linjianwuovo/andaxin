@@ -760,35 +760,71 @@ class FifApi(private val fif: FifSession) {
     /**
      * 六位签到码签到。
      *
-     * 【取证】**只有等级①**：读的是官方 H5 的签到码组件（`lxtmp/sign_js.txt`、`sign_flow.txt`），
-     * 它把所有内容压成一条调用 ——
-     * `aiktSignIn.checkQrcodeHandler({signId, userName, signCode})`，
-     * 而 api 定义里是
-     * `post("$api/coursecenter-interaction/qrcodeV2/checkQrcodeHandler", qs.stringify(t))`，
-     * 也就是 form-urlencoded，三个键。
+     * 【取证 · 归属按本仓的三等同规矩标】
+     * ① 官方 H5 那个签到码组件（`lxtmp/sign_js.txt`、`sign_flow.txt`）把提交压成一条
+     *   `aiktSignIn.checkQrcodeHandler({signId, userName, signCode})` —— **三个键里 `signId` 是带的**。
+     *   我们这一发以前只送 `userName` + `signCode`，`signId` 空着就发出去，撞回来的是
+     *   `code:1000 服务器异常`；我当时把这句记成"这条口要的字段不止 JS 里那三个"，
+     *   其实缺的那一个就明摆在 H5 那行调用里。10-26 早上对质扫码签到时才翻出来。
+     * ③ `signId` 从哪来：旧项目 10-13 抓到的官方两跳 ——
+     *   `courseRecord/getWorkingCourseRecordByStudentId`（`studentId`）→ 正在上的那一堂，
+     *   `sign/getSignInCourseInfo`（`teachClassId` + `courseRecordId` + `studentId`）→ `data.signId`。
+     *   字段形状出自 `linxin_backup_premiuix/feature/aiclass/data/AiClassRepository.kt:175` 起。
+     * ② **我们这边一条都没发过。** 装到机上真按一次才算验成，所以下面每一跳查不到都照实说，
+     *   绝不带着空 signId 去发那一发（那就是原来那个 1000 的成因）。
      *
-     * **零报文**：这一发在磁盘上没有一条真实请求/响应（`契约_AI课堂抓包.md` 也写着"签到提交零条"）。
-     * 所以：
-     * ① `signId` 不传 —— H5 那个组件是从路由 query 里拿的（链接带过来的），我们没有那条链接；
-     *    服务端认不认"只有码+账号"这一发，**没验过**。
-     * ② 判法照官方组件抄：**只认 `status == "error"` 为失败**，成功时不一定是 `"success"`。
-     *    别套 `passed()`（那一族把空 status 也算过，会把这个口放宽）。
-     * ③ 这是写操作，界面上由他按，不自动重试、不在后台试。
+     * 判法照官方组件抄：只认 `status == "error"` 为失败，成功时 `status` 不一定是 `"success"`。
+     * 这是写操作：界面上由人按，不自动重试、不在后台试。
      */
     suspend fun signByCode(code: String): Result<String> = runCatching {
-        val who = fif.ids()?.userName
-        if (who.isNullOrBlank()) throw Exception("还没连上 AI 课堂，先去 AI 课堂那一屏点一次")
-        val body = fif.postForm(
-            "$STTP/coursecenter-interaction/qrcodeV2/checkQrcodeHandler",
-            listOf("userName" to who, "signCode" to code),
-            fif.authHeader(),
+        val ids = fif.ids() ?: throw Exception("还没连上 AI 课堂，先去 AI 课堂那一屏点一次")
+        if (code.length != 6 || code.any { !it.isDigit() }) throw Exception("签到码是 6 位数字")
+        val auth = fif.authHeader()
+
+        // ① 服务端认为"此刻在上课"的那一条 —— 不是课表上下一节，是它记着正在上的那堂
+        val rec = postRaw(
+            "$STTP/coursecenter-interaction/courseRecord/getWorkingCourseRecordByStudentId",
+            listOf("studentId" to ids.studentId), auth,
         )
-        val root = JSONObject(body)
-        if (root.optString("status") == "error") {
-            throw Exception(root.optString("message").ifBlank { "这个签到码不对" })
+        val working = objs(arr(rec.opt("data"))).firstOrNull { it.optString("teachClassId").isNotBlank() }
+            ?: throw Exception(msgOr(rec, "没查到正在上的课（服务端一条课堂记录都没给）"))
+
+        // ② 这一堂课现在开着的签到 → signId
+        val info = postRaw(
+            "$STTP/coursecenter-interaction/sign/getSignInCourseInfo",
+            listOf(
+                "teachClassId" to working.optString("teachClassId"),
+                "courseRecordId" to working.optString("courseRecordId").ifBlank { working.optString("id") },
+                "studentId" to ids.studentId,
+            ),
+            auth,
+        )
+        val signId = data(info).optString("signId")
+        if (signId.isBlank()) throw Exception(msgOr(info, "这一堂课现在没有开着的签到"))
+
+        // ③ 交码
+        val sent = postRaw(
+            "$STTP/coursecenter-interaction/qrcodeV2/checkQrcodeHandler",
+            listOf("signId" to signId, "userName" to ids.userName, "signCode" to code),
+            auth,
+        )
+        if (sent.optString("status") == "error") {
+            throw Exception(sent.optString("message").ifBlank { "这个签到码不对" })
         }
-        root.optString("message").ifBlank { "签到成功" }
+        sent.optString("message").ifBlank { "签到成功" }
     }
+
+    /** 表单 POST，回根节点。非 2xx 直接把 HTTP 码抛出去，不吞成"空数据"。 */
+    private suspend fun postRaw(url: String, form: List<Pair<String, String>>, auth: String?): JSONObject {
+        val body = fif.postForm(url, form, auth)
+        return runCatching { JSONObject(body) }.getOrElse {
+            throw Exception("这一发回的不是 JSON（${body.take(40)}）")
+        }
+    }
+
+    /** 服务端给了话就用它的话，没给才用我们这句兜底。 */
+    private fun msgOr(root: JSONObject, fallback: String): String =
+        root.optString("message").ifBlank { fallback }
 
     private suspend fun get(url: String): JSONObject? =
         runCatching { fif.getJson(url) }.getOrNull()?.let { if (passed(it)) it else null }
