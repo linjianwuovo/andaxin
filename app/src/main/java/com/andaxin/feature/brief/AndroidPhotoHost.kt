@@ -29,6 +29,9 @@ object AndroidPhotoHost {
             com.andaxin.feature.about.UpdateCard(open)
         }
         com.andaxin.core.map.TileHost.store = com.andaxin.core.map.AndroidTileStore(context)
+        com.andaxin.core.location.SportHost.keepAlive = {
+            com.andaxin.core.run.RunService.start(context)
+        }
         // 「开始这一趟之前先去要定位权限」：形状照上面那根相册插槽 —— 组合期注册 launcher，
         // 交出去的是一个"按下去就去要"的动作。SportScreens 原来自己写这两句，搬共享层后走这根缝。
         com.andaxin.core.location.SportHost.askLocation = @Composable { onResult ->

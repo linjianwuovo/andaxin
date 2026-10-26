@@ -326,7 +326,7 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
         LocalSports(files)
     }
 
-    val sports: SportsFeed by lazy { CaptureSports(school, localSports) }
+    override val sports: SportsFeed by lazy { CaptureSports(school, localSports) }
 
     /** 录播看到第几分（服务端那两条进度上报实测被拒，所以本机存，见 core/media/PlayProgress）。 */
     val playProgress by lazy { com.andaxin.core.media.PlayProgress(context.filesDir) }
@@ -335,10 +335,10 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
     val poller: Poller by lazy { Poller(messages, engineScope) }
 
     /** 真 GPS。beta 那份还接一路端内假 GPS（他自己写的那套），正式版这份 mock 是 null。 */
-    val gps: GpsFeed by lazy { GpsFeed(context, debug?.mock) }
+    override val gps: GpsFeed by lazy { GpsFeed(context, debug?.mock) }
 
     /** 跑步引擎跟着进程活：界面切来切去不该打断采集 */
-    val engine: RunEngine by lazy { RunEngine(engineScope) }
+    override val engine: RunEngine by lazy { RunEngine(engineScope) }
 
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 }

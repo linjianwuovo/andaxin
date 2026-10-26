@@ -58,4 +58,9 @@ interface BriefGraph {
     val store: com.andaxin.core.store.Store
     val timetable: com.andaxin.data.TimetableFeed
     val debug: com.andaxin.core.debug.DebugPanel?
+
+    /** 运动那一屏的三条口：定位源、跑步引擎、校方那台体育数据口。 */
+    val gps: com.andaxin.core.location.GpsSource
+    val engine: com.andaxin.core.run.RunEngine
+    val sports: com.andaxin.data.SportsFeed
 }

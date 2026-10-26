@@ -104,7 +104,10 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     val school: School = School(session)
 
     /** 定位源：主线程建（见 IosGps 顶上那段），跑步那一屏从图里拿它。 */
-    val gps: IosGps = IosGps()
+    override val gps: IosGps = IosGps()
+    // 引擎挂在图的作用域上：App 在前台就一直记；退后台那一档 iOS 还没接（见 SportHost.keepAlive）
+    override val engine: com.andaxin.core.run.RunEngine by lazy { com.andaxin.core.run.RunEngine(scope) }
+    override val sports: com.andaxin.data.SportsFeed get() = sportsFeed
 
     // 共享层那批列表/详情/表单屏要 session 和那十几条数据源（见 logicMain 的 BriefEnv）：
     // 安卓在 AppGraph 插，iOS 在这儿插。赋的是 this，不会提前触发下面任何一条 lazy。

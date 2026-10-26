@@ -44,4 +44,12 @@ interface GpsSource {
  */
 object SportHost {
     var askLocation: (@Composable (onResult: (Boolean) -> Unit) -> (() -> Unit))? = null
+
+    /**
+     * "这一趟开始了，别让系统半路掐了"。安卓那台是起一个前台服务（`core/run/RunService.kt`，
+     * 带通知栏那条），iOS **没有对应物**：引擎的协程挂在图上，App 在前台就一直走，
+     * 退后台要持续记轨迹得另开后台定位模式 —— 那一档没做之前，iOS 不插这一根，
+     * 也就是少一条通知栏，而不是假装还在跑。
+     */
+    var keepAlive: (() -> Unit)? = null
 }
