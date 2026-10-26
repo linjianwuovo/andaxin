@@ -31,7 +31,17 @@ import com.andaxin.core.design.Type
  * 同样把这句摆出来，别什么都不画让人以为这一条本来就没图。
  */
 @Composable
-fun RemotePhoto(url: String, description: String, unavailable: String, modifier: Modifier = Modifier) {
+fun RemotePhoto(
+    url: String,
+    description: String,
+    unavailable: String,
+    modifier: Modifier = Modifier,
+    /**
+     * true = 缩略图那一档：形状由调用给的 modifier 定（AI 课堂列表里那颗 56×40 的封面），
+     * 图自己裁进去。false（默认）= 正文配图：铺满一行、按图自己的宽高比撑高。
+     */
+    fit: Boolean = false,
+) {
     val ink = LocalInk.current
     var bmp by remember(url) { mutableStateOf<ImageBitmap?>(null) }
     var tried by remember(url) { mutableStateOf(false) }
@@ -41,15 +51,21 @@ fun RemotePhoto(url: String, description: String, unavailable: String, modifier:
     }
     val shown = bmp
     if (shown != null) {
-        Image(
-            bitmap = shown,
-            contentDescription = description,
-            contentScale = ContentScale.FillWidth,
-            modifier = modifier
+        // 两条形状分开拼：正文那张要铺满一行 + 留一句下边距，缩略图那张完全听调用给的 modifier
+        val box = if (fit) {
+            modifier.clip(Radius.tag)
+        } else {
+            modifier
                 .fillMaxWidth()
                 .padding(bottom = Gap.md)
                 .clip(Radius.tag)
-                .aspectRatio(shown.width.toFloat() / shown.height.coerceAtLeast(1)),
+                .aspectRatio(shown.width.toFloat() / shown.height.coerceAtLeast(1))
+        }
+        Image(
+            bitmap = shown,
+            contentDescription = description,
+            contentScale = if (fit) ContentScale.Crop else ContentScale.FillWidth,
+            modifier = box,
         )
     } else {
         Text(
