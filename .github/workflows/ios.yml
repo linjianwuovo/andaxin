@@ -101,7 +101,10 @@ jobs:
             dev="$app/Contents/Developer"
             sdk=$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcodebuild" -showsdks 2>/dev/null | grep -io "iphoneos2[6-9][0-9.]*" | head -1)
             if [ -z "$sdk" ]; then echo "跳过 $app：没有 iOS 26 SDK"; continue; fi
-            sims=$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcrun" simctl list devices available 2>/dev/null | grep -c 'iPhone')
+            # 末尾那个 `|| true` 是 104 的命：`grep -c` 一个都没数到时退出码是 1，
+            # 而 CI 每一步都是 `bash -e` 跑的 —— 赋值语句里嵌的命令替换一非零，整步当场终止。
+            # 也就是说 104 不是"换 Xcode 换错了"，是"数出 0 台模拟器"这个事实本身把整步弄崩的。
+            sims=$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcrun" simctl list devices available 2>/dev/null | grep -c 'iPhone' || true)
             CHOICE="$dev"; echo "选 $app（$sdk）只给真机 ipa 用；它自己列出的 iPhone 模拟器 $sims 台，不影响模拟器那两步"
             break
           done
