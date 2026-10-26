@@ -90,26 +90,27 @@ jobs:
           # 但那套底下列不到任何可用 iPhone，于是下面那道护栏把整个换 Xcode 放弃了、退回默认 16.4，
           # 结果这发还是拿 18.5 SDK 编的，他手机上底栏依旧是死胶囊。护栏没错，错在只试一套就收工。
           # 每台被拒都单独打一行：下次不用再猜是哪套、缺的是 SDK 还是模拟器。
+          # 103 那发的现场：十套 26.x **一套都列不出 iPhone 模拟器**（那台 OS:26.2 的 iPhone 16
+          # 在默认 16.4 那套 simctl 的视野里），所以"SDK 与模拟器都要"这道条件把十套全筛掉了、
+          # 又退回 16.4 —— 水滴还是没有。结论是这两件事不该绑在一起：浮起玻璃只看
+          # **ipa 是用哪套 SDK 链的**，而 ipa 那一步是 generic/platform=iOS，压根不需要模拟器。
+          # 所以这里只挑"有 26 SDK"的一套，导出成 IOS26_DEV，交给『无签名真机 ipa』那一步单独用；
+          # 模拟器那两步继续留在默认 Xcode（要的是能开机能截图，跟 SDK 无关）。
           CHOICE=""
           for app in $(ls -d /Applications/Xcode_26.2*.app /Applications/Xcode_26*.app 2>/dev/null | sort -V -r); do
             dev="$app/Contents/Developer"
             sdk=$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcodebuild" -showsdks 2>/dev/null | grep -io "iphoneos2[6-9][0-9.]*" | head -1)
             if [ -z "$sdk" ]; then echo "跳过 $app：没有 iOS 26 SDK"; continue; fi
-            if [ -z "$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcrun" simctl list devices available 2>/dev/null | grep 'iPhone')" ]; then
-              echo "跳过 $app（$sdk）：SDK 有，但这套列不出 iPhone 模拟器，换过去下一『选一台模拟器』步就红"
-              continue
-            fi
-            CHOICE="$dev"; echo "钉住 $app（$sdk，模拟器那套列得出 iPhone）"; break
+            sims=$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcrun" simctl list devices available 2>/dev/null | grep -c 'iPhone')
+            CHOICE="$dev"; echo "选 $app（$sdk）只给真机 ipa 用；它自己列出的 iPhone 模拟器 $sims 台，不影响模拟器那两步"
+            break
           done
           if [ -z "$CHOICE" ]; then
-            echo "::warning::没有一套 26 的 Xcode 能同时给到 SDK 和 iPhone 模拟器 —— 保持默认，这发的底栏仍然没有水滴"
+            echo "::warning::这台机器上没有可用的 26 SDK —— ipa 还是 18.5 编的，底栏没有水滴"
           else
-            echo "DEVELOPER_DIR=$CHOICE" >> "$GITHUB_ENV"
-            echo "$CHOICE/usr/bin" >> "$GITHUB_PATH"
+            echo "IOS26_DEV=$CHOICE" >> "$GITHUB_ENV"
           fi
-          echo "定下来这套：${CHOICE:-（保持默认）}"
-          [ -n "$CHOICE" ] && "$CHOICE/usr/bin/xcodebuild" -version | head -1
-          [ -n "$CHOICE" ] && "$CHOICE/usr/bin/xcrun" simctl list runtimes | grep -i "ios"
+          echo "真机 ipa 将用：${CHOICE:-（保持默认 Xcode）}"
           true
 
       - name: 预置 framework 占位（xcodegen 生成时要能找到路径；对应 flavor 由脚本相位构建时替换）
@@ -242,6 +243,12 @@ jobs:
       - name: 无签名真机 ipa（Sideloadly/爱思在 PC 上重签用）
         run: |
           set -o pipefail
+          # 只有这一步换 Xcode：苹果按"用哪套 SDK 链的"放行浮起玻璃，而这步不需要模拟器，
+          # 所以碰不到 103 那种"26 那套列不出 iPhone 模拟器"的死结。
+          if [ -n "$IOS26_DEV" ]; then
+            export DEVELOPER_DIR="$IOS26_DEV"
+            echo "这一发的 ipa 用 $("$DEVELOPER_DIR/usr/bin/xcodebuild" -version | head -1)"
+          fi
           xcodebuild -project iosApp/AndaXin.xcodeproj \
             -scheme AndaXin -configuration Release \
             -destination 'generic/platform=iOS' \
