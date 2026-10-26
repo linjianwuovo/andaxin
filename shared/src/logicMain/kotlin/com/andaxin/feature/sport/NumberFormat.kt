@@ -30,7 +30,11 @@ private fun fixed(v: Double, digits: Int): String {
     val d = digits.coerceIn(0, 9)
     var pow = 1L
     repeat(d) { pow *= 10L }
-    val scaled = kotlin.math.round(v * pow.toDouble()).toLong()
+    // 乘完还要再判一次：v 自己是有限的，可 1e308 × 100 就是 Infinity 了，
+    // 到那一步再 toLong() 一样抛 —— 判据要落在真正进转换的那个数上，不是落在入口参数上
+    val scaledD = kotlin.math.round(v * pow.toDouble())
+    if (!scaledD.isFinite()) return NOT_NUM
+    val scaled = scaledD.toLong()
     val neg = scaled < 0
     // 取绝对值这一步别写成 -scaled：万一 scaled 就是 Long.MIN_VALUE，取负还是负数，
     // 后面整/余全乱（上一版这里还有个更蠢的：两个分支都写成了 -scaled，正数也被取负）
@@ -93,7 +97,9 @@ fun latLng5(lng: Double, lat: Double): String = fixed5(lng) + ", " + fixed5(lat)
 private fun fixed5(v: Double): String {
     // 同一个坑的第五位小数版：非有限值别去 toLong()，那在 K/N 里就是抛
     if (!v.isFinite()) return NOT_NUM
-    val a = kotlin.math.round(v * 100000).toLong()
+    val scaledD = kotlin.math.round(v * 100000)
+    if (!scaledD.isFinite()) return NOT_NUM
+    val a = scaledD.toLong()
     val sign = if (a < 0) "-" else ""
     val n = if (a == Long.MIN_VALUE) Long.MAX_VALUE else if (a < 0) -a else a
     return sign + (n / 100000).toString() + "." + (n % 100000).toString().padStart(5, '0')

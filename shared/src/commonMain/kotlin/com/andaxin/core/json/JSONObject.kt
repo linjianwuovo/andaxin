@@ -51,13 +51,13 @@ internal fun JsonElement?.coerceString(): String = when (this) {
 
 internal fun JsonElement?.coerceInt(default: Int): Int = when (this) {
     null, is JsonNull -> default
-    is JsonPrimitive -> content.asFiniteDouble()?.toLong()?.toInt() ?: default
+    is JsonPrimitive -> content.asFiniteLong()?.toInt() ?: default
     else -> default
 }
 
 internal fun JsonElement?.coerceLong(default: Long): Long = when (this) {
     null, is JsonNull -> default
-    is JsonPrimitive -> content.asFiniteDouble()?.toLong() ?: default
+    is JsonPrimitive -> content.asFiniteLong() ?: default
     else -> default
 }
 
@@ -77,6 +77,15 @@ internal fun JsonElement?.coerceDouble(default: Double): Double = when (this) {
  * 这一层是所有屏共用的读数口，所以在这兜住：非有限 = 读不出来 = 回 default。
  */
 internal fun String?.asFiniteDouble(): Double? = this?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
+
+/**
+ * 有限**并且装得进 Long** 的那一档。
+ *
+ * 只判 isFinite 不够：`1e300` 是有限的 Double，可它在 Kotlin/Native 里转 Long 一样是抛
+ * （JVM 那边饱和成 Long.MAX_VALUE，所以照旧看不出问题）。判据要落在真正进转换的那个数上。
+ */
+internal fun String?.asFiniteLong(): Long? =
+    this.asFiniteDouble()?.takeIf { it >= -9.0e17 && it <= 9.0e17 }?.toLong()
 
 internal fun JsonElement?.coerceBoolean(default: Boolean): Boolean = when (this) {
     null, is JsonNull -> default
@@ -180,7 +189,7 @@ class JSONObject {
         if (v == null || v is JsonNull || v !is JsonPrimitive) throw IllegalArgumentException("JSONObject[$name] 不是数字")
         // 经一次 Long 再收窄：非有限值在 K/N 里直接 toInt() 是抛 ArithmeticException，
         // 那会把"这键不是数字"这件本该由下面那句说清楚的事，变成一次没人接的崩溃
-        return v.content.asFiniteDouble()?.toLong()?.toInt()
+        return v.content.asFiniteLong()?.toInt()
             ?: throw IllegalArgumentException("JSONObject[$name] 不是数字")
     }
 

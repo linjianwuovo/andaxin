@@ -374,8 +374,10 @@ private fun km1(v: Double?): String = v?.let { f1(it) } ?: "—"
 private fun km2(v: Double?): String = v?.let { f2(it) } ?: "—"
 private fun num(v: Double): String =
     // 这一句原来直接 v.toLong()：非有限值（校方回的 "NaN" 解析出来的那种）在 K/N 里
-    // 一碰 toLong() 就抛 ArithmeticException，而它是在排版里被调的 —— 兜底的协程接不住
-    if (!v.isFinite()) "—" else if (v == v.toLong().toDouble()) v.toLong().toString() else f1(v)
+    // 一碰 toLong() 就抛 ArithmeticException，而它是在排版里被调的 —— 兜底的协程接不住。
+    // 上限也要管：1e300 是"有限"的，可它转 Long 一样装不下 —— 判据落在进转换的那个数上
+    if (!v.isFinite() || v > 1e15 || v < -1e15) "—"
+    else if (v == v.toLong().toDouble()) v.toLong().toString() else f1(v)
 private fun md(s: String?): String =
     s?.takeIf { it.length >= 5 }?.takeLast(5) ?: ""
 
