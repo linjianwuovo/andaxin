@@ -55,6 +55,11 @@ import com.andaxin.feature.modules.LoginDeps
 import com.andaxin.feature.modules.LoginScreen
 import com.andaxin.feature.modules.OnboardingScreen
 import com.andaxin.feature.web.WebScreen
+import com.andaxin.feature.sport.SportDetailScreen
+import com.andaxin.feature.sport.SportMaintainScreen
+import com.andaxin.feature.sport.SportRecordsScreen
+import com.andaxin.feature.sport.SportRunScreen
+import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.notice.NoticeDeps
 import com.andaxin.feature.notice.NoticeDetailDeps
 import com.andaxin.feature.notice.NoticeDetailScreen
@@ -332,6 +337,13 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         }
         key == "group" -> IosRoute("班级群") { GroupScreen(onBack = {}) }
         key == "about" -> IosRoute("关于安大信") { AboutScreen(onBack = {}) }
+
+        // 运动这一族（「选线面板」是 beta 那一档才有的东西，正式包和 iOS 都没有这一扇）
+        key == "sport" -> IosRoute("运动") { SportStartScreen(open = open, onBack = {}) }
+        key == "sport/run" -> IosRoute("跑步中") { SportRunScreen(onBack = {}) }
+        key == "sport/records" -> IosRoute("运动记录") { SportRecordsScreen(open = open, onBack = {}) }
+        key.startsWith("sport/detail/") -> IosRoute("这一趟") { SportDetailScreen(recordId = detailId, onBack = {}) }
+        key == "sport/maintain" -> IosRoute("运动维护") { SportMaintainScreen(onBack = {}) }
 
         // 扫码：扫到的整条 URL 交应用内网页那一扇（安卓走的是带 cookie 的 QrSignScreen，差别写在
         // ScanScreen.ios.kt 顶上那段，不在这儿重复）

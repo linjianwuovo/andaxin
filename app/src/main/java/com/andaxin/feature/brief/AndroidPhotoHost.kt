@@ -29,6 +29,9 @@ object AndroidPhotoHost {
             com.andaxin.feature.about.UpdateCard(open)
         }
         com.andaxin.core.map.TileHost.store = com.andaxin.core.map.AndroidTileStore(context)
+        com.andaxin.core.location.SportHost.backBlock = @Composable { enabled, block ->
+            if (enabled) androidx.activity.compose.BackHandler(onBack = block)
+        }
         com.andaxin.core.location.SportHost.keepAlive = {
             com.andaxin.core.run.RunService.start(context)
         }

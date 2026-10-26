@@ -30,11 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.andaxin.shell.LoadWhy
+import androidx.compose.runtime.collectAsState
+import com.andaxin.feature.brief.LoadWhy
 import com.andaxin.shell.pressClick
 import com.andaxin.shell.rememberArmConfirm
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.core.location.SportHost
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.InkSet
@@ -51,7 +52,6 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
-import java.util.UUID
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
@@ -63,7 +63,7 @@ internal val CAMPUS = LatLng(31.146501, 118.635061)
 
 @Composable
 fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var plan by remember { mutableStateOf<SportPlan?>(null) }
     var planWhy by remember { mutableStateOf<String?>(null) }
@@ -71,7 +71,6 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
     var denied by remember { mutableStateOf<String?>(null) }
     var starting by remember { mutableStateOf(false) }
     var startWhy by remember { mutableStateOf<String?>(null) }
-    val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
     /*
@@ -99,7 +98,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 val plan0 = armed
                 if (plan0 != null) mock?.startRoute(plan0.points, plan0.paceKmh) else mock?.stop()
                 graph.engine.startReal(graph.gps, session)
-                com.andaxin.core.run.RunService.start(ctx)
+                SportHost.keepAlive?.invoke()
                 open("sport/run")
             }.onFailure {
                 startWhy = it.message ?: "校方没让开始这一场"
@@ -107,17 +106,17 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         }
     }
 
-    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
-    ) { result ->
-        if (result[android.Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+    // 原来这两句是屏自己注册系统的权限 launcher；搬进共享层后交回宿主插的那根缝
+    // （安卓 = 弹系统权限框，iOS = requestWhenInUseAuthorization 然后等回调给答案）
+    val ask: () -> Unit = SportHost.askLocation?.invoke { granted ->
+        if (granted) {
             begin()
         } else {
             // 没给定位就不开始。不退回"沿画好的线走"那种演示：那一圈点是算出来的，
             // 报上去就是假成绩，界面上也绝不用"演示"两个字给它留门。
             denied = "没给定位权限，这一趟没法开始 —— 学校要的是你真实跑出来的轨迹。"
         }
-    }
+    } ?: { denied = "这一端还没接定位授权，这一趟先别开始。" }
 
     /*
      * 这一屏照官方 startIndex 那张来：计划进度、今日/最长、有效阈值、体育课，全是校方给的真数。
@@ -135,7 +134,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         PlanCard(plan, ink)
         planWhy?.let {
             Spacer(Modifier.height(Gap.md))
-            LoadWhy(it, wide = false)
+            LoadWhy(it, BriefEnv.session, wide = false)
             Text(
                 "重试",
                 fontSize = Type.meta,
@@ -150,13 +149,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
             if (armed != null) {
                 begin()
             } else {
-                ask.launch(
-                    arrayOf(
-                        android.Manifest.permission.ACCESS_FINE_LOCATION,
-                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                        android.Manifest.permission.POST_NOTIFICATIONS,
-                    )
-                )
+                ask()
             }
         }
         (denied ?: startWhy)?.let {
@@ -377,10 +370,10 @@ private fun validity(plan: SportPlan?): String {
     return parts.joinToString("，")
 }
 
-private fun km1(v: Double?): String = v?.let { "%.1f".format(it) } ?: "—"
-private fun km2(v: Double?): String = v?.let { "%.2f".format(it) } ?: "—"
+private fun km1(v: Double?): String = v?.let { f1(it) } ?: "—"
+private fun km2(v: Double?): String = v?.let { f2(it) } ?: "—"
 private fun num(v: Double): String =
-    if (v == v.toLong().toDouble()) v.toLong().toString() else "%.1f".format(v)
+    if (v == v.toLong().toDouble()) v.toLong().toString() else f1(v)
 private fun md(s: String?): String =
     s?.takeIf { it.length >= 5 }?.takeLast(5) ?: ""
 
@@ -388,11 +381,11 @@ private fun md(s: String?): String =
 
 @Composable
 fun SportRunScreen(onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
-    val state by graph.engine.state.collectAsStateWithLifecycle()
+    val state by graph.engine.state.collectAsState()
     val mockOn by (graph.debug?.mock?.isOn ?: com.andaxin.core.debug.DebugKit.off)
-        .collectAsStateWithLifecycle()
+        .collectAsState()
     val stopArm = rememberArmConfirm()
     var draft by remember { mutableStateOf<RunDraft?>(null) }
     var submitting by remember { mutableStateOf(false) }
@@ -404,7 +397,7 @@ fun SportRunScreen(onBack: () -> Unit) {
     val lastKnown = remember { graph.gps.lastKnown() }
 
     // 系统返回也走二次确认；普通点击右下返回在同一处
-    androidx.activity.compose.BackHandler(enabled = state.active && draft == null) {
+    SportHost.backBlock?.invoke(state.active && draft == null) {
         confirmLeave = true
     }
 
@@ -448,13 +441,13 @@ fun SportRunScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.lg))
             Sheet {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Stat("距离", "%.2f km".format(done.km))
-                    Stat("时长", "%d:%02d".format(done.seconds / 60, done.seconds % 60))
+                    Stat("距离", f2(done.km) + " km")
+                    Stat("时长", mmss(done.seconds))
                     Stat(
                         "配速",
                         if (done.km > 0.05) {
                             val sec = done.seconds / done.km
-                            "%d'%02d\"".format((sec / 60).toInt(), (sec % 60).toInt())
+                            paceLabel(sec.toInt())
                         } else "—",
                     )
                 }
@@ -553,8 +546,8 @@ fun SportRunScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.lg))
         Sheet {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Stat("距离", "%.2f km".format(state.km))
-                Stat("时长", "%d:%02d".format(state.seconds / 60, state.seconds % 60))
+                Stat("距离", f2(state.km) + " km")
+                Stat("时长", mmss(state.seconds))
                 Stat("配速", state.pacePerKm)
             }
             Spacer(Modifier.height(Gap.sm))
@@ -575,7 +568,7 @@ fun SportRunScreen(onBack: () -> Unit) {
 
         if (state.error != null) {
             Spacer(Modifier.height(Gap.md))
-            LoadWhy(state.error)
+            LoadWhy(state.error, BriefEnv.session)
         }
 
         Spacer(Modifier.height(Gap.xl))
@@ -645,7 +638,7 @@ fun SportRunScreen(onBack: () -> Unit) {
 
 @Composable
 fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var items by remember { mutableStateOf<List<com.andaxin.data.RunRecord>>(emptyList()) }
     // 空列表有两种完全不同的意思：真的一条没跑，和这台 sports 没连上。
@@ -661,12 +654,12 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
     Page("运动记录", onBack) {
         items.forEach { r ->
             Sheet(modifier = Modifier.pressClick { open("sport/detail/${r.id}") }) {
-                Labeled(label = r.date, value = "%.2f km".format(r.km))
+                Labeled(label = r.date, value = f2(r.km) + " km")
                 Spacer(Modifier.height(Gap.sm))
                 Hairline()
                 Spacer(Modifier.height(Gap.sm))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(r.pacePerKm + " · " + "%.1f 分钟".format(r.minutes), fontSize = Type.meta, color = ink.faint)
+                    Text(r.pacePerKm + " · " + f1(r.minutes) + " 分钟", fontSize = Type.meta, color = ink.faint)
                     Text(
                         text = if (r.valid) "有效" else r.invalidReason,
                         fontSize = Type.meta,
@@ -697,7 +690,7 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
 
 @Composable
 fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var detail by remember { mutableStateOf<com.andaxin.data.RunDetail?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
@@ -745,13 +738,13 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
         Sheet {
             Labeled(label = "日期", value = d.record.date)
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "距离", value = "%.2f km".format(d.record.km))
+            Labeled(label = "距离", value = f2(d.record.km) + " km")
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
-            Labeled(label = "用时", value = "%d:%02d".format(mins.toInt() / 60, mins.toInt() % 60))
+            Labeled(label = "用时", value = mmss(mins.toInt()))
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(
                 "平均速度",
-                if (d.record.km > 0.01 && mins > 0) "%.2f km/h".format(d.record.km / (mins / 60.0)) else "—",
+                if (d.record.km > 0.01 && mins > 0) f2(d.record.km / (mins / 60.0)) + " km/h" else "—",
             )
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(label = "跑道", value = d.lane.ifBlank { "—" })
@@ -767,7 +760,7 @@ fun SportDetailScreen(recordId: String, onBack: () -> Unit) {
 
 @Composable
 fun SportMaintainScreen(onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var log by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var why by remember { mutableStateOf<String?>(null) }
@@ -783,7 +776,7 @@ fun SportMaintainScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(Gap.sm))
         }
         if (log.isEmpty() && why != null) {
-            LoadWhy(why)
+            LoadWhy(why, BriefEnv.session)
             Spacer(Modifier.height(Gap.md))
         }
         Spacer(Modifier.height(Gap.md))

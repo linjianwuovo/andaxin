@@ -52,4 +52,11 @@ object SportHost {
      * 也就是少一条通知栏，而不是假装还在跑。
      */
     var keepAlive: (() -> Unit)? = null
+
+    /**
+     * "正在跑的时候别让我一按返回就丢了这一趟"。安卓那台是 `activity-compose` 的 `BackHandler`，
+     * 这个依赖只在 app 侧有，所以缝留在这儿、实现插在那儿。iOS 没有"返回键"这件事
+     * （退出这一屏走导航栏那颗或侧滑），宿主不插就是什么都不做 —— 不是漏了，是这端没这个手势。
+     */
+    var backBlock: (@Composable (enabled: Boolean, block: () -> Unit) -> Unit)? = null
 }
