@@ -1,0 +1,276 @@
+package com.andaxin.state
+
+import androidx.compose.runtime.Immutable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.andaxin.core.schedule.Periods
+import com.andaxin.core.store.Store
+import com.andaxin.data.Dashboard
+import com.andaxin.data.DashboardFeed
+import com.andaxin.data.MessageFeed
+import com.andaxin.data.MessageItem
+import com.andaxin.data.NoticeBody
+import com.andaxin.data.NoticeFeed
+import com.andaxin.data.NoticeItem
+import com.andaxin.data.TimetableFeed
+import com.andaxin.data.TimetableSlot
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+/*
+ * UiState 一律 @Immutable：Compose 靠这个决定要不要重绘，标错了就是白屏或掉帧。
+ * 一次出：加载态只在"第一次什么都没有"时占位，刷新期间保留旧数据，别整屏闪一下骨架。
+ */
+
+@Immutable
+data class HomeUiState(
+    val firstLoad: Boolean = true,
+    val data: Dashboard? = null,
+    /** 屏幕上这批数字是上一份快照、正在换新的。界面据此写"更新中"，不把旧数字冒充成刚拉的。 */
+    val refreshing: Boolean = false,
+    val today: List<TimetableSlot> = emptyList(),
+    /** 今天这份课表拿到了没有。没拿到就别把"今天没课"的壁纸摆出来 —— 那不是"没课"，是"没拉到"。 */
+    val todayKnown: Boolean = false,
+    val error: String? = null,
+)
+
+/**
+ * 首页。
+ *
+ * 一次出：仪表数据和今天的课两路并发取，都回来了才落一次 state ——
+ * 不许一路加载一路蹦（他验收过的手感）。
+ */
+class HomeModel(
+    private val feed: DashboardFeed,
+    private val timetable: TimetableFeed,
+) : ViewModel() {
+    private val _state = MutableStateFlow(HomeUiState())
+    val state: StateFlow<HomeUiState> = _state.asStateFlow()
+
+    init {
+        // 冷启动先用上一次的数字垫屏：六条并行接口回来之前，屏幕不再是一片空白
+        _state.value = _state.value.copy(data = feed.cached())
+        reload()
+    }
+
+    fun reload() {
+        viewModelScope.launch { refresh() }
+    }
+
+    /**
+     * 挂起版：下拉刷新要等这一趟真回来才收指示器，
+     * 所以给一个能等的（[reload] 是后台起协程，不等）。
+     */
+    suspend fun refresh() {
+        _state.value = _state.value.copy(refreshing = true)
+        val dash = try { feed.snapshot() } catch (e: Exception) { Result.failure(e) }
+        val slots = try { timetable.week(0) } catch (e: Exception) { Result.failure(e) }
+        val list = slots.getOrDefault(emptyList())
+        val dash0 = dash.getOrNull()
+        // 冷启动那一路已经把消息列表拉了一遍（为了首页那一格"未读几条"），
+        // 顺手把底栏的角标填上 —— 不然要等他点进「消息」那一格才看得到有未读
+        dash0?.let { com.andaxin.core.store.Unread.messages.value = it.unreadMessages }
+        _state.value = HomeUiState(
+            firstLoad = false,
+            data = dash0 ?: _state.value.data,
+            // 今天星期几由 Periods 说，跟周网格、首页"几节课"同一张表 —— 这儿原来写死 ==1，
+            // 周一看着对，周二起就把周一的课当今天显示（10-20 上午装机读屏撞中的就是这个）。
+            // `startPeriod >= 1` 是"这是课"的闸：校方那条 `ksjc=0` 的阳光晨跑是活动占位，不算课。
+            today = list.filter { it.day == Periods.today() && it.startPeriod >= 1 },
+            todayKnown = slots.isSuccess,
+            error = (dash.exceptionOrNull() ?: slots.exceptionOrNull())?.message,
+            refreshing = false,
+        )
+    }
+}
+
+@Immutable
+data class TimetableUiState(
+    val firstLoad: Boolean = true,
+    val weekOffset: Int = 0,
+    val slots: List<TimetableSlot> = emptyList(),
+    val error: String? = null,
+    /** 校方那一学期的全部周次（`selectZcList.do` 的 `rows`），界面上排成"第一周…第N周"一行。 */
+    val weeks: List<Int> = emptyList(),
+    /** 现在第几周。0 = 还没拿到。 */
+    val now: Int = 0,
+    /**
+     * 课名 → 色号（第几颗颜色，界面那边再对表取色）。
+     *
+     * 这张表本机存着，**换周不许改色** —— 他 10-24 晚指出：同一门课第八周是绿的、
+     * 第九周变紫。根因是色号以前按"这一周里恰好有哪几门课"排序发，课一多一少就全体错位。
+     */
+    val courseColors: Map<String, Int> = emptyMap(),
+)
+
+class TimetableModel(private val feed: TimetableFeed, private val store: Store) : ViewModel() {
+    private val _state = MutableStateFlow(TimetableUiState())
+    val state: StateFlow<TimetableUiState> = _state.asStateFlow()
+
+    /** 内存里那份色号表，进屏时从本机读回来，之后只增不改。 */
+    private var palette: Map<String, Int> = emptyMap()
+
+    init {
+        viewModelScope.launch {
+            val w = runCatching { feed.weeks() }.getOrNull()
+            if (w != null && w.weeks.isNotEmpty()) {
+                _state.value = _state.value.copy(weeks = w.weeks, now = w.now)
+            }
+        }
+        viewModelScope.launch {
+            palette = parsePalette(runCatching { store.text(KEY_PALETTE).first() }.getOrNull())
+            _state.value = _state.value.copy(courseColors = palette)
+            load(0)
+        }
+    }
+
+    fun load(offset: Int) {
+        viewModelScope.launch { refresh(offset) }
+    }
+
+    /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
+    suspend fun refresh(offset: Int = _state.value.weekOffset) {
+        val r = try { feed.week(offset) } catch (e: Exception) { Result.failure(e) }
+        val slots = r.getOrDefault(_state.value.slots)
+        // 用 copy：整份 new 会把刚拿到的周次表冲掉，那一行会闪回「本周/下周」两颗
+        _state.value = _state.value.copy(
+            firstLoad = false,
+            weekOffset = offset,
+            slots = slots,
+            courseColors = withNewCourses(slots.map { it.course }),
+            error = r.exceptionOrNull()?.message,
+        )
+    }
+
+    /**
+     * 给这一周里没见过的新课名各编一个号，落本机。
+     *
+     * 取的是"最小没用过的号"，所以十二颗以内一门一色；老课永远拿它第一次那个号 ——
+     * 换周、翻学期、某一周围绕的课少了两门，都不会把已有课的颜色挪走。
+     */
+    private suspend fun withNewCourses(names: List<String>): Map<String, Int> {
+        val fresh = names.filter { it.isNotBlank() }.distinct().sorted().filterNot { palette.containsKey(it) }
+        if (fresh.isEmpty()) return palette
+        val next = palette.toMutableMap()
+        val taken = palette.values.toMutableSet()
+        fresh.forEach { n ->
+            var i = 0
+            while (taken.contains(i)) i++
+            taken += i
+            next[n] = i
+        }
+        palette = next
+        store.setText(KEY_PALETTE, writePalette(next))
+        return next
+    }
+
+    private companion object {
+        const val KEY_PALETTE = "timetable.courseColors"
+    }
+}
+
+/** 色号表本机就存一个 JSON 对象：`{"体育":0,"高等数学":1}`。坏了当没有，不拦着上课。 */
+private fun parsePalette(s: String?): Map<String, Int> {
+    if (s.isNullOrBlank()) return emptyMap()
+    return runCatching {
+        val o = org.json.JSONObject(s)
+        o.keys().asSequence().map { it to o.optInt(it) }.toMap()
+    }.getOrDefault(emptyMap())
+}
+
+private fun writePalette(m: Map<String, Int>): String =
+    org.json.JSONObject().apply { m.forEach { (k, v) -> put(k, v) } }.toString()
+
+@Immutable
+data class MessageUiState(
+    val firstLoad: Boolean = true,
+    val items: List<MessageItem> = emptyList(),
+    val error: String? = null,
+    /** 标已读失败的原因。跟列表失败分开：列表好好的、只有这一条没标上，是两种事。 */
+    val readError: String? = null,
+)
+
+class MessageModel(private val feed: MessageFeed) : ViewModel() {
+    private val _state = MutableStateFlow(MessageUiState())
+    val state: StateFlow<MessageUiState> = _state.asStateFlow()
+
+    init {
+        reload()
+    }
+
+    fun reload() {
+        viewModelScope.launch { refresh() }
+    }
+
+    /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
+    suspend fun refresh() {
+        val r = try { feed.page(0) } catch (e: Exception) { Result.failure(e) }
+        val items = r.getOrDefault(_state.value.items)
+        // 底栏那颗角标跟着这一份走：拉一次就更新一次，标完已读回来也会掉
+        com.andaxin.core.store.Unread.messages.value = items.count { it.unread }
+        _state.value = MessageUiState(
+            firstLoad = false,
+            items = items,
+            error = r.exceptionOrNull()?.message,
+        )
+    }
+
+    /**
+     * 标已读：**服务端说成了才把红点去掉**。
+     *
+     * 这不是洁癖 —— 官方前端就是这个顺序（`readPushMessage.do` 的 `.then` 里才改 `readFlag`）。
+     * 本地先划掉的话，下一次刷新红点又回来，看着像 App 在乱记。
+     * 失败的原因留在 [readError] 上，消息屏那一行下面会显示出来。
+     */
+    fun markRead(id: String) {
+        viewModelScope.launch {
+            val r = try { feed.markRead(id) } catch (e: Exception) { Result.failure(e) }
+            if (r.isSuccess) {
+                val next = _state.value.items.map { if (it.id == id) it.copy(unread = false) else it }
+                _state.value = _state.value.copy(readError = null, items = next)
+                // 底栏那颗角标跟着这一份重算：不然把最后一条点成已读，
+                // 红圈还挂在「消息」那一格上，得等下一次进首页/下拉才肯掉
+                com.andaxin.core.store.Unread.messages.value = next.count { it.unread }
+            } else {
+                _state.value = _state.value.copy(readError = r.exceptionOrNull()?.message ?: "服务端没认这条")
+            }
+        }
+    }
+}
+
+@Immutable
+data class NoticeUiState(
+    val firstLoad: Boolean = true,
+    val items: List<NoticeItem> = emptyList(),
+    val error: String? = null,
+)
+
+class NoticeModel(private val feed: NoticeFeed) : ViewModel() {
+    private val _state = MutableStateFlow(NoticeUiState())
+    val state: StateFlow<NoticeUiState> = _state.asStateFlow()
+
+    init {
+        reload()
+    }
+
+    fun reload() {
+        viewModelScope.launch { refresh() }
+    }
+
+    /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
+    suspend fun refresh() {
+        val r = try { feed.list() } catch (e: Exception) { Result.failure(e) }
+        _state.value = _state.value.copy(
+            firstLoad = false,
+            items = r.getOrDefault(_state.value.items),
+            error = r.exceptionOrNull()?.message,
+        )
+    }
+
+    // 详情不再挂在这份状态上：10-22 深夜那条「公告点进去、系统返回手势把整个应用退了」
+    // 就是因为详情是列表页就地换内容，导航栈里没有第二页可弹。
+    // 现在详情走 Route.NOTICE_DETAIL，自己按 id 取正文（NoticeDetailScreen）。
+}

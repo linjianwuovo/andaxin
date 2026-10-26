@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+     * 只有测试包（beta 那一支编出来的）会读到这一条：桌面那行字写「安大信 Beta」。
+     * 公开那份（main / stable）是「安大信」，不带尾巴 —— 别人装完不该看到「·重构」那种字样。
+     * 这一条存在的意义就是：测试包和正式版并排装在同一台手机上时，桌面上能一眼分出哪个是哪个。
+     -->
+    <string name="app_name">安大信 Beta</string>
+</resources>
