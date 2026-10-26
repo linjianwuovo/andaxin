@@ -27,6 +27,26 @@ jobs:
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
         run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain
 
+      - name: 这台机器上有哪几套 Xcode / SDK（决定底栏能不能是浮起玻璃）
+        run: |
+          # 为什么要单独问一句：苹果那套浮起液态玻璃（含底栏那颗水滴珠子）是
+          # **按"你用哪个 SDK 编的"放行**的，不是按跑它的系统。99 那发我想用
+          # iOS 26 的 tabBarMinimizeBehavior，编译器直接说 UITabBarController 没这个成员
+          # —— 怀疑这台镜像的默认 Xcode 还是 15/16 那档。先只把现场打出来，
+          # 不在这个改动里换 Xcode：K/N 2.4.20 对 Xcode 版本是有支持区间的，
+          # 换错了一整发就白烧，所以先看清单再决定钉哪一套。
+          xcodebuild -version
+          xcode-select -p
+          echo "--- /Applications 里装了哪些 Xcode"
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "(只有默认那一套)"
+          echo "--- 默认这套能看到的 SDK"
+          xcodebuild -showsdks 2>/dev/null | grep -i "ios" || echo "(读不到 SDK 清单)"
+          echo "--- 每一套各自的 iOS SDK 版本"
+          for app in $(ls -d /Applications/Xcode*.app 2>/dev/null); do
+            v=$("$app/Contents/Developer/usr/bin/xcodebuild" -showsdks 2>/dev/null | grep -io "iphoneos[0-9.]*" | sort -u | tr '\n' ' ')
+            echo "   $app -> ${v:-读不到}"
+          done
+
       - name: 预置 framework 占位（xcodegen 生成时要能找到路径；对应 flavor 由脚本相位构建时替换）
         run: |
           mkdir -p shared/build/xcodeFrameworks

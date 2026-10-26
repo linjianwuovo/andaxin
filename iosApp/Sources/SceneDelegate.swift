@@ -124,14 +124,15 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         tabs.viewControllers = items.map { $0.0 }
 
         // 原来这儿有一句 tabs.tabBar.isTranslucent = true —— 删了。
-        // 那是 iOS 15 那档"贴底半透明条"的开关，正好属于会把 iOS 26 浮起液态玻璃压回
-        // 死胶囊的那类设置（那篇适配文警告过：给它设背景/透明，连 clear 都算）。
-        // 我们没设过 UITabBarAppearance 的 backgroundColor，所以什么都不设，
-        // 系统就按 iOS 26 那档画：浮起那条玻璃 + 选中那颗会形变的水滴珠子。
-        if #available(iOS 26.0, *) {
-            // 往下翻让位、往上翻回来 —— 跟他安卓那条"抬手才换页 + 整条栏橡皮条"的手感对齐
-            tabs.tabBarMinimizeBehavior = .onScrollDown
-        }
+        // 那是 iOS 15 那档"贴底半透明条"的开关，会把浮起液态玻璃压回死胶囊。
+        //
+        // 但光删这一句不够。99 那发我想加 iOS 26 的 tabBarMinimizeBehavior，编译器直接报
+        // "value of type 'UITabBarController' has no member 'tabBarMinimizeBehavior'" ——
+        // 说明这台 runner 用的 SDK 里根本没有 26 那套 API。而苹果是**按"你用哪个 SDK 编的"**
+        // 决定给不给浮起玻璃：拿 iOS 18 SDK 编出来的包，装到 iOS 26/27 的机器上就是旧那条
+        // 贴底胶囊 —— 他说的"没瞅着水滴"根子在这儿，不在我们这几行代码里。
+        // 所以先让 CI 把"这机器上有哪几套 Xcode / SDK"打出来（工作流第一步），
+        // 下一发再把 DEVELOPER_DIR 钉到 26 那套上重编。
 
         // 「消息」那一格的红点：数由 Kotlin 侧 Unread.messages 写，这边只是贴上去。
         // 安卓底栏读的是同一个流（RootShell 那句 badges = listOf(0,0,unreadMsgs,0,0)）。
