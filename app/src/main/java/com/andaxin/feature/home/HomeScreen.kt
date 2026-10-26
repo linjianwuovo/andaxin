@@ -216,7 +216,8 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
              */
             var gaze by remember { mutableStateOf(Offset.Zero) }
             Row(
-                verticalAlignment = Alignment.Bottom,
+                // 放大之后不能再按底边对齐：那颗球会把整行顶高，字却沉在底下
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
                     awaitEachGesture {
                         while (true) {
@@ -231,48 +232,56 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     }
                 },
             ) {
-                Text(
-                    text = (d?.greeting ?: "…") + if (session.loggedIn && name.length in 2..4) "，$name" else "",
-                    fontSize = titleSize,
-                    fontWeight = FontWeight.SemiBold,
-                    color = ink.strong,
-                    modifier = Modifier.weight(1f),
-                )
-                // 屏幕上这批数字是上一份快照时，明写"更新中" —— 不把旧数字冒充成刚拉的
-                if (state.refreshing && state.data != null) {
-                    Text("更新中…", fontSize = Type.micro, color = ink.faint)
-                    Spacer(Modifier.width(Gap.sm))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = (d?.greeting ?: "…") +
+                                if (session.loggedIn && name.length in 2..4) "，$name" else "",
+                            fontSize = titleSize,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ink.strong,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        // 屏幕上这批数字是上一份快照时，明写"更新中" —— 不把旧数字冒充成刚拉的
+                        if (state.refreshing && state.data != null) {
+                            Text("更新中…", fontSize = Type.micro, color = ink.faint)
+                        }
+                    }
+                    /*
+                     * 没登录时这一屏那几个数是本机编的示例（`LocalDashboard`）。
+                     * 「只要还在用 Local*，界面上那条说明就不许摘」是这条线的规矩，而首页是原来
+                     * 唯一漏掉的一屏：「我的」写着"未登录，看的是占位数据"，首页却把"今天有课 1 节"
+                     * 当真的报给人 —— 那一句还是屏幕上的第一行字。
+                     */
+                    if (!session.loggedIn) {
+                        Spacer(Modifier.height(Gap.sm))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SampleTag()
+                            Spacer(Modifier.width(Gap.sm))
+                            Text(
+                                text = "还没登录，下面这几个数是示例。",
+                                fontSize = Type.meta,
+                                color = ink.faint,
+                            )
+                        }
+                    }
+                    // 校历那一行跟着问候语走：它就是"今天算第几周"这句话，不该单独占一个区块
+                    if (!extras?.calendar.isNullOrBlank()) {
+                        Spacer(Modifier.height(Gap.xxs))
+                        Text(extras!!.calendar, fontSize = Type.meta, color = ink.faint)
+                    }
                 }
+                Spacer(Modifier.width(Gap.md))
                 /*
-                 * 球挂在这一行的**最右端**，吃的就是名字后面那块空。
-                 * 0.8.61 那版把它塞在名字后面、又补了一根 `weight(1f)` 的占位 Spacer，
-                 * 结果文本只分到半行宽 —— "凌晨好，黄铮辉"折成两行，右边还空着一大片。
-                 * 现在文本拿满 `weight(1f)`，球是行尾那个不动的尾巴，名字该多长还多长。
+                 * 球放在左边那两行（问候语 + 周次）右边的整块空里，垂直居中 ——
+                 * 他 00:57 圈的就是这一块，并说「太小」。
+                 * 尺寸跟着标题字号走：28sp 那档约 58dp，往上滚折叠到 18sp 时收到 38dp，
+                 * 不会滚过一点之后剩一颗巨大的球压在状态栏上。
+                 *
+                 * 左边那两行现在整体是 `weight(1f)` 的一列，球只是行尾那一格 ——
+                 * 它再大也只吃自己那点宽度，不会再像 0.8.61 那样把文本挤到半行宽去折行。
                  */
-                MascotBall(gaze = gaze, size = (titleSize.value * 1.05f).dp)
-            }
-            /*
-             * 没登录时这一屏那几个数是本机编的示例（`LocalDashboard`）。
-             * 「只要还在用 Local*，界面上那条说明就不许摘」是这条线的规矩，而首页是原来
-             * 唯一漏掉的一屏：「我的」写着"未登录，看的是占位数据"，首页却把"今天有课 1 节"
-             * 当真的报给人 —— 那一句还是屏幕上的第一行字。
-             */
-            if (!session.loggedIn) {
-                Spacer(Modifier.height(Gap.sm))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SampleTag()
-                    Spacer(Modifier.width(Gap.sm))
-                    Text(
-                        text = "还没登录，下面这几个数是示例。",
-                        fontSize = Type.meta,
-                        color = ink.faint,
-                    )
-                }
-            }
-            // 校历那一行跟着问候语走：它就是"今天算第几周"这句话，不该单独占一个区块
-            if (!extras?.calendar.isNullOrBlank()) {
-                Spacer(Modifier.height(Gap.xxs))
-                Text(extras!!.calendar, fontSize = Type.meta, color = ink.faint)
+                MascotBall(gaze = gaze, size = (titleSize.value * 2.1f).dp)
             }
 
             /*
