@@ -41,7 +41,19 @@ jobs:
             mac-gradle-
 
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
-        run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain
+        run: |
+          # 102 那发死在这一步，但不是代码：maven.aliyun.com 那个 mirror 回了一次 502，
+          # Gradle 就把整条仓库标成 disabled，紧跟着 kotlin-native-prebuilt:2.4.20 也解析不出来，
+          # 8 分半之后整发红（现场：Could not GET .../animation-core-iossimulatorarm64/1.12.0-beta01/…
+          # Received status code 502）。mirror 抖一下不该烧掉一整发 —— 重试三次，间隔 20/40 秒；
+          # 三发都不过才让整发红，那才是真问题。
+          n=0
+          until ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain; do
+            n=$((n + 1))
+            if [ "$n" -ge 3 ]; then echo "三连败，不是 mirror 抖动了"; exit 1; fi
+            echo "第 $n 次没过，等 $((20 * n)) 秒再来一遍"
+            sleep $((20 * n))
+          done
 
       - name: 这台机器上有哪几套 Xcode / SDK（决定底栏能不能是浮起玻璃）
         run: |
