@@ -48,4 +48,12 @@ object BriefEnv {
      * 名字、版本号那几行照旧在。
      */
     var appIcon: (@Composable (size: androidx.compose.ui.unit.Dp) -> Unit)? = null
+    /**
+     * 「拍一张签到照片」这一格。安卓那台是 `ActivityResultContracts.TakePicture` 加一个临时文件，
+     * 拍完还要降采样一遍（原图两三兆，直接上传太慢）；iOS 那台交回系统的图片选择器开相机。
+     * 两边都不是一句调用，所以缝给的是"组合期造一个动作出来"这一形状 —— 跟相册那根
+     * `pickLauncher` 一样。交回来的是**压好的 JPEG 字节 + 文件名 + 一张能直接画的预览**：
+     * 共享层只管把字节递给 `dormBoard.uploadPhoto`，不碰文件也不碰平台位图解码。
+     */
+    var takePhoto: (@Composable (onPhoto: (bytes: ByteArray, name: String, preview: androidx.compose.ui.graphics.ImageBitmap?) -> Unit) -> (() -> Unit))? = null
 }
