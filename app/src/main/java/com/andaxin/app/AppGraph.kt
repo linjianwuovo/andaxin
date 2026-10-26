@@ -84,7 +84,7 @@ import com.andaxin.data.capture.CaptureDormTaskDetail
  * 接一路真实报文，改的是下面那一组 `Source(capture, local, session)`：
  * 界面与 ViewModel 一行不动，因为它们只认 `data/Contract.kt` 那几个接口。
  */
-class AppGraph(val context: Context) {
+class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
 
     /** 应用私有目录的具名文件（快照、第三方 token、跑步路线），实现来自共享层的 AppFiles。 */
     private val files = com.andaxin.core.store.ContextFiles(context)
@@ -121,7 +121,10 @@ class AppGraph(val context: Context) {
     // 10-26：BriefKit 搬进共享层后，它要 session 但不想一路穿参数 —— 谁第一次建 session
     // 谁顺手把插槽插上（放 lazy 里面而不是建图那行，是为了不在启动时提前碰磁盘）。
     val session: SessionStore by lazy {
-        SessionStore(store).also { com.andaxin.feature.brief.BriefEnv.session = it }
+        SessionStore(store).also {
+            com.andaxin.feature.brief.BriefEnv.session = it
+            com.andaxin.feature.brief.BriefEnv.graph = this
+        }
     }
 
     /** token 到点前换成新的，换不动就请回登录页并带上原因 */
@@ -181,10 +184,10 @@ class AppGraph(val context: Context) {
     private val examCapture by lazy { CaptureExamList(school) }
     private val creditCapture by lazy { CaptureCreditList(school) }
 
-    val examList: ListSource by lazy { BriefSwitch(examCapture, Exam.list, session) }
-    val examDetail: DetailSource by lazy { DetailSwitch(CaptureExamDetail(examCapture), Exam.detail, session) }
-    val creditList: ListSource by lazy { BriefSwitch(creditCapture, Credit.list, session) }
-    val creditDetail: DetailSource by lazy { DetailSwitch(CaptureCreditDetail(creditCapture), Credit.detail, session) }
+    override val examList: ListSource by lazy { BriefSwitch(examCapture, Exam.list, session) }
+    override val examDetail: DetailSource by lazy { DetailSwitch(CaptureExamDetail(examCapture), Exam.detail, session) }
+    override val creditList: ListSource by lazy { BriefSwitch(creditCapture, Credit.list, session) }
+    override val creditDetail: DetailSource by lazy { DetailSwitch(CaptureCreditDetail(creditCapture), Credit.detail, session) }
 
     /**
      * 劳动教育五类工时 与 节假日离返校登记。
@@ -195,13 +198,13 @@ class AppGraph(val context: Context) {
      */
     private val laborCapture by lazy { CaptureLabor(school) }
 
-    val laborList: ListSource by lazy { BriefSwitch(laborCapture, Labor.list, session) }
-    val laborDetail: DetailSource by lazy { DetailSwitch(CaptureLaborDetail(school), Labor.detail, session) }
+    override val laborList: ListSource by lazy { BriefSwitch(laborCapture, Labor.list, session) }
+    override val laborDetail: DetailSource by lazy { DetailSwitch(CaptureLaborDetail(school), Labor.detail, session) }
 
     private val holidayCapture by lazy { CaptureHoliday(school, session) }
 
-    val holidayList: ListSource by lazy { BriefSwitch(holidayCapture, Holiday.list, session) }
-    val holidayDetail: DetailSource by lazy {
+    override val holidayList: ListSource by lazy { BriefSwitch(holidayCapture, Holiday.list, session) }
+    override val holidayDetail: DetailSource by lazy {
         DetailSwitch(CaptureHolidayDetail(holidayCapture), Holiday.detail, session)
     }
 
@@ -215,29 +218,29 @@ class AppGraph(val context: Context) {
     private val affairCapture by lazy { CaptureAffairs(ywlz) }
     private val dormCapture by lazy { CaptureDorm(ywlz) }
 
-    val affairList: ListSource by lazy { BriefSwitch(affairCapture, Affair.list, session) }
+    override val affairList: ListSource by lazy { BriefSwitch(affairCapture, Affair.list, session) }
     /**
      * 「我的申请」「已办」两栏。10-20 晚从抓包里把两条口的参数形状对出来了
      * （`lxtmp/_shape7.txt`），数组同样挂根节点 `rows`。
      * 没登录时走 [com.andaxin.data.local.NeedLoginList] —— 这两栏编假单据比空白更坏。
      */
-    val myAffairList: ListSource by lazy {
+    override val myAffairList: ListSource by lazy {
         BriefSwitch(CaptureMyAffairs(ywlz), com.andaxin.data.local.NeedLoginList(), session)
     }
-    val handledList: ListSource by lazy {
+    override val handledList: ListSource by lazy {
         BriefSwitch(CaptureHandled(ywlz), com.andaxin.data.local.NeedLoginList(), session)
     }
     /**
      * 「待阅」那一栏 = 待办同一条列表口、`approvedType=2`（10-13 从 H5 定死的 tab 号）。
      * 这一栏顶上多一颗「全部标已阅」，所以界面要问 `bulkLabel()` 有没有值再画键。
      */
-    val toReadList: ListSource by lazy {
+    override val toReadList: ListSource by lazy {
         BriefSwitch(CaptureToRead(school, ywlz), com.andaxin.data.local.NeedLoginList(), session)
     }
-    val affairDetail: DetailSource by lazy {
+    override val affairDetail: DetailSource by lazy {
         DetailSwitch(CaptureAffairDetail(school, ywlz, affairCapture), Affair.detail, session)
     }
-    val dormList: ListSource by lazy { BriefSwitch(dormCapture, Dorm.list, session) }
+    override val dormList: ListSource by lazy { BriefSwitch(dormCapture, Dorm.list, session) }
 
     /**
      * 查寝那一屏新的数据源：月概览 + 月历 + 两节任务，全走 fdygl 直连。
@@ -246,7 +249,7 @@ class AppGraph(val context: Context) {
      */
     val dormBoard by lazy { CaptureDormBoard(school, session) }
     val dormTaskDetail: DetailSource by lazy { CaptureDormTaskDetail(school, dormBoard) }
-    val dormDetail: DetailSource by lazy {
+    override val dormDetail: DetailSource by lazy {
         DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
     }
 
@@ -254,20 +257,20 @@ class AppGraph(val context: Context) {
      * 发起请假那张表：10-20 现打接通了**读侧**（流程清单 → flowSheet 那个 JSON 串 → 递归收字段），
      * 取证见 `CaptureLeaveForm` 顶上那段。提交仍是死的，`submit()` 明确回失败。
      */
-    val affairForm: FormSource by lazy { FormSwitch(CaptureLeaveForm(school, session), Affair.form, session) }
+    override val affairForm: FormSource by lazy { FormSwitch(CaptureLeaveForm(school, session), Affair.form, session) }
 
     /**
      * 报修。10-20 现打接上的：单据列表、单据详情、流程轨迹三条读口都在
      * `repair.aiit.edu.cn/bxjlSjd/` 那一族上，取证见 `CaptureRepair.kt` 顶上那段。
      * 新建那张单子的**提交**仍然没接（写口一次没发过），所以表单还是占位。
      */
-    val repairList: ListSource by lazy { BriefSwitch(CaptureRepairList(school), Repair.list, session) }
-    val repairDetail: DetailSource by lazy {
+    override val repairList: ListSource by lazy { BriefSwitch(CaptureRepairList(school), Repair.list, session) }
+    override val repairDetail: DetailSource by lazy {
         DetailSwitch(CaptureRepairDetail(school), Repair.detail, session)
     }
 
     /** 新建报修那张表：下拉的可选值全部来自校方三条字典（见 `CaptureRepairForm` 顶上那段取证）。 */
-    val repairForm: FormSource by lazy {
+    override val repairForm: FormSource by lazy {
         // 传图那一步的编码留在 app（BitmapFactory/EXIF 是安卓物），共享层只拿这条缝
         FormSwitch(CaptureRepairForm(school) { uri -> RepairPhotos.encode(context, uri) }, Repair.form, session)
     }

@@ -12,4 +12,7 @@ import com.andaxin.core.store.SessionStore
  */
 object BriefEnv {
     lateinit var session: SessionStore
+
+    /** 十几条数据源。安卓由 AppGraph 插上，iOS 由 IosAppGraph 插上 —— 两边都实现 [BriefGraph]。 */
+    lateinit var graph: BriefGraph
 }
