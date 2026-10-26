@@ -23,6 +23,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// 现在这一格根上是五格还是登录页。Kotlin 侧已经 distinctUntilChanged，
     /// 这儿再存一份是为了别在重复回调里重建整棵导航栈。
     private var showingTabs: Bool?
+    /// CI 专用：`-AndaXinOpen <route>` 带进来的那一扇，等五格立起来之后推。
+    private var pendingOpen: String?
     /// 底栏那台，留着两处用：红点要按 index 找 item、切格回调要知道自己贴在哪台上。
     /// weak —— 它是 window.rootViewController 那棵树的一部分，不该由这儿续命。
     private weak var tabsController: UITabBarController?
@@ -83,6 +85,18 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             NSLog("AndaXin 壳：带 -AndaXinGuest 启动（CI 专用），直接进「逛逛」那五格")
             g.browseAsGuest()
         }
+
+        // CI 的第二扇门：`-AndaXinOpen <route>` 在进五格之后把那一屏直接推进去。
+        // 为什么要有它：运动那一屏在他手机上是"未捕获协程异常 → abort"（两份 .ips 的栈顶都是
+        // terminateWithUnhandledException ← handleCoroutineException ← UndispatchedCoroutine，
+        // 也就是 Compose 的 LaunchedEffect 建的作用域 —— 图上那个 graphFailure 处理器管不到那儿），
+        // 而 Kotlin 的异常原话只走 stderr、不进 .ips。有了这扇门，CI 那一发的 console3.txt 里
+        // 就有那行异常，我下一发自己看得见，不用拿你手机一遍遍试。
+        if let i = CommandLine.arguments.firstIndex(of: "-AndaXinOpen"),
+           i + 1 < CommandLine.arguments.count {
+            pendingOpen = CommandLine.arguments[i + 1]
+            NSLog("AndaXin 壳：带 -AndaXinOpen \(pendingOpen!)（CI 专用）")
+        }
     }
 
     /// 换根。showingTabs 存一份现状，别在重复回调里把用户当前那一格的导航栈掀掉。
@@ -90,6 +104,23 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if showingTabs == toTabs { return }
         showingTabs = toTabs
         window?.rootViewController = toTabs ? makeTabs(g) : makeLogin(g)
+        guard toTabs, let key = pendingOpen else { return }
+        pendingOpen = nil
+        // 晚一点再推：五格刚立起来时那条 nav 的 topViewController 还没定下来
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            self?.openRoute(key, g)
+        }
+    }
+
+    /// 把一扇 route 推到当前那一格的导航栈上（只给 CI 用）
+    private func openRoute(_ key: String, _ g: IosAppGraph) {
+        let nav = tabsController?.selectedViewController as? UINavigationController
+        guard let host = nav?.topViewController else {
+            NSLog("AndaXin 壳：CI 推 \(key) 失败 —— 拿不到宿主 VC")
+            return
+        }
+        NSLog("AndaXin 壳：CI 直接推一扇 \(key)")
+        g.push(host: host, key: key)
     }
 
     /// 场景刚接上那一瞬间的占位（查 signedIn 通常 <10ms，但也不能白屏闪）

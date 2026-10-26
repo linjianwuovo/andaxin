@@ -206,6 +206,20 @@ jobs:
           GPID=$!
           sleep 12
           xcrun simctl io "$UDID" screenshot iosApp/simulator-guest.png || true
+
+          # 第三趟：带 -AndaXinOpen 直接把某一屏推进去，stderr 收进 console3.txt。
+          # 这是给"某屏一点就 abort"那类问题准备的自证通道 —— Kotlin 的异常原话只走 stderr，
+          # .ips 里只有栈、没有那句人话。开哪一扇由 workflow_dispatch 的输入定，默认 sport。
+          OPEN_KEY="${{ github.event.inputs.openKey || 'sport' }}"
+          xcrun simctl terminate "$UDID" com.andaxin.ios 2>/dev/null || true
+          xcrun simctl launch --console --terminate-running-process "$UDID" com.andaxin.ios \
+            -AndaXinGuest -AndaXinOpen "$OPEN_KEY" > console3.txt 2>&1 &
+          GPID3=$!
+          sleep 14
+          xcrun simctl io "$UDID" screenshot "iosApp/simulator-open-$OPEN_KEY.png" || true
+          echo "--- 推 $OPEN_KEY 那一扇之后的 stderr（$(wc -c < console3.txt) 字节，异常原话就在这儿）"
+          tail -60 console3.txt 2>/dev/null || echo "console3.txt 空的"
+          if kill -0 "$GPID3" 2>/dev/null; then echo "推完之后还活着：那一屏没崩"; else echo "推完之后进程没了：这一扇就是崩点"; fi
           if kill -0 "$GPID" 2>/dev/null; then echo "逛逛那五格：12 秒还在跑"; else echo "逛逛那五格：自己退了，这就是崩"; fi
           kill "$GPID" 2>/dev/null || true
           echo "--- 第二趟的 stderr（$(wc -c < console2.txt) 字节）"
