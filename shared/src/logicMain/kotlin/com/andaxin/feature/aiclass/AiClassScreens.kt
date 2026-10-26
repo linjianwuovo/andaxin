@@ -37,14 +37,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.andaxin.shell.LoadWhy
+import com.andaxin.feature.brief.LoadWhy
 import com.andaxin.shell.pressClick
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
-import com.andaxin.core.net.RemoteImage
+import com.andaxin.core.net.formUrlEncode
+import com.andaxin.feature.brief.RemotePhoto
 import com.andaxin.data.capture.AiAttendance
 import com.andaxin.data.capture.AiCourse
 import com.andaxin.data.capture.AiItem
@@ -89,7 +90,7 @@ private const val TAB_CHAPTER = 8
  * 剩下没 message 的那些（网络、线程、JSON）光秃秃一个英文类名摆在那儿，谁看得懂。
  */
 private fun whyOf(t: Throwable): String =
-    t.message?.takeIf { it.isNotBlank() } ?: "没连上 AI 课堂平台（${t.javaClass.simpleName}）"
+    t.message?.takeIf { it.isNotBlank() } ?: "没连上 AI 课堂平台（${t::class.simpleName}）"
 
 /**
  * FIF 那几发**首发回空是常态** —— 他的原话：「如果 null 了退出来刷新一下就好了，这很正常」。
@@ -112,7 +113,7 @@ private suspend fun loadPastFirstBlip(
 
 @Composable
 fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var tab by remember { mutableIntStateOf(TAB_COURSEWARE) }
     val loads = remember { mutableStateMapOf<Int, Load>() }
@@ -327,7 +328,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                                     val tcid = course?.teachClassId.orEmpty()
                                     open(
                                         "aiclass/paper/$rid/$cid/$tcid?title=" +
-                                            android.net.Uri.encode(item.title)
+                                            formUrlEncode(item.title)
                                     )
                                 }
                                 section -> Modifier.pressClick {
@@ -439,7 +440,7 @@ private fun SignCounts(a: AiAttendance) {
 /** 列表那一屏：扫码入口 + FIF 那侧我上的课。 */
 @Composable
 fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var courses by remember { mutableStateOf<List<AiCourse>>(emptyList()) }
     var why by remember { mutableStateOf<String?>(null) }
@@ -522,7 +523,7 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.lg))
 
         if (why != null) {
-            LoadWhy(why)
+            LoadWhy(why, BriefEnv.session)
             Spacer(Modifier.height(Gap.sm))
         }
         // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
@@ -547,11 +548,12 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (c.cover.isNotBlank()) {
-                        RemoteImage(
+                        RemotePhoto(
                             url = c.cover,
-                            contentDescription = c.name,
-                            cacheDir = graph.context.cacheDir,
+                            description = c.name,
+                            unavailable = "这张封面没取到",
                             modifier = Modifier.size(width = 56.dp, height = 40.dp),
+                            fit = true,
                         )
                         Spacer(Modifier.width(Gap.md))
                     }

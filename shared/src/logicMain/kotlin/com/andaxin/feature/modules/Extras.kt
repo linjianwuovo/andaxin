@@ -23,9 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.andaxin.shell.Chip
-import com.andaxin.shell.LoadWhy
+import com.andaxin.feature.brief.LoadWhy
 import com.andaxin.shell.pressClick
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -57,13 +57,13 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Text("安徽信息工程学院 · 校园卡", fontSize = Type.body, color = Palette.Cream)
                 Column {
                     Text(
-                        card?.let { "¥ %.2f".format(it.balance) } ?: "¥ —",
+                        card?.let { "¥ ${money2(it.balance)}" } ?: "¥ —",
                         style = Type.tabular,
                         fontSize = Type.hero, fontWeight = FontWeight.SemiBold, color = Palette.Cream,
                     )
                     Text(
                         text = when {
-                            card != null -> "补助钱包 ¥ %.2f · ${card.statusText}".format(card.subsidy)
+                            card != null -> "补助钱包 ¥ ${money2(card.subsidy)} · ${card.statusText}"
                             why != null -> "余额暂时没取到"
                             else -> "正在取余额…"
                         },
@@ -76,13 +76,17 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         // 这一层走 LoadWhy：没登录是灰字 + 去登录，真失败才是红色那句。
         if (why != null) {
             Spacer(Modifier.height(Gap.sm))
-            LoadWhy(why, wide = false)
+            LoadWhy(why, BriefEnv.session, wide = false)
             // 校方 10-21 把「完美校园」换成了自己的 H5，原生这条换不出会话时，
             // 至少给一条官方页面能点（页面地址和应用里其它服务同源，身份走 query）。
             if (!page.isNullOrBlank()) {
                 Spacer(Modifier.height(Gap.sm))
-                Chip("打开校园卡交易页", picked = false) {
-                    open("web/" + com.andaxin.feature.web.encodeUrl(page))
+                // 这一颗只在宿主真开得动 web 那一扇时才画（iOS 现在开不动：WKWebView 还没接）。
+                // 摆一颗按下去什么都不发生的按钮，比少一颗糟。判据就用路由表本身，不另立一套开关。
+                if (BriefEnv.canOpen("web/")) {
+                    Chip("打开校园卡交易页", picked = false) {
+                        open("web/" + com.andaxin.feature.web.encodeUrl(page))
+                    }
                 }
             }
         }
@@ -94,7 +98,7 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     card == null -> "—"
                     card.flowsPending -> "流水还在拉…"
                     else -> card.flows.firstOrNull()?.let {
-                        "%s · %s".format(it.at.take(16), money(it))
+                        "${it.at.take(16)} · ${money(it)}"
                     } ?: "这 30 天没有消费"
                 },
             )
@@ -102,12 +106,12 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Labeled(
                 label = "今天支出",
                 // 各看各的那一发：今天那一发回来就能填这格，不用等 200 条那发
-                value = card?.let { if (!it.todayKnown) "…" else "¥ %.2f".format(it.todayOut) } ?: "—",
+                value = card?.let { if (!it.todayKnown) "…" else "¥ ${money2(it.todayOut)}" } ?: "—",
             )
             Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
             Labeled(
                 label = "近 30 天支出",
-                value = card?.let { if (it.windowPending) "…" else "¥ %.2f".format(it.windowOut) } ?: "—",
+                value = card?.let { if (it.windowPending) "…" else "¥ ${money2(it.windowOut)}" } ?: "—",
             )
             if (card != null && card.validUntil.isNotBlank()) {
                 Spacer(Modifier.height(Gap.sm)); Hairline(); Spacer(Modifier.height(Gap.sm))
@@ -140,7 +144,7 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
 /** 卡片数据只给校园卡两屏用，就地取，不再多开一个 Model。 */
 @Composable
 private fun rememberCard(): CardHolder {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     var card by remember { mutableStateOf<com.andaxin.data.capture.CampusCardClient.Card?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
     var page by remember { mutableStateOf<String?>(null) }
@@ -166,8 +170,20 @@ private data class CardHolder(
     val reload: suspend () -> Unit,
 )
 
+/*
+ * 两位小数。原来这五处都是 `"%.2f".format(x)` —— 那是 java.lang.String.format，
+ * 共享层（common 可见性）没有，编不过。这里不引第三方格式化，手算分：
+ * 先四舍五入到分再拆整数/小数，负数取绝对值算小数位、符号单独带。
+ */
+private fun money2(v: Double): String {
+    val cents = kotlin.math.round(v * 100).toLong()
+    val sign = if (cents < 0) "-" else ""
+    val a = if (cents < 0) -cents else cents
+    return "$sign${a / 100}.${(a % 100).toString().padStart(2, '0')}"
+}
+
 private fun money(f: com.andaxin.data.capture.CampusCardClient.Flow): String =
-    (if (f.income) "+" else "-") + "%.2f".format(f.yuan) + (if (f.what.isBlank()) "" else " ${f.what}")
+    (if (f.income) "+" else "-") + money2(f.yuan) + (if (f.what.isBlank()) "" else " ${f.what}")
 
 /**
  * 流水。服务端**不给合计、不给余额快照**，所以这里只列它给的行。

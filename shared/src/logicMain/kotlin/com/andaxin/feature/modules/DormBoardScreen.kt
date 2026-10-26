@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -42,14 +42,16 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.andaxin.core.ui.onReturnToScreen
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import java.time.LocalDate
-import java.time.YearMonth
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.minus
+import com.andaxin.core.concurrency.todayLocalDate
 
 /*
  * 查寝签到这一屏：月概览 + 签到月历 + 当天的查寝 / 主题签到任务。
@@ -66,10 +68,10 @@ import java.time.YearMonth
 
 @Composable
 fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     val scope = rememberCoroutineScope()
-    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    val session by BriefEnv.session.state.collectAsState(com.andaxin.core.store.Session())
     var board by remember { mutableStateOf<DormBoard?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(true) }
@@ -91,7 +93,7 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         busy = false
     }
     // 每次回到这一屏都重拉（从签到详情签完返回时，列表上的"没签"要跟着变）
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { scope.launch { reload() } }
+    onReturnToScreen { scope.launch { reload() } }
 
     /*
      * 挑了哪天就现翻哪天。整月那一发（`historyRows`）是拿 `endTime` 试出来的、学校认不认没验过，
@@ -121,7 +123,7 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             )
             Spacer(Modifier.height(Gap.lg))
             MiuixButton(
-                onClick = { scope.launch { graph.session.leaveBrowsing() } },
+                onClick = { scope.launch { BriefEnv.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColorsPrimary(),
             ) {
@@ -166,7 +168,7 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Hairline()
                 Spacer(Modifier.height(Gap.md))
                 MonthCalendar(
-                    YearMonth.parse(b.month), b.days,
+                    monthStart(b.month), b.days,
                     // 点上色读的是"这天签没签"：今天那两列 + 这一月的历史，谁有算谁
                     b.dormTasks + b.subjectTasks + b.history.all,
                     picked,
@@ -253,23 +255,24 @@ private fun StatCell(label: String, value: Int, color: Color, modifier: Modifier
  */
 @Composable
 private fun MonthCalendar(
-    month: YearMonth,
+    month: LocalDate,
     days: List<com.andaxin.data.capture.DormDay>,
     tasks: List<DormTask>,
     picked: String?,
     onPick: (String?) -> Unit,
 ) {
     val ink = LocalInk.current
-    val today = LocalDate.now()
+    val today = todayLocalDate()
     val byDate = days.associateBy { it.date }
     // 按天归一次签到状态：一条没签就整天真没签；一条都没有 = 状态没回，不是"没签"。
     // 截一下 taskDate：校方偶尔给 "2026-10-22 00:00:00" 那种带时分的，不截就整天对不上日历
     val signedByDate = tasks.groupBy { it.date.substringBefore(' ') }
         .mapValues { (_, t) -> t.all { x -> x.signed } }
-    val first = month.atDay(1)
-    // java.time 的 dayOfWeek：周一=1…周日=7，这里要的是"前面空几格"
-    val lead = first.dayOfWeek.value - 1
-    val cells = List(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
+    val first = month
+    // kotlinx 的 DayOfWeek 也是周一=1…周日=7（isoDayNumber），跟 java.time 那个 .value 同口径；
+    // 这里要的是"前面空几格"。月份天数没有 lengthOfMonth()，往下个月数差值自己算（见 daysInMonth）。
+    val lead = first.dayOfWeek.isoDayNumber - 1
+    val cells = List(lead) { null } + (1..daysInMonth(month)).map { LocalDate(month.year, month.monthNumber, it) }
 
     Row(Modifier.fillMaxWidth()) {
         listOf("一", "二", "三", "四", "五", "六", "日").forEach {
@@ -290,7 +293,7 @@ private fun MonthCalendar(
                     if (d == null) return@Box
                     val iso = d.toString()
                     val isToday = d == today
-                    val isFuture = d.isAfter(today)
+                    val isFuture = d > today
                     val has = (byDate[iso]?.taskNum ?: 0) > 0
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -398,4 +401,24 @@ private fun TaskSection(
             }
         }
     }
+}
+
+/*
+ * 月份这一小段日历要的三个算术，kotlinx-datetime 没有现成对等物，自己补：
+ *  - `monthStart("2026-10")` = java 那版 `YearMonth.parse(...)` 的替代（月首那一天）；
+ *  - `daysInMonth` = `lengthOfMonth()`，往下个月 1 号数天数差；
+ *  比较与 `toString()` 不用管：LocalDate 本身 Comparable，toString 就是 ISO "2026-10-24"。
+ */
+private fun monthStart(yyyyMm: String): LocalDate {
+    val p = yyyyMm.split("-")
+    val y = p.getOrElse(0) { "" }.toIntOrNull() ?: return todayLocalDate()
+    val m = p.getOrElse(1) { "" }.toIntOrNull() ?: 1
+    return LocalDate(y, m.coerceIn(1, 12), 1)
+}
+
+private fun daysInMonth(d: LocalDate): Int {
+    val next = if (d.monthNumber == 12) LocalDate(d.year + 1, 1, 1) else LocalDate(d.year, d.monthNumber + 1, 1)
+    // 往下个月 1 号退一天就是这月最后一天。kotlinx 的 LocalDate.periodUntil 只回 DatePeriod
+    // （年月日三段），没有 java 那个"按天算差值"的重载，所以别拿它当 lengthOfMonth。
+    return next.minus(1, DateTimeUnit.DAY).dayOfMonth
 }
