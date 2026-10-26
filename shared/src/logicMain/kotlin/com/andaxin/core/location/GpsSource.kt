@@ -1,5 +1,7 @@
 package com.andaxin.core.location
 
+import androidx.compose.runtime.Composable
+
 import com.andaxin.core.map.LatLng
 import kotlinx.coroutines.flow.Flow
 
@@ -29,4 +31,17 @@ interface GpsSource {
     fun fixes(): Flow<Fix>
 
     fun lastKnown(): LatLng?
+}
+
+/**
+ * 宿主插的一根插槽：「开始这一趟之前先去要定位权限」。
+ *
+ * 为什么是插槽而不是缝里的一个方法：安卓那台要弹系统框只能借 Compose 的
+ * `rememberLauncherForActivityResult`（必须在组合期注册），iOS 那台是
+ * `requestWhenInUseAuthorization` + 等 `locationManagerDidChangeAuthorization` 回调 ——
+ * 两边都不是"调一下就完"的形状。形状照 `PhotoHost.pickLauncher` 那一根抄：
+ * 组合期造一个"按下去就去要权限"的动作出来。
+ */
+object SportHost {
+    var askLocation: (@Composable (onResult: (Boolean) -> Unit) -> (() -> Unit))? = null
 }

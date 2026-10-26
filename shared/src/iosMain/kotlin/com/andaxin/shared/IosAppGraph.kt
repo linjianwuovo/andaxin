@@ -1,5 +1,6 @@
 package com.andaxin.shared
 
+import androidx.compose.runtime.Composable
 import com.andaxin.core.store.Store
 import com.andaxin.core.store.SessionStore
 import com.andaxin.core.store.WhoIs
@@ -102,6 +103,9 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     val auth: AuthFeed = AuthFeed()
     val school: School = School(session)
 
+    /** 定位源：主线程建（见 IosGps 顶上那段），跑步那一屏从图里拿它。 */
+    val gps: IosGps = IosGps()
+
     // 共享层那批列表/详情/表单屏要 session 和那十几条数据源（见 logicMain 的 BriefEnv）：
     // 安卓在 AppGraph 插，iOS 在这儿插。赋的是 this，不会提前触发下面任何一条 lazy。
     // canOpen 那一句是给「更多功能」那张入口表用的：iOS 只列这张表认得的 key，
@@ -125,6 +129,9 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         // 地图瓦片那台：运动那一屏画高德瓦片要它（存 Documents/tiles，取用 NSURLSession）
         // 自己新建一份 IosFiles：它是无状态的（只记根路径），而下面那条 `files` 属性
         // 在这个 init 之后才初始化，拿它会撞上"变量必须先初始化"
+        com.andaxin.core.location.SportHost.askLocation = @Composable { onResult ->
+            { gps.requestAndAwait(onResult) }
+        }
         com.andaxin.core.map.TileHost.store =
             com.andaxin.core.map.IosTileStore(com.andaxin.core.store.IosFiles(documentsPath))
     }

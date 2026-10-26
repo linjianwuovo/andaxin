@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import platform.CoreLocation.CLLocation
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.kCLAuthorizationStatusAuthorizedAlways
+import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
 import platform.CoreLocation.kCLAuthorizationStatusAuthorizedWhenInUse
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
 import platform.CoreLocation.CLActivityTypeFitness
@@ -52,8 +53,10 @@ class IosGps : GpsSource {
         }
 
         override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
-            // 用户在系统里改了授权，界面下一格就该跟着变；这里只把"能不能用"重算一遍
+            // 用户在系统里改了授权（含第一次那个弹框答完），界面下一格就该跟着变；
+            // 这里既清"能不能用"的缓存，也把 requestAndAwait 挂着的回话一起放出去
             cachedAvailable = null
+            flushPending()
         }
 
         override fun locationManager(manager: CLLocationManager, didFailWithError: NSError) {
@@ -114,6 +117,40 @@ class IosGps : GpsSource {
             listeners.remove(on)
             if (listeners.isEmpty()) manager.stopUpdatingLocation()
         }
+    }
+
+    /**
+     * 要定位权限，并且**等系统那个框有答案**再回话。
+     *
+     * iOS 这里没有"调用者问一句就答一句"的 API：`requestWhenInUseAuthorization` 立刻返回，
+     * 用户点没点要到 `locationManagerDidChangeAuthorization` 里才知道。所以把回话的活儿
+     * 挂在下面那个待答队列上：已经定过的当场回，还在弹框的就等回调那一发。
+     */
+    fun requestAndAwait(onResult: (Boolean) -> Unit) {
+        val st = manager.authorizationStatus
+        if (st != kCLAuthorizationStatusAuthorizedWhenInUse && st != kCLAuthorizationStatusAuthorizedAlways &&
+            st != kCLAuthorizationStatusNotDetermined
+        ) {
+            onResult(false)   // denied / restricted：系统不会再弹第二次的框
+            return
+        }
+        if (st == kCLAuthorizationStatusNotDetermined) {
+            pending.add(onResult)
+            manager.requestWhenInUseAuthorization()
+        } else {
+            onResult(true)
+        }
+    }
+
+    private val pending = mutableListOf<(Boolean) -> Unit>()
+
+    private fun flushPending() {
+        val st = manager.authorizationStatus
+        val granted = st == kCLAuthorizationStatusAuthorizedWhenInUse || st == kCLAuthorizationStatusAuthorizedAlways
+        if (st == kCLAuthorizationStatusNotDetermined) return   // 用户还没答，继续等
+        val waiting = pending.toList()
+        pending.clear()
+        waiting.forEach { it(granted) }
     }
 
     override fun lastKnown(): LatLng? = manager.location?.let {
