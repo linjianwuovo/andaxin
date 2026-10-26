@@ -47,6 +47,39 @@ jobs:
             echo "   $app -> ${v:-读不到}"
           done
 
+      - name: 把后面几步的 Xcode 钉到带 iOS 26 SDK 的那一套（底栏水滴归它管）
+        run: |
+          # 上面那串清单跑出来的现场（run 40251089157）：默认是 Xcode_16.4 → iphoneos18.5，
+          # 但机器上同时装了 26.0 / 26.1 / 26.2 / 26.3，模拟器运行时也已经有 iOS 26.2 那一台
+          # （构建和截图用的 2911FD29… 就是 OS:26.2 的 iPhone 16）。
+          # 所以之前截出来的底栏是死胶囊：苹果按**编译用的 SDK**放行浮起玻璃，不按设备系统版本。
+          #
+          # 只往下游生效：这一步之后才是 xcodegen / 模拟器构建 / ipa，
+          # 上面那一发 gradle :shared:linkReleaseFrameworkIosArm64 已经用默认 Xcode 跑完了 ——
+          # K/N 2.4.20 对 Xcode 版本有支持区间，不该拿一整个 job 去试它。
+          CHOICE=""
+          # 先试 26.2（模拟器运行时就是 26.2 那一台，SDK 与运行时对齐最稳），再退到任意 26.x。
+          for app in $(ls -d /Applications/Xcode_26.2*.app /Applications/Xcode_26*.app 2>/dev/null | sort -V -r); do
+            v=$("$app/Contents/Developer/usr/bin/xcodebuild" -showsdks 2>/dev/null | grep -io "iphoneos2[6-9][0-9.]*" | head -1)
+            if [ -n "$v" ]; then CHOICE="$app/Contents/Developer"; echo "钉住 $app（$v）"; break; fi
+          done
+          # 换 Xcode 有个只有这里能发现的副作用：`选一台模拟器`那步读的是 `simctl list devices available`，
+          # 万一这套 Xcode 底下列不到任何 iPhone，那一步会直接红。宁可没有水滴，不要一整发红。
+          if [ -n "$CHOICE" ] && [ -z "$(DEVELOPER_DIR="$CHOICE" "$CHOICE/usr/bin/xcrun" simctl list devices available 2>/dev/null | grep 'iPhone')" ]; then
+            echo "::warning::$CHOICE 底下列不到任何可用 iPhone 模拟器，放弃换 Xcode，保持默认"
+            CHOICE=""
+          fi
+          if [ -z "$CHOICE" ]; then
+            echo "::warning::这台机器上没有能用的带 iOS 26 SDK 的 Xcode —— 那底栏就没有水滴，别去翻 Swift 代码"
+          else
+            echo "DEVELOPER_DIR=$CHOICE" >> "$GITHUB_ENV"
+            echo "$CHOICE/usr/bin" >> "$GITHUB_PATH"
+          fi
+          echo "定下来这套：${CHOICE:-（保持默认）}"
+          [ -n "$CHOICE" ] && "$CHOICE/usr/bin/xcodebuild" -version | head -1
+          [ -n "$CHOICE" ] && "$CHOICE/usr/bin/xcrun" simctl list runtimes | grep -i "ios"
+          true
+
       - name: 预置 framework 占位（xcodegen 生成时要能找到路径；对应 flavor 由脚本相位构建时替换）
         run: |
           mkdir -p shared/build/xcodeFrameworks
