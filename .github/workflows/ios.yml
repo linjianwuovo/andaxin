@@ -24,6 +24,22 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: 缓存 Gradle 依赖与 Kotlin/Native 工具链（那 14.6 分钟大多是在重下这两样）
+        uses: actions/cache@v4
+        with:
+          # 实测（run 40251089157，全 26.1 分）：`linkReleaseFrameworkIosArm64` 一步就占 14.6 分，
+          # xcodebuild 5.2 分、模拟器截图 3.9 分。链接那步里真正在算的时间远没有下载多：
+          # 每发都是空机器，`~/.gradle`（依赖 + build-cache）和 `~/.konan`（clang 交叉工具链 + LLVM）
+          # 全从零拉。这两样跨 commit 基本不变，缓存命中就能把这十几分钟砍掉大半。
+          # build/ 不放缓存：产物小、又最容易因为陈旧缓存给出"过了但其实没重编"的假绿。
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: mac-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            mac-gradle-
+
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
         run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain
 
