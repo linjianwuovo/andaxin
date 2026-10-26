@@ -13,15 +13,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Type
-import com.andaxin.core.net.RemoteImage
+import com.andaxin.feature.brief.RemotePhoto
 import com.andaxin.data.capture.AiItem
 import com.andaxin.feature.brief.ScaffoldPage
-import com.andaxin.shell.LoadWhy
+import com.andaxin.feature.brief.LoadWhy
 import com.andaxin.shell.Sheet
 
 /**
@@ -40,8 +39,7 @@ fun CoursewareScreen(
     title: String,
     onBack: () -> Unit,
 ) {
-    val graph = LocalAppGraph.current
-    val ctx = LocalContext.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var pages by remember { mutableStateOf<List<AiItem>?>(null) }
     var why by remember { mutableStateOf<String?>(null) }
@@ -65,7 +63,7 @@ fun CoursewareScreen(
             val list = pages
             when {
                 list == null && why == null -> Text("正在拉页面…", fontSize = Type.meta, color = ink.faint)
-                list.isNullOrEmpty() -> LoadWhy(why)
+                list.isNullOrEmpty() -> LoadWhy(why, BriefEnv.session)
                 else -> list.forEachIndexed { i, p ->
                     Sheet(modifier = Modifier.fillMaxWidth().padding(bottom = Gap.sm)) {
                         Text(
@@ -74,13 +72,17 @@ fun CoursewareScreen(
                             color = ink.faint,
                         )
                         Spacer(Modifier.height(Gap.xs))
-                        RemoteImage(
-                            url = p.extra["imgUrl"],
-                            contentDescription = "第 ${i + 1} 页",
-                            cacheDir = ctx.cacheDir,
-                            adaptAspect = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        // 校方那一页可以没有 imgUrl（转码中的那几页就是这样）：没地址就一行都不画，
+                        // 别摆一句"这张图没取到"骗人说图坏了。
+                        val img = p.extra["imgUrl"].orEmpty()
+                        if (img.isNotBlank()) {
+                            RemotePhoto(
+                                url = img,
+                                description = "第 ${i + 1} 页",
+                                unavailable = "这一页的图没取到",
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }

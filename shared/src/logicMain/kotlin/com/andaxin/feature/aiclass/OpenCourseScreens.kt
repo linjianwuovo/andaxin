@@ -26,14 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.andaxin.shell.LoadWhy
+import com.andaxin.feature.brief.LoadWhy
 import com.andaxin.shell.pressClick
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
-import com.andaxin.core.net.RemoteImage
+import com.andaxin.feature.brief.RemotePhoto
 import com.andaxin.data.capture.AiChapter
 import com.andaxin.data.capture.AdaptCourse
 import com.andaxin.data.capture.AdaptProgress
@@ -62,7 +62,7 @@ private val TABS = listOf("热门" to "hot", "最新" to "new", "全部" to "all
 
 @Composable
 fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var tab by remember { mutableIntStateOf(0) }
     var courses by remember { mutableStateOf<List<OpenCourse>>(emptyList()) }
@@ -92,7 +92,7 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.lg))
 
         if (busy) Text("正在拉…", fontSize = Type.body, color = ink.faint)
-        LoadWhy(why)
+        LoadWhy(why, BriefEnv.session)
 
         modules.forEach { (name, list) ->
             if (name.isBlank() || list.isEmpty()) return@forEach
@@ -134,18 +134,19 @@ fun OpenCourseListScreen(open: (String) -> Unit, onBack: () -> Unit) {
 @Composable
 private fun CourseLine(
     c: OpenCourse,
-    graph: com.andaxin.app.AppGraph,
+    graph: com.andaxin.feature.brief.BriefGraph,
     ink: com.andaxin.core.design.InkSet,
     compact: Boolean,
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (!compact && c.cover.startsWith("http")) {
-            RemoteImage(
-                url = c.cover,
-                contentDescription = c.name,
-                cacheDir = graph.context.cacheDir,
-                modifier = Modifier.size(width = 56.dp, height = 40.dp),
-            )
+            RemotePhoto(
+                    url = c.cover,
+                    description = c.name,
+                    unavailable = "这张图没取到",
+                    modifier = Modifier.size(width = 56.dp, height = 40.dp),
+                                    fit = true,
+)
             Spacer(Modifier.width(Gap.md))
         }
         Column(Modifier.weight(1f)) {
@@ -186,7 +187,7 @@ private fun CourseLine(
  */
 @Composable
 fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var detail by remember { mutableStateOf<AdaptCourse?>(null) }
     var progress by remember { mutableStateOf<AdaptProgress?>(null) }
@@ -208,7 +209,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
 
     ScaffoldPage(title = detail?.name ?: "公开课", onBack = onBack) {
         if (why != null) {
-            LoadWhy(why)
+            LoadWhy(why, BriefEnv.session)
             Spacer(Modifier.height(Gap.md))
         }
         val d = detail
@@ -221,12 +222,13 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
                 Labeled(label = "科目分类", value = d.subject.ifBlank { "校方没给" })
                 if (d.cover.startsWith("http")) {
                     Spacer(Modifier.height(Gap.md))
-                    RemoteImage(
-                        url = d.cover,
-                        contentDescription = d.name,
-                        cacheDir = graph.context.cacheDir,
-                        modifier = Modifier.fillMaxWidth().height(90.dp),
-                    )
+                    RemotePhoto(
+                            url = d.cover,
+                            description = d.name,
+                            unavailable = "这张图没取到",
+                            modifier = Modifier.fillMaxWidth().height(90.dp),
+                                                    fit = true,
+)
                 }
             }
             Spacer(Modifier.height(Gap.lg))

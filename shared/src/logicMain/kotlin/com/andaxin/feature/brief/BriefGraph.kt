@@ -48,4 +48,14 @@ interface BriefGraph {
     val fifApi: com.andaxin.data.capture.FifApi
     val notes: com.andaxin.data.capture.NoteApi
     val aiCourses: com.andaxin.data.capture.AiCourseFeed
+    /** 「班级群」那一屏要的班内名单口（CaptureIm，两端同一个类）。 */
+    val im: com.andaxin.data.capture.CaptureIm
+    /**
+     * 下面四条不是简报那一族的，是「主题」「通知设置」「关于」这三块屏要的：
+     * 外观存储、那份首选项、课程表口、以及那一档调试插座（正式版给 null）。
+     */
+    val appearance: com.andaxin.core.settings.AppearanceStore
+    val store: com.andaxin.core.store.Store
+    val timetable: com.andaxin.data.TimetableFeed
+    val debug: com.andaxin.core.debug.DebugPanel?
 }

@@ -20,13 +20,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import com.andaxin.app.LocalAppGraph
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.data.capture.ClassGroup
 import com.andaxin.data.capture.GroupKind
 import com.andaxin.feature.brief.ScaffoldPage
-import com.andaxin.shell.LoadWhy
+import com.andaxin.feature.brief.LoadWhy
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
@@ -44,7 +44,7 @@ import com.andaxin.shell.RowLine
  */
 @Composable
 fun GroupScreen(onBack: () -> Unit) {
-    val graph = LocalAppGraph.current
+    val graph = BriefEnv.graph
     val ink = LocalInk.current
     var kinds by remember { mutableStateOf<List<GroupKind>>(emptyList()) }
     var roster by remember { mutableStateOf<List<ClassGroup>>(emptyList()) }
@@ -128,7 +128,7 @@ fun GroupScreen(onBack: () -> Unit) {
             Text("正在拉…", fontSize = Type.meta, color = ink.faint)
         } else {
             // "没有名单。"是真问到了并且没有（灰），"为什么没问到"才交给 LoadWhy 分语气
-            if (why != null) LoadWhy(why) else Text("没有名单。", fontSize = Type.meta, color = ink.faint)
+            if (why != null) LoadWhy(why, BriefEnv.session) else Text("没有名单。", fontSize = Type.meta, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.md))
