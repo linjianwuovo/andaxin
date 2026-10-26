@@ -122,6 +122,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         tabs.viewControllers = items.map { $0.0 }
+        // 五格每一格自己一台导航栈：把它们的 delegate 也收到这儿，
+        // 好让"推进二级页 → 栏出来；退回这一格 → 栏再藏回去"（见下面那个 extension）
+        for vc in tabs.viewControllers ?? [] {
+            (vc as? UINavigationController)?.delegate = self
+        }
 
         // 原来这儿有一句 tabs.tabBar.isTranslucent = true —— 删了。
         // 那是 iOS 15 那档"贴底半透明条"的开关，会把浮起液态玻璃压回死胶囊。
@@ -154,5 +159,23 @@ extension SceneDelegate: UITabBarControllerDelegate {
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
         let i = tabBarController.viewControllers?.firstIndex(of: viewController) ?? -1
         graph?.refreshTab(index: Int32(i))
+    }
+}
+
+// MARK: - 进二级页时那条栏要回来
+
+extension SceneDelegate: UINavigationControllerDelegate {
+
+    /// 五格把系统栏藏了（"上午好"那类大标题由页面自己画，照他给的安卓那张）。
+    /// 但共享层在 iOS 上不画顶栏（`hostDrawsTopBar = true`），所以**推进二级页时栏必须回来**，
+    /// 不然那一屏没有任何返回入口。规则就一条：当前是这一栈的根就藏，不是根就露。
+    /// 退回来时同样走这里，栏跟着自动藏回去 —— 不这么做的话，退到首页会留一条空栏。
+    func navigationController(_ navigationController: UINavigationController,
+                              willShow viewController: UIViewController,
+                              animated: Bool) {
+        navigationController.setNavigationBarHidden(
+            viewController === navigationController.viewControllers.first,
+            animated: false
+        )
     }
 }

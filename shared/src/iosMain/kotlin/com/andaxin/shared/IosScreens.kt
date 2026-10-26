@@ -16,6 +16,10 @@ import com.andaxin.feature.me.MeDeps
 import com.andaxin.feature.me.MeScreen
 import com.andaxin.feature.message.MessageDeps
 import com.andaxin.feature.message.MessageScreen
+import com.andaxin.feature.me.ProfileDeps
+import com.andaxin.feature.modules.SecondClassDeps
+import com.andaxin.feature.modules.SecondClassScreen
+import com.andaxin.feature.me.ProfileScreen
 import com.andaxin.feature.modules.LoginDeps
 import com.andaxin.feature.modules.LoginScreen
 import com.andaxin.feature.modules.OnboardingScreen
@@ -95,10 +99,10 @@ private fun bundleVersion(): String =
     NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "0.0.0"
 
 /** 首页。 */
-fun IosAppGraph.homeViewController(): UIViewController =
-    navigated(
-        ComposeUIViewController {
-            IosTopInset {
+fun IosAppGraph.homeViewController(): UIViewController {
+    var host: UIViewController? = null
+    val child = ComposeUIViewController {
+        IosTopInset {
                 HomeScreen(
                     deps = HomeDeps(
                         model = homeModel,
@@ -110,13 +114,13 @@ fun IosAppGraph.homeViewController(): UIViewController =
                         loadExtras = { home.load() },
                         todoFeeds = listOf(affairList, toReadList, myAffairList, handledList),
                     ),
-                    open = {},
+                    open = { key -> push(host, key) },
                 )
             }
-        },
-        "首页",
-        bar = false,
-    )
+    }
+    host = child
+    return navigated(child, "首页", bar = false)
+}
 
 /** 课程表。 */
 fun IosAppGraph.timetableViewController(): UIViewController =
@@ -149,10 +153,10 @@ fun IosAppGraph.noticeViewController(): UIViewController =
     )
 
 /** 我的。 */
-fun IosAppGraph.meViewController(): UIViewController =
-    navigated(
-        ComposeUIViewController {
-            IosTopInset {
+fun IosAppGraph.meViewController(): UIViewController {
+    var host: UIViewController? = null
+    val child = ComposeUIViewController {
+        IosTopInset {
                 MeScreen(
                     deps = MeDeps(
                         session = session,
@@ -165,13 +169,13 @@ fun IosAppGraph.meViewController(): UIViewController =
                         entryIcon = null,
                         versionName = bundleVersion(),
                     ),
-                    open = {},
+                    open = { key -> push(host, key) },
                 )
             }
-        },
-        "我的",
-        bar = false,
-    )
+    }
+    host = child
+    return navigated(child, "我的", bar = false)
+}
 
 /**
  * 登录页（Gate 判未登录时进）。
@@ -209,7 +213,45 @@ fun IosAppGraph.loginViewController(onDone: () -> Unit): UIViewController {
     return navigated(child, "登录")
 }
 
-/** 首次使用（免责声明那屏）。 */
+/**
+ * iOS 的路由 —— 安卓那台 NavHost（RootShell:113-175 那张表）在这儿的对应物。
+ * key 照那张表原样抄，不自创名字。
+ *
+ * 现在只有两条能落地：`profile`、`dekt`。不是我不想多接 —— 其余那些屏
+ * （运动 868 行、查寝 940 行、待办/公告详情站在 BriefKit 那 896 行上、AI 课堂 1360 行）
+ * 还住在 `app/` 那个安卓专属源集里，用着 `LocalAppGraph` / `adxViewModel` / 选图器 /
+ * `BitmapFactory`。搬一屏进来，这里就多一条 case。
+ */
+private fun IosAppGraph.routeViewController(key: String): UIViewController? = when (key) {
+    "profile" -> ComposeUIViewController {
+        // 返回交给系统那颗（这一屏是被 push 进来的，栏在），所以 onBack 不给它自己画一颗
+        ProfileScreen(
+            deps = ProfileDeps(
+                session = session,
+                who = this.who,
+                loadProfile = { profile.load() },
+            ),
+            onBack = {},
+        )
+    }.also { it.navigationItem.title = "个人信息" }
+
+    "dekt" -> ComposeUIViewController {
+        SecondClassScreen(deps = SecondClassDeps(secondClass), onBack = {})
+    }.also { it.navigationItem.title = "第二课堂" }
+
+    else -> null
+}
+
+/**
+ * 按 key 把一屏推进来。认不出的 key 就地什么都不做 —— 那些屏还没搬进共享层，
+ * 与其弹一句"未实现"糊弄，不如等它真能开。
+ */
+fun IosAppGraph.push(host: UIViewController?, key: String) {
+    val nav = host?.navigationController ?: return
+    val vc = routeViewController(key) ?: return
+    nav.setNavigationBarHidden(false, animated = true)
+    nav.pushViewController(vc, animated = true)
+}
 fun IosAppGraph.onboardingViewController(onAgree: () -> Unit): UIViewController =
     navigated(
         ComposeUIViewController {

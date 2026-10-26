@@ -14,6 +14,7 @@ import com.andaxin.data.capture.CaptureHome
 import com.andaxin.data.capture.CaptureMessages
 import com.andaxin.data.capture.CaptureMyAffairs
 import com.andaxin.data.capture.CaptureNotices
+import com.andaxin.data.capture.CaptureSecondClass
 import com.andaxin.data.capture.CaptureProfile
 import com.andaxin.data.capture.CaptureTimetable
 import com.andaxin.data.capture.CaptureToRead
@@ -99,6 +100,8 @@ class IosAppGraph(documentsPath: String) {
     val home = CaptureHome(school, session)
     /** 「我的」那一页的学院/专业/班级/辅导员。 */
     val profile = CaptureProfile(school)
+    /** 「第二课堂」那一屏的数据口（安卓 graph.secondClass 同名）。 */
+    val secondClass = CaptureSecondClass(school)
     /**
      * 上面两条的结果缓存。挂图（=进程）上，不挂屏幕 ——
      * 安卓 AppGraph 里同一句注释：从二级页退回来时那一行不该先跳回兜底文案。
