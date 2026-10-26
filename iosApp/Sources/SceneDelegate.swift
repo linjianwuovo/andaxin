@@ -66,6 +66,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             NSLog("AndaXin 壳：Gate 变了 showTabs=\(tabs)")
             self.swap(toTabs: tabs, g)
         }
+        // 「逛逛」那一格的换根改由图里写完标志直接回调（101 那发的日志：标志写完那条流没再发一次，
+        // 于是根不换、点下去只震一下）。这条注册必须在 browseAsGuest 那句之前，见下面。
+        g.onGuest { [weak self] in
+            guard let self else { return }
+            NSLog("AndaXin 壳：onGuest 回来了，换进五格")
+            self.swap(toTabs: true, g)
+        }
 
         // 只给 CI 用的一扇门：带 `-AndaXinGuest` 启动参数时才走「先不登录，随便看看」。
         // 平时用户手上那一发永远不带这个参数，所以它是个死分支，不改任何正常行为。
