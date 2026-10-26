@@ -4,21 +4,40 @@ import com.andaxin.core.store.Store
 import com.andaxin.core.store.SessionStore
 import com.andaxin.core.store.WhoIs
 import com.andaxin.core.store.createVault
+import com.andaxin.data.brief.DetailSource
+import com.andaxin.data.brief.FormSource
 import com.andaxin.data.brief.ListSource
 import com.andaxin.data.capture.AuthFeed
 import com.andaxin.data.capture.BriefSwitch
+import com.andaxin.data.capture.CaptureAffairDetail
 import com.andaxin.data.capture.CaptureAffairs
+import com.andaxin.data.capture.CaptureCreditDetail
+import com.andaxin.data.capture.CaptureCreditList
+import com.andaxin.data.capture.CaptureDorm
 import com.andaxin.data.capture.CaptureDormBoard
+import com.andaxin.data.capture.CaptureDormDetail
+import com.andaxin.data.capture.CaptureExamDetail
+import com.andaxin.data.capture.CaptureExamList
 import com.andaxin.data.capture.CaptureHandled
+import com.andaxin.data.capture.CaptureHoliday
+import com.andaxin.data.capture.CaptureHolidayDetail
 import com.andaxin.data.capture.CaptureHome
+import com.andaxin.data.capture.CaptureLabor
+import com.andaxin.data.capture.CaptureLaborDetail
+import com.andaxin.data.capture.CaptureLeaveForm
 import com.andaxin.data.capture.CaptureMessages
 import com.andaxin.data.capture.CaptureMyAffairs
 import com.andaxin.data.capture.CaptureNotices
+import com.andaxin.data.capture.CaptureRepairDetail
+import com.andaxin.data.capture.CaptureRepairForm
+import com.andaxin.data.capture.CaptureRepairList
 import com.andaxin.data.capture.CaptureSecondClass
 import com.andaxin.data.capture.CaptureProfile
 import com.andaxin.data.capture.CaptureTimetable
 import com.andaxin.data.capture.CaptureToRead
 import com.andaxin.data.capture.DashboardSource
+import com.andaxin.data.capture.DetailSwitch
+import com.andaxin.data.capture.FormSwitch
 import com.andaxin.data.capture.MessageSource
 import com.andaxin.data.capture.NoticeSource
 import com.andaxin.data.capture.School
@@ -26,11 +45,17 @@ import com.andaxin.data.SportsFeed
 import com.andaxin.data.capture.TimetableSource
 import com.andaxin.data.capture.YwlzTasks
 import com.andaxin.data.local.Affair
+import com.andaxin.data.local.Credit
+import com.andaxin.data.local.Dorm
+import com.andaxin.data.local.Exam
+import com.andaxin.data.local.Holiday
+import com.andaxin.data.local.Labor
 import com.andaxin.data.local.LocalDashboard
 import com.andaxin.data.local.LocalMessages
 import com.andaxin.data.local.LocalNotices
 import com.andaxin.data.local.LocalTimetable
 import com.andaxin.data.local.NeedLoginList
+import com.andaxin.data.local.Repair
 import com.andaxin.data.DashboardFeed
 import com.andaxin.data.MessageFeed
 import com.andaxin.data.NoticeFeed
@@ -70,7 +95,7 @@ private val graphFailure = CoroutineExceptionHandler { _, e ->
  * Store → Session → School → capture 实例 → Source 开关（登录走校方、未登录走占位）→ Model。
  * 路径约定：DataStore 文件放 <Documents>/andaxin.preferences_pb（Android 是 filesDir 那份，两平台各存各的）。
  */
-class IosAppGraph(documentsPath: String) {
+class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + graphFailure)
 
@@ -80,8 +105,12 @@ class IosAppGraph(documentsPath: String) {
     val auth: AuthFeed = AuthFeed()
     val school: School = School(session)
 
-    // 共享层那批列表/详情/表单屏要 session（见 logicMain 的 BriefEnv）：安卓在 AppGraph 插，iOS 在这儿插
-    private val briefEnv = com.andaxin.feature.brief.BriefEnv.also { it.session = session }
+    // 共享层那批列表/详情/表单屏要 session 和那十几条数据源（见 logicMain 的 BriefEnv）：
+    // 安卓在 AppGraph 插，iOS 在这儿插。赋的是 this，不会提前触发下面任何一条 lazy。
+    private val briefEnv = com.andaxin.feature.brief.BriefEnv.also {
+        it.session = session
+        it.graph = this
+    }
 
     // 数据源开关（照 AppGraph 的 Source(capture, local, session) 三件套）
     private val localTimetable = LocalTimetable()
@@ -117,10 +146,47 @@ class IosAppGraph(documentsPath: String) {
      * `BriefSwitch(校方那路, 占位那路, session)` 三件套，一个都没自创。
      * 「我的申请」「已办」没登录时走 NeedLoginList：编假单据比空白更坏（安卓原话）。
      */
-    val affairList: ListSource by lazy { BriefSwitch(CaptureAffairs(ywlz), Affair.list, session) }
-    val toReadList: ListSource by lazy { BriefSwitch(CaptureToRead(school, ywlz), NeedLoginList(), session) }
-    val myAffairList: ListSource by lazy { BriefSwitch(CaptureMyAffairs(ywlz), NeedLoginList(), session) }
-    val handledList: ListSource by lazy { BriefSwitch(CaptureHandled(ywlz), NeedLoginList(), session) }
+    override val affairList: ListSource by lazy { BriefSwitch(affairCapture, Affair.list, session) }
+    override val toReadList: ListSource by lazy { BriefSwitch(CaptureToRead(school, ywlz), NeedLoginList(), session) }
+    override val myAffairList: ListSource by lazy { BriefSwitch(CaptureMyAffairs(ywlz), NeedLoginList(), session) }
+    override val handledList: ListSource by lazy { BriefSwitch(CaptureHandled(ywlz), NeedLoginList(), session) }
+
+    /**
+     * 简报那一族的其余数据源（成绩/学分/劳动/节假日/报修/请假/查寝）。
+     *
+     * 一行都不自创：每条都照 app/ 的 AppGraph 同一句 —— 同一个 capture 类、同一个占位、
+     * 同一个 [BriefSwitch]/[DetailSwitch]/[FormSwitch] 三件套。搬过来的是屏，不是数据通路。
+     * 详情与列表共用一份进程内缓存那两条（exam/credit）也照抄：先建 capture 再喂两边。
+     */
+    private val affairCapture = CaptureAffairs(ywlz)
+    private val dormCapture = CaptureDorm(ywlz)
+    private val examCapture = CaptureExamList(school)
+    private val creditCapture = CaptureCreditList(school)
+    private val holidayCapture = CaptureHoliday(school, session)
+
+    override val examList: ListSource by lazy { BriefSwitch(examCapture, Exam.list, session) }
+    override val examDetail: DetailSource by lazy { DetailSwitch(CaptureExamDetail(examCapture), Exam.detail, session) }
+    override val creditList: ListSource by lazy { BriefSwitch(creditCapture, Credit.list, session) }
+    override val creditDetail: DetailSource by lazy { DetailSwitch(CaptureCreditDetail(creditCapture), Credit.detail, session) }
+    override val laborList: ListSource by lazy { BriefSwitch(CaptureLabor(school), Labor.list, session) }
+    override val laborDetail: DetailSource by lazy { DetailSwitch(CaptureLaborDetail(school), Labor.detail, session) }
+    override val holidayList: ListSource by lazy { BriefSwitch(holidayCapture, Holiday.list, session) }
+    override val holidayDetail: DetailSource by lazy {
+        DetailSwitch(CaptureHolidayDetail(holidayCapture), Holiday.detail, session)
+    }
+    override val repairList: ListSource by lazy { BriefSwitch(CaptureRepairList(school), Repair.list, session) }
+    override val repairDetail: DetailSource by lazy { DetailSwitch(CaptureRepairDetail(school), Repair.detail, session) }
+    // 传图那条缝 iOS 没注（安卓注的是 RepairPhotos.encode）：带图的单会明确回"这一端还没接传图"，
+    // 不会发一张没照片的单冒充交齐了 —— 这是 CaptureRepairForm 那个默认参数本来就在做的事。
+    override val repairForm: FormSource by lazy { FormSwitch(CaptureRepairForm(school), Repair.form, session) }
+    override val affairDetail: DetailSource by lazy {
+        DetailSwitch(CaptureAffairDetail(school, ywlz, affairCapture), Affair.detail, session)
+    }
+    override val affairForm: FormSource by lazy { FormSwitch(CaptureLeaveForm(school, session), Affair.form, session) }
+    override val dormList: ListSource by lazy { BriefSwitch(dormCapture, Dorm.list, session) }
+    override val dormDetail: DetailSource by lazy {
+        DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
+    }
 
     val dashboardFeed: DashboardFeed by lazy {
         DashboardSource(
