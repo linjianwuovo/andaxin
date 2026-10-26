@@ -114,6 +114,13 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         it.canOpen = { key -> routeOf(null, key) != null }
     }
 
+    // PhotoHost 那三根插槽，iOS 只插第一根：正文附图交 IosImages（NSURLSession 取、Skia 解）。
+    // 另外两根（本机相簿缩略图、相册选择器）要 PHPhotoLibrary 那套授权，还没做 ——
+    // 插槽没人插时界面自己会明写一句"这一端还没接传图"，不会画一颗按不动的「＋」。
+    init {
+        com.andaxin.feature.brief.PhotoHost.attached = { url -> IosImages.load(url) }
+    }
+
     // 数据源开关（照 AppGraph 的 Source(capture, local, session) 三件套）
     private val localTimetable = LocalTimetable()
     private val localMessages = LocalMessages()
