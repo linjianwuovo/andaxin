@@ -84,37 +84,13 @@ fun EmptyState(text: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun LoadWhy(why: String?, modifier: Modifier = Modifier, wide: Boolean = true) {
-    if (why.isNullOrBlank()) return
-    val graph = LocalAppGraph.current
-    val ink = LocalInk.current
-    val scope = rememberCoroutineScope()
-    val session by graph.session.state.collectAsStateWithLifecycle(Session())
-    val needsLogin = !session.loggedIn
-    Column(modifier) {
-        Text(
-            text = why,
-            fontSize = Type.meta,
-            lineHeight = Type.metaLine,
-            color = if (needsLogin) ink.muted else MaterialTheme.colorScheme.error,
-        )
-        if (needsLogin) {
-            Spacer(Modifier.height(if (wide) Gap.lg else Gap.sm))
-            if (wide) {
-                MiuixButton(
-                    onClick = { scope.launch { graph.session.leaveBrowsing() } },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                ) {
-                    Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
-                }
-            } else {
-                Text(
-                    text = "去登录",
-                    fontSize = Type.meta,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.pressClick { scope.launch { graph.session.leaveBrowsing() } },
-                )
-            }
-        }
-    }
+    // 10-26：本体搬进共享层了（shared/logicMain 的 feature/brief/LoadWhy.kt），
+    // 因为 iOS 那套列表/详情/表单屏要用它。这儿只留一个签名不变的转发壳 ——
+    // RootShell 那些调用点一个字都不用改，图的就是这一步对安卓零风险。
+    com.andaxin.feature.brief.LoadWhy(
+        why = why,
+        session = LocalAppGraph.current.session,
+        modifier = modifier,
+        wide = wide,
+    )
 }
