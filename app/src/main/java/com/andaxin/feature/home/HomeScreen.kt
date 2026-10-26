@@ -236,17 +236,20 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                     fontSize = titleSize,
                     fontWeight = FontWeight.SemiBold,
                     color = ink.strong,
-                    // fill=false：不铺满剩下的宽度，球才贴得住名字末尾，不会被顶到屏幕右边
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(Gap.sm))
-                // 跟着大标题一起收：折叠的时候字小了，球单独留着就是个不动的图章
-                MascotBall(gaze = gaze, size = (titleSize.value * 1.15f).dp)
-                Spacer(Modifier.weight(1f))
                 // 屏幕上这批数字是上一份快照时，明写"更新中" —— 不把旧数字冒充成刚拉的
                 if (state.refreshing && state.data != null) {
                     Text("更新中…", fontSize = Type.micro, color = ink.faint)
+                    Spacer(Modifier.width(Gap.sm))
                 }
+                /*
+                 * 球挂在这一行的**最右端**，吃的就是名字后面那块空。
+                 * 0.8.61 那版把它塞在名字后面、又补了一根 `weight(1f)` 的占位 Spacer，
+                 * 结果文本只分到半行宽 —— "凌晨好，黄铮辉"折成两行，右边还空着一大片。
+                 * 现在文本拿满 `weight(1f)`，球是行尾那个不动的尾巴，名字该多长还多长。
+                 */
+                MascotBall(gaze = gaze, size = (titleSize.value * 1.05f).dp)
             }
             /*
              * 没登录时这一屏那几个数是本机编的示例（`LocalDashboard`）。
