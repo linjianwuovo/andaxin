@@ -74,6 +74,10 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
         asked = true
     }
 
+    // 见下面 update 里那句 tick：一次"过一帧再量一次"的重排信号
+    val tick = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(64); tick.intValue++ }
+
     val session = remember { AVCaptureSession() }
     val preview = remember { AVCaptureVideoPreviewLayer(session = session) }
     DisposableEffect(Unit) { onDispose { session.stopRunning() } }
@@ -121,7 +125,13 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
                     session.startRunning()
                     view
                 },
-                update = { view -> preview.frame = view.bounds },
+                // 预览层的 frame 首帧量到的是 0（UIKitView 先 factory 后 update，而这一刻视图
+                // 还没排版完），而 update 只在重组时跑 —— 于是"权限给了、画面全白"，105 他手机上
+                // 就是这个。拿一个 tick 强制在下一帧再重组一次，把 frame 补上。
+                update = { view ->
+                    tick.value
+                    preview.frame = view.bounds
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

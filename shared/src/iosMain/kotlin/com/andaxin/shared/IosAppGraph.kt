@@ -135,6 +135,8 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         com.andaxin.core.location.SportHost.askLocation = @Composable { onResult ->
             { gps.requestAndAwait(onResult) }
         }
+        // 「拍一张签到照片」：交回系统 UIImagePickerController 开相机（缝见 BriefEnv.takePhoto）
+        IosCamera.install()
         com.andaxin.core.map.TileHost.store =
             com.andaxin.core.map.IosTileStore(com.andaxin.core.store.IosFiles(documentsPath))
     }
@@ -272,7 +274,22 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
      * 索引照 makeTabs 那五格：0首页 1课表 2消息 3公告 4我的。
      * 「我的」不在这儿拉 —— 它自己进屏就拉（MeScreen 里有 LaunchedEffect），别重复打两遍接口。
      */
+    /**
+     * 切到哪一格就重拉哪一格 —— 但**五分钟内拉过的不再拉**。
+     *
+     * 105 装到他手机上，他报的是"每次进课表/公告都要等一遍空白"：我原来这句是无条件 reload()，
+     * 于是每点一次底栏就把那一格打回 loading。而安卓那边是"进屏才建 VM"，第一次进才拉，
+     * 退回来用的是同一份状态 —— 我这根钩子等于把安卓没有的重复拉活加回来了。
+     * 现在：五分钟内拉过就直接用现有数据（要新的就下拉刷新，那一根屏上都有）；
+     * 种子是建图那一刻，因为五台 Model 第一次被组合时自己就会 reload 一遍。
+     */
+    private val pullAt = HashMap<Int, Long>()
+    private val bornAt = com.andaxin.core.concurrency.nowMillis()
+
     fun refreshTab(index: Int) {
+        val now = com.andaxin.core.concurrency.nowMillis()
+        if (now - (pullAt[index] ?: bornAt) < STALE_AFTER_MS) return
+        pullAt[index] = now
         when (index) {
             0 -> homeModel.reload()
             2 -> messageModel.reload()
@@ -371,3 +388,5 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         }
     }
 }
+
+private const val STALE_AFTER_MS = 5 * 60_000L
