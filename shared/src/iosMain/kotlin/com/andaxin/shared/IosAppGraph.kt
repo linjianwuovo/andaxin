@@ -96,7 +96,7 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + graphFailure)
 
-    val store: Store = Store(documentsPath + "/andaxin.preferences_pb")
+    override val store: Store = Store(documentsPath + "/andaxin.preferences_pb")
     val session: SessionStore = SessionStore(store)
     val vault = createVault()
     val auth: AuthFeed = AuthFeed()
@@ -215,6 +215,14 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     override val aiCourses: com.andaxin.data.capture.AiCourseFeed by lazy {
         com.andaxin.data.capture.AiCourseFeed(fif, fifApi)
     }
+    override val im: com.andaxin.data.capture.CaptureIm by lazy { com.andaxin.data.capture.CaptureIm(school) }
+    override val appearance: com.andaxin.core.settings.AppearanceStore by lazy {
+        com.andaxin.core.settings.AppearanceStore(store)
+    }
+    // 正式版没有那一档调试插座：安卓那边也是 stable flavor 给 null（见 app/build.gradle.kts）
+    override val debug: com.andaxin.core.debug.DebugPanel? = null
+    // 「通知设置」那一屏要这两样：那份首选项 + 课程表口（timetableFeed 就是安卓 graph.timetable 同一台）
+    override val timetable: com.andaxin.data.TimetableFeed get() = timetableFeed
     override val dormBoard: CaptureDormBoard = CaptureDormBoard(school, session)
 
     val dashboardFeed: DashboardFeed by lazy {

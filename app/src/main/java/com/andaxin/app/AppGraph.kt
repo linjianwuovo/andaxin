@@ -96,7 +96,7 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
 
     // 平移注：Store 进共享层了，路径必须指到老 preferencesDataStore(name="andaxin")
     // 一直在写的同一份文件，用户数据（登录态、设置）原样续用。
-    val store: Store by lazy {
+    override val store: Store by lazy {
         Store(context.filesDir.resolve("datastore/andaxin.preferences_pb").absolutePath)
     }
 
@@ -104,13 +104,13 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
     val updates by lazy { com.andaxin.data.capture.UpdateFeed() }
 
     /** 明暗、底栏材质、四根玻璃滑杆 */
-    val appearance: AppearanceStore by lazy { AppearanceStore(store) }
+    override val appearance: AppearanceStore by lazy { AppearanceStore(store) }
 
     /**
      * 调试面板。beta 那份给实现（假 GPS、模拟路线、关于页那一格），
      * 正式版那份是 null —— 实现类根本不在它的源集里，见 `core/debug/DebugKit.kt`。
      */
-    val debug: com.andaxin.core.debug.DebugPanel? by lazy {
+    override val debug: com.andaxin.core.debug.DebugPanel? by lazy {
         com.andaxin.core.debug.DebugProviderFactory.create(store)
     }
 
@@ -152,14 +152,14 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
     val home by lazy { CaptureHome(school, session) }
 
     /** 班级群与班内名单（`zhxy-new-scps/im/` 两条）。名单是别人的信息：只在本机看，不导出。 */
-    val im by lazy { CaptureIm(school) }
+    override val im by lazy { CaptureIm(school) }
 
     /**
      * 四路 feed 各自包一层开关：登录了走校方，没登录走占位（见 `data/capture/Sources.kt`）。
      * 已经接上真实报文的是消息、公告、全周课表、首页那几格、成绩、素质学分、待办事务、查寝。
      * 还欠的是本周跑量、报修、校园卡、AI 课堂、劳动教育、节假日离返校。
      */
-    val timetable: TimetableFeed by lazy {
+    override val timetable: TimetableFeed by lazy {
         TimetableSource(CaptureTimetable(school), LocalTimetable(), session)
     }
 

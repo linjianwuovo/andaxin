@@ -1,5 +1,9 @@
 package com.andaxin.core.map
 
+import kotlin.math.PI
+import kotlin.math.atan
+import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.sin
 
 /*
@@ -14,8 +18,8 @@ object Tiles {
 
     fun latToPixelY(lat: Double, zoom: Int, scale: Double = 1.0): Double {
         val z = 1 shl zoom
-        val sinLat = sin(Math.toRadians(lat)).coerceIn(-0.9999, 0.9999)
-        return (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * z * SIZE * scale
+        val sinLat = sin((lat * PI / 180.0)).coerceIn(-0.9999, 0.9999)
+        return (0.5 - ln((1 + sinLat) / (1 - sinLat)) / (4.0 * PI)) * z * SIZE * scale
     }
 
     fun lngToPixelX(lng: Double, zoom: Int, scale: Double = 1.0): Double {
@@ -30,8 +34,8 @@ object Tiles {
 
     fun pixelYToLat(y: Double, zoom: Int, scale: Double = 1.0): Double {
         val z = 1 shl zoom
-        val n = Math.PI - 2 * Math.PI * y / (z * SIZE * scale)
-        return Math.toDegrees(Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))))
+        val n = PI - 2 * PI * y / (z * SIZE * scale)
+        return (atan(0.5 * (exp(n) - exp(-n))) * 180.0 / PI)
     }
 
     /**

@@ -38,6 +38,7 @@ import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Type
+import com.andaxin.core.location.Fix
 import com.andaxin.core.location.GpsFeed
 import com.andaxin.core.map.Geo
 import com.andaxin.data.capture.DormTaskInfo
@@ -82,7 +83,7 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var why by remember { mutableStateOf<String?>(null) }
 
-    var fix by remember { mutableStateOf<GpsFeed.Fix?>(null) }
+    var fix by remember { mutableStateOf<Fix?>(null) }
     var locating by remember { mutableStateOf(false) }
     var locWhy by remember { mutableStateOf<String?>(null) }
 
@@ -115,7 +116,7 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
             locWhy = null
             // 先给上次已知点垫着（旧项目也是先取 lastKnown），再等 8 秒换更准的一点
             graph.gps.lastKnown()?.let { known ->
-                if (fix == null) fix = GpsFeed.Fix(known, 0.0, 0f, true)
+                if (fix == null) fix = Fix(known, 0.0, 0f, true)
             }
             val fresh = withTimeoutOrNull(8_000) {
                 runCatching { graph.gps.fixes().first() }.getOrNull()

@@ -23,9 +23,9 @@ import kotlinx.coroutines.isActive
  * 2. 端内假 GPS（只有 beta 那份有实现，见 [MockGps]）：调试模式里挑一条线，三秒一个点带随机游走，
  *    从同一入口喂给跑步引擎；不注册系统 test provider，不影响别的 App。
  */
-class GpsFeed(private val context: Context, private val mock: MockGps?) {
+class GpsFeed(private val context: Context, private val mock: MockGps?) : com.andaxin.core.location.GpsSource {
 
-    val available: Boolean
+    override val available: Boolean
         get() = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
 
@@ -35,7 +35,7 @@ class GpsFeed(private val context: Context, private val mock: MockGps?) {
     /** 跳点保护：三秒甩出 120 米不是人，整条轨迹会被判异常。 */
     private val jumpGuardMeters = 120.0
 
-    fun fixes(): Flow<Fix> = callbackFlow {
+    override fun fixes(): Flow<Fix> = callbackFlow {
         val m = mock
         if (m != null && m.isOn.value) {
             // 端内回放：轮询它的最新点，按时间戳去重（不是按订阅那一刻决定，开晚了也能收到）
@@ -115,7 +115,7 @@ class GpsFeed(private val context: Context, private val mock: MockGps?) {
      * 上次已知位置：地图进屏先落在这儿，别拿一个写死的坐标冒充"你在的位置"。
      * 端内回放开着时以回放点为准。
      */
-    fun lastKnown(): LatLng? {
+    override fun lastKnown(): LatLng? {
         mock?.snapshot()?.let { return it }
         if (!available) return null
         val lm = context.getSystemService(LocationManager::class.java) ?: return null
@@ -128,11 +128,4 @@ class GpsFeed(private val context: Context, private val mock: MockGps?) {
         }.maxByOrNull { it.time }?.let { LatLng(it.latitude, it.longitude) }
     }
 
-    data class Fix(
-        val where: LatLng,
-        val meters: Double,
-        val accuracyMeters: Float,
-        /** 能进轨迹/累距离的那一档；端内回放也是 true。 */
-        val usable: Boolean,
-    )
 }

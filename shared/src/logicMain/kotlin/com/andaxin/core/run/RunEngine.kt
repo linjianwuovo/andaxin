@@ -33,7 +33,9 @@ data class RunState(
             val secPerKm = seconds / (meters / 1000.0)
             val mm = (secPerKm / 60).toInt()
             val ss = (secPerKm - mm * 60).toInt()
-            return java.lang.String.format(java.util.Locale.US, "%d'%02d\"", mm, ss)
+            // 原来这句是 java.lang.String.format(Locale.US, "%d'%02d\"")：共享层没有 String.format，
+            // 手动补零，出来的字一模一样（1 分 05 秒 = 1'05"）。
+            return "$mm'${ss.toString().padStart(2, '0')}\""
         }
 }
 
@@ -62,7 +64,7 @@ class RunEngine(private val scope: CoroutineScope) {
      * 10-21 傍晚他 2 分钟走完 260 米，界面只写 0:30 —— 计时协程被系统压过之后
      * 一次只补 1 秒，越跑越慢。现在每次都从 startedAt 扣掉暂停段重算，晚醒也一次追平。
      */
-    private fun elapsedSeconds(now: Long = System.currentTimeMillis()): Int {
+    private fun elapsedSeconds(now: Long = com.andaxin.core.concurrency.nowMillis()): Int {
         if (startedAt <= 0L) return 0
         val pausedExtra = if (_state.value.paused) {
             (now - pausedAtMillis).coerceAtLeast(0L)
@@ -72,8 +74,8 @@ class RunEngine(private val scope: CoroutineScope) {
     }
 
     /** 采集：定点由 [com.andaxin.core.location.GpsFeed] 给（真 GPS 或端内回放），我们只负责串成轨迹。 */
-    fun startReal(gps: com.andaxin.core.location.GpsFeed, session: RunSession? = null) {
-        startedAt = System.currentTimeMillis()
+    fun startReal(gps: com.andaxin.core.location.GpsSource, session: RunSession? = null) {
+        startedAt = com.andaxin.core.concurrency.nowMillis()
         pausedTotalMillis = 0L
         pausedAtMillis = 0L
         this.session = session
@@ -98,7 +100,7 @@ class RunEngine(private val scope: CoroutineScope) {
             }
             try {
                 gps.fixes().collect { fix ->
-                    val now = System.currentTimeMillis()
+                    val now = com.andaxin.core.concurrency.nowMillis()
                     val s = _state.value
                     // 精度差的点也用来把地图挪到人附近，但不进轨迹、不加距离
                     val here = if (fix.accuracyMeters <= 150f) fix.where else s.here
@@ -128,13 +130,13 @@ class RunEngine(private val scope: CoroutineScope) {
 
     fun pause() {
         if (_state.value.paused) return
-        pausedAtMillis = System.currentTimeMillis()
+        pausedAtMillis = com.andaxin.core.concurrency.nowMillis()
         _state.value = _state.value.copy(paused = true)
     }
 
     fun resume() {
         if (!_state.value.paused) return
-        val now = System.currentTimeMillis()
+        val now = com.andaxin.core.concurrency.nowMillis()
         pausedTotalMillis += (now - pausedAtMillis).coerceAtLeast(0L)
         pausedAtMillis = 0L
         _state.value = _state.value.copy(paused = false, seconds = elapsedSeconds(now))
@@ -143,7 +145,7 @@ class RunEngine(private val scope: CoroutineScope) {
     /** 结束并把这一场交出去。不发网络请求 —— 上传由界面层在用户确认后调 SportsFeed.submit。 */
     fun finish(): RunDraft {
         val seconds = elapsedSeconds()
-        val endedAt = System.currentTimeMillis()
+        val endedAt = com.andaxin.core.concurrency.nowMillis()
         job?.cancel()
         val s = _state.value
         val session = this.session
