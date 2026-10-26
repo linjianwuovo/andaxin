@@ -15,4 +15,13 @@ object BriefEnv {
 
     /** 十几条数据源。安卓由 AppGraph 插上，iOS 由 IosAppGraph 插上 —— 两边都实现 [BriefGraph]。 */
     lateinit var graph: BriefGraph
+
+    /**
+     * 这一端的路由开得动哪一扇。入口列表（「更多功能」那一屏）照它筛：
+     * 开不动的那几条整行不画 —— 摆一颗按不动的哑按钮比少一格糟。
+     *
+     * 默认全 true：安卓那台 NavHost 十七八条 route 全在，宿主不用插这一句。
+     * iOS 插的是「我这张表认不认这个 key」，所以搬一屏进来，那一格自己就长出来。
+     */
+    var canOpen: (String) -> Boolean = { true }
 }

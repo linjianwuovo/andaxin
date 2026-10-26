@@ -38,39 +38,6 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 
 /**
- * 更多功能那一格：只是入口，不取任何数据。
- * 顺序按"哪块证据厚"排，接报文时从上往下推。
- */
-private val MORE = listOf(
-    "报修" to "repair",
-    "待办事务" to "affair",
-    "AI 课堂" to "aiclass",
-    "公开课" to "opencourse",
-    "查寝签到" to "dorm",
-    "考试成绩" to "exam",
-    "素质学分" to "credit",
-    "劳动教育" to "labor",
-    "节假日离返校" to "holiday",
-    "校园卡" to "card",
-    "班级群" to "group",
-    // 凡是"要不要响、响在哪、系统让不让响"都收在那一屏里（上课提醒以前挂在「我的」最底下）
-    "通知设置" to "notify",
-)
-
-@Composable
-fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val ink = LocalInk.current
-    ScaffoldPage(title = "更多功能", onBack = onBack) {
-        Sheet {
-            MORE.forEachIndexed { i, (label, route) ->
-                RowLine(title = label, right = "›", onClick = { open(route) })
-                if (i != MORE.lastIndex) Hairline()
-            }
-        }
-    }
-}
-
-/**
  * 校园卡。17wanxiao 是第三方，要先用校方会话换它的会话，所以这一块接起来是三跳
  * （取证与坑见 `data/capture/CaptureCampusCard.kt` 顶上那段）。
  */
