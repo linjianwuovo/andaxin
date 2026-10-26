@@ -40,6 +40,9 @@ data class NoticeItem(
     val publishedAt: String,
     val source: String,
     val coverUrl: String?,
+    /** 校方那条分类名（学校要闻 / 学院动态 / 通知公告 / 学术信息…）。
+     *  以前没留这一格：列表是把每条分类各 10 条拼起来的，拼完就不知道谁是谁家的了。 */
+    val category: String = "",
 )
 
 @Immutable
