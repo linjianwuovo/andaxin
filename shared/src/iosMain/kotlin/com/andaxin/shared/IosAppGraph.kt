@@ -110,6 +110,11 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         it.session = session
         it.graph = this
         it.canOpen = { key -> routeOf(null, key) != null }
+        // 「我的→关于」那行和崩溃报告里的 app_version 都读这两个：Info.plist 由 project.yml
+        // 现生成，$(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION) 展开后就是这儿读到的值。
+        val info = platform.Foundation.NSBundle.mainBundle.infoDictionary
+        it.versionName = (info?.get("CFBundleShortVersionString") as? String).orEmpty()
+        it.applicationId = (info?.get("CFBundleIdentifier") as? String).orEmpty()
     }
 
     // PhotoHost 那三根插槽，iOS 只插第一根：正文附图交 IosImages（NSURLSession 取、Skia 解）。

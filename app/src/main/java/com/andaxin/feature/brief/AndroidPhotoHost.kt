@@ -21,6 +21,16 @@ import kotlinx.coroutines.withContext
 object AndroidPhotoHost {
 
     fun install(context: Context) {
+        // 「关于」页那三样：版本号、包名，还有那块更新卡（查 release + 交系统 DownloadManager 下载）。
+        // 卡片本身留在 app（`feature/about/UpdateCard.kt`），共享层只拿这个槽。
+        com.andaxin.feature.brief.BriefEnv.versionName = com.andaxin.BuildConfig.VERSION_NAME
+        com.andaxin.feature.brief.BriefEnv.applicationId = com.andaxin.BuildConfig.APPLICATION_ID
+        com.andaxin.feature.brief.BriefEnv.aboutExtra = @Composable { open ->
+            com.andaxin.feature.about.UpdateCard(open)
+        }
+        com.andaxin.feature.brief.BriefEnv.appIcon = @Composable { size ->
+            com.andaxin.core.design.AppIconTile(com.andaxin.core.launcher.LauncherIcons.current(context), size)
+        }
         val app = context.applicationContext
 
         // 详情里那张附图：走 app 那台带磁盘缓存的解码器

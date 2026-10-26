@@ -10,17 +10,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.andaxin.BuildConfig
-import com.andaxin.app.LocalAppGraph
-import com.andaxin.core.design.AppIconTile
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Type
-import com.andaxin.core.launcher.LauncherIcons
 import com.andaxin.data.capture.UpdateFeed
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.feature.web.encodeUrl
@@ -50,8 +46,7 @@ fun AboutScreen(
     open: (String) -> Unit = {},
 ) {
     val ink = LocalInk.current
-    val graph = LocalAppGraph.current
-    val context = LocalContext.current
+    val graph = BriefEnv.graph
     /*
      * 调试这一档整个不在 main 里：`graph.debug` 由 flavor 给 —— beta 那份给实现
      * （连点十下开门 + 关于页那一格 + 运动页「模拟路线」），正式版给 null。
@@ -65,7 +60,7 @@ fun AboutScreen(
                 Modifier.fillMaxWidth().padding(top = 30.dp, bottom = 26.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                AppIconTile(LauncherIcons.current(context), size = 76.dp)
+                BriefEnv.appIcon?.invoke(76.dp)
                 Spacer(Modifier.height(18.dp))
                 Text(
                     "安大信",
@@ -78,7 +73,7 @@ fun AboutScreen(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     // 连点十下的入口在这一行上：字号、颜色都不给它特殊待遇，看不出来是按钮才对
-                    text = "v" + BuildConfig.VERSION_NAME,
+                    text = "v" + BriefEnv.versionName,
                     fontSize = Type.meta,
                     color = ink.muted,
                     modifier = Modifier
@@ -112,7 +107,7 @@ fun AboutScreen(
         }
 
         Spacer(Modifier.height(Gap.lg))
-        UpdateCard(open)
+        BriefEnv.aboutExtra?.invoke(open)
 
         Spacer(Modifier.height(Gap.lg))
         Text(
@@ -123,7 +118,7 @@ fun AboutScreen(
         )
         Spacer(Modifier.height(Gap.xs))
         // 包名从名片里挪到这儿：它是查问题时要念给我听的那一个，不是每天要看的东西
-        Text("包名 ${BuildConfig.APPLICATION_ID}", fontSize = Type.micro, color = ink.faint)
+        Text("包名 ${BriefEnv.applicationId}", fontSize = Type.micro, color = ink.faint)
         Spacer(Modifier.height(Gap.xl))
     }
 }

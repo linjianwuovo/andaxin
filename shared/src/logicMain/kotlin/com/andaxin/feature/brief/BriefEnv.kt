@@ -1,5 +1,7 @@
 package com.andaxin.feature.brief
 
+import androidx.compose.runtime.Composable
+
 import com.andaxin.core.store.SessionStore
 
 /**
@@ -24,4 +26,26 @@ object BriefEnv {
      * iOS 插的是「我这张表认不认这个 key」，所以搬一屏进来，那一格自己就长出来。
      */
     var canOpen: (String) -> Boolean = { true }
+
+    /**
+     * 版本号与包名。安卓从 BuildConfig 拿（`0.8.49` / `com.andaxin`），iOS 从自己那台
+     * NSBundle 拿（`CFBundleShortVersionString` / `CFBundleIdentifier`）—— 两边都是"这份包
+     * 到底是哪一发"的唯一凭据，崩溃报告和"我的→关于"里那行都得对得上。
+     */
+    var versionName: String = ""
+    var applicationId: String = ""
+
+    /**
+     * 「关于」页中间那块卡：安卓是更新卡（查 release、下载 apk 交给系统 DownloadManager），
+     * 全是安卓物，所以不搬 —— 由宿主在建图时插进来。iOS 不插，那一块整块不画：
+     * iOS 没有 apk 可下，摆一颗"下载"按钮就是按不动的哑按钮。
+     */
+    var aboutExtra: (@Composable (open: (String) -> Unit) -> Unit)? = null
+
+    /**
+     * 「关于」页顶上那块应用图标。安卓画的是**当前生效的那枚 launcher 图标**（换图标是安卓的
+     * alternate-icon 机制，读的是 PackageManager），iOS 没有对应物 —— 不插就整块不画，
+     * 名字、版本号那几行照旧在。
+     */
+    var appIcon: (@Composable (size: androidx.compose.ui.unit.Dp) -> Unit)? = null
 }

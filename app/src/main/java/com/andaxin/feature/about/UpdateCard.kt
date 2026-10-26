@@ -51,7 +51,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
  *    到不了 github.com（没开节点）的时候这一发会失败，那句失败原因原样贴出来，不糊"下载失败"三个字。
  */
 @Composable
-internal fun UpdateCard(open: (String) -> Unit) {
+fun UpdateCard(open: (String) -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
     val context = LocalContext.current
