@@ -49,6 +49,18 @@
       不用 usesCleartextTraffic="true"：那会把整个 App 的明文都放开，包括带 token 的那批接口。
       注意这一份只管"允不允许"，OkHttp 那边还得**有**明文能力（见 core/net/Http.kt 那段）。
     -->
+    <!--
+      关于页「爱发电」那一行要交给系统浏览器。Android 11 起包可见性受限：
+      不声明这一条，`startActivity(ACTION_VIEW, https…)` 在有些 ROM 上解析不到浏览器，
+      表现成"按了没反应"。声明了才看得见谁接 https。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".AndaXinApp"
         android:allowBackup="false"
