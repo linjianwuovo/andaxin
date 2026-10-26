@@ -55,10 +55,11 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * 扫码签到。
+ * 扫码签到：只负责"看见码、把码里的内容念出来"。
  *
- * 只负责"看见码、把码里的内容念出来"。真正的签到动作要等 AI 课堂那套接口接上，
- * 现在扫完只会把码显示给你看，不会替你签 —— 签到是写操作。
+ * 扫到 http 那条就直接把码交给 `QrSignScreen` 去开（官方那条签到本身就是网页带着会话完成的），
+ * 不再让人多点一次 —— 上课那几分钟经不起多按一次。
+ * 底下那一格始终显示码的原文，出问题时那就是唯一的凭据（那一串里带 token，只在这台机子上看得见）。
  */
 @Composable
 fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
