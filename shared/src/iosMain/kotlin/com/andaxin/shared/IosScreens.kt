@@ -25,6 +25,7 @@ import com.andaxin.feature.aiclass.ScanScreen
 import com.andaxin.feature.web.encodeUrl
 import com.andaxin.feature.aiclass.OpenCourseDetailScreen
 import com.andaxin.feature.aiclass.OpenCourseListScreen
+import com.andaxin.feature.about.AboutScreen
 import com.andaxin.feature.modules.GroupScreen
 import com.andaxin.feature.aiclass.AiClassListScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
@@ -330,6 +331,7 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
             OpenCourseDetailScreen(uid = detailId, onBack = {})
         }
         key == "group" -> IosRoute("班级群") { GroupScreen(onBack = {}) }
+        key == "about" -> IosRoute("关于安大信") { AboutScreen(onBack = {}) }
 
         // 扫码：扫到的整条 URL 交应用内网页那一扇（安卓走的是带 cookie 的 QrSignScreen，差别写在
         // ScanScreen.ios.kt 顶上那段，不在这儿重复）
