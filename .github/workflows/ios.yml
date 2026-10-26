@@ -107,6 +107,20 @@ jobs:
           kill "$CPID" 2>/dev/null || true
           echo "--- app 自己的 stdout/stderr（$(wc -c < console.txt) 字节，崩因第一现场）"
           head -120 console.txt 2>/dev/null || echo "console.txt 一个字节都没有"
+          # 未登录那台模拟器永远停在登录页 —— 顶栏、底栏水滴、红点、五格真数据
+          # 一张都截不到，我就只能改完等你手机验。app 里留了一扇只认启动参数的门
+          # （-AndaXinGuest，正常装机不带这个参数 = 死分支），带上它就直接进「逛逛」那五格。
+          echo "--- 第二趟：带 -AndaXinGuest 再起一次，截五格（顶栏 / 底栏水滴 / 红点）"
+          xcrun simctl terminate "$UDID" com.andaxin.ios 2>/dev/null || true
+          sleep 2
+          xcrun simctl launch --console --terminate-running-process "$UDID" com.andaxin.ios -AndaXinGuest > console2.txt 2>&1 &
+          GPID=$!
+          sleep 12
+          xcrun simctl io "$UDID" screenshot iosApp/simulator-guest.png || true
+          if kill -0 "$GPID" 2>/dev/null; then echo "逛逛那五格：12 秒还在跑"; else echo "逛逛那五格：自己退了，这就是崩"; fi
+          kill "$GPID" 2>/dev/null || true
+          echo "--- 第二趟的 stderr（$(wc -c < console2.txt) 字节）"
+          head -40 console2.txt 2>/dev/null || true
           echo "--- 这个包里嵌的 framework 到底有没有二进制"
           ls -la "$APP/Frameworks" 2>/dev/null || echo "没有 Frameworks 目录"
           file "$APP/Frameworks/"*.framework/* 2>/dev/null | head -6 || true
@@ -184,8 +198,10 @@ jobs:
           path: |
             iosApp/simulator-launch.png
             iosApp/simulator-later.png
+            iosApp/simulator-guest.png
             simlog.txt
             console.txt
+            console2.txt
             AndaXin-unsigned.ipa
             shared-framework.zip
           if-no-files-found: warn

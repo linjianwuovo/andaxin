@@ -66,6 +66,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             NSLog("AndaXin 壳：Gate 变了 showTabs=\(tabs)")
             self.swap(toTabs: tabs, g)
         }
+
+        // 只给 CI 用的一扇门：带 `-AndaXinGuest` 启动参数时才走「先不登录，随便看看」。
+        // 平时用户手上那一发永远不带这个参数，所以它是个死分支，不改任何正常行为。
+        // 为什么要它：CI 那台模拟器永远是未登录，五格（顶栏、底栏水滴、红点、真数据）
+        // 在 CI 里一张都截不到 —— 那我就只能"改了等你看手机"，一发 28 分钟全押在你身上。
+        // 有了这扇门，CI 能直接截到五格，改完自己读图定性。
+        if CommandLine.arguments.contains("-AndaXinGuest") {
+            NSLog("AndaXin 壳：带 -AndaXinGuest 启动（CI 专用），直接进「逛逛」那五格")
+            g.browseAsGuest()
+        }
     }
 
     /// 换根。showingTabs 存一份现状，别在重复回调里把用户当前那一格的导航栈掀掉。
