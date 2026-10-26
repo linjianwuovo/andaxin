@@ -1,0 +1,48 @@
+package com.andaxin.feature.brief
+
+import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.asImageBitmap
+import com.andaxin.core.net.Images
+import com.andaxin.data.capture.RepairPhotos
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/*
+ * 安卓这一端把共享层那个 [PhotoHost] 的三个槽插上。AppGraph 构造时调一次
+ * （`AndroidPhotoHost.install(context)`），跟 iOS 那边"什么都不插"正好对称。
+ *
+ * 为什么放 app/ 不放共享层 androidMain：`Images`（BitmapFactory）和 `RepairPhotos`
+ * 本来就住在 app/，为了搬一块底栏把它们拖进 shared 的 androidMain，牵动面比这块屏还大。
+ */
+object AndroidPhotoHost {
+
+    fun install(context: Context) {
+        val app = context.applicationContext
+
+        // 详情里那张附图：走 app 那台带磁盘缓存的解码器
+        PhotoHost.attached = { url -> Images.load(app.cacheDir, url) }
+
+        // 报修单上校方回的那条路径 → 缩略图（px 是界面要的那格边长）
+        PhotoHost.thumb = { uri, px ->
+            withContext(Dispatchers.IO) { RepairPhotos.thumb(app, uri, px)?.asImageBitmap() }
+        }
+
+        // 相册选择器：安卓的 launcher 必须在组合期注册，所以这个槽交回来的是"按一下就开"那个动作
+        PhotoHost.pickLauncher = @Composable { max, onPicked ->
+            val launcher = rememberLauncherForActivityResult(
+                ActivityResultContracts.PickMultipleVisualMedia(max),
+            ) { got -> onPicked(got.map { it.toString() }) }
+            // 先起名再交出去：裸写一个 { ... } 挂在上一行后面，会被当成上一个调用的尾随 lambda
+            val launch: () -> Unit = {
+                launcher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            }
+            launch
+        }
+    }
+}

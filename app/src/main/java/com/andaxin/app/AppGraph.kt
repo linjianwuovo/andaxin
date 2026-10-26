@@ -89,6 +89,11 @@ class AppGraph(val context: Context) {
     /** 应用私有目录的具名文件（快照、第三方 token、跑步路线），实现来自共享层的 AppFiles。 */
     private val files = com.andaxin.core.store.ContextFiles(context)
 
+    // 10-26：BriefKit 搬进共享层之后，安卓这两处平台件（附图解码、相册选择器）改成建图时
+    // 插进共享层的插槽 —— 见 shared/logicMain 的 feature/brief/PhotoHost.kt。
+    // iOS 那端什么都不插，界面就走它自己写好的那条"取不到就明写一句 / 不画那颗＋"。
+    private val photoHost = com.andaxin.feature.brief.AndroidPhotoHost.also { it.install(context) }
+
     // 平移注：Store 进共享层了，路径必须指到老 preferencesDataStore(name="andaxin")
     // 一直在写的同一份文件，用户数据（登录态、设置）原样续用。
     val store: Store by lazy {
