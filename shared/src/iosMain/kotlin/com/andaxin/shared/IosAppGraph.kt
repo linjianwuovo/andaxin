@@ -122,6 +122,11 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     // 插槽没人插时界面自己会明写一句"这一端还没接传图"，不会画一颗按不动的「＋」。
     init {
         com.andaxin.feature.brief.PhotoHost.attached = { url -> IosImages.load(url) }
+        // 地图瓦片那台：运动那一屏画高德瓦片要它（存 Documents/tiles，取用 NSURLSession）
+        // 自己新建一份 IosFiles：它是无状态的（只记根路径），而下面那条 `files` 属性
+        // 在这个 init 之后才初始化，拿它会撞上"变量必须先初始化"
+        com.andaxin.core.map.TileHost.store =
+            com.andaxin.core.map.IosTileStore(com.andaxin.core.store.IosFiles(documentsPath))
     }
 
     // 数据源开关（照 AppGraph 的 Source(capture, local, session) 三件套）

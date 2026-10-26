@@ -124,7 +124,7 @@ fun TileMap(
     // 乘上 density 去贴就是把 256 的图硬拉到 2.75 倍，糊；1:1 贴最锐。
     // 直链最高到 z18，19/20 级按 SOURCE_MAX_ZOOM 做数字放大，见上面的常量注释。
     val dd = 1.0
-    val cache = remember { TileCache(context.cacheDir) }
+    val cache = remember { TileCache(TileHost.store ?: NoopTileStore) }
     val scope = rememberCoroutineScope()
     val tilePx = Tiles.SIZE.toFloat()
     var loadedTick by remember { mutableIntStateOf(0) }
@@ -421,34 +421,3 @@ private fun tilesFor(
     }
 }
 
-/** 内存 + 磁盘两级瓦片缓存：一张 256² 约 256KB，内存留 40MB，其余落盘。 */
-private class TileCache(root: File) {
-
-    private val dir = File(root, "tiles").apply { mkdirs() }
-
-    private val mem = object : android.util.LruCache<String, ImageBitmap>(40 * 1024 * 1024) {
-        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
-    }
-
-    fun get(key: String): ImageBitmap? = mem.get(key)
-
-    suspend fun load(url: String, key: String): ImageBitmap? = withContext(Dispatchers.IO) {
-        val file = File(dir, key)
-        val bytes = if (file.exists() && file.length() > 0L) {
-            runCatching { file.readBytes() }.getOrNull()
-        } else {
-            download(url)?.also { runCatching { file.writeBytes(it) } }
-        }
-        bytes?.let { raw ->
-            BitmapFactory.decodeByteArray(raw, 0, raw.size)?.asImageBitmap()?.also { mem.put(key, it) }
-        }
-    }
-
-    private fun download(url: String): ByteArray? = try {
-        Http.client.newCall(Request.Builder().url(url).build()).execute().use { r ->
-            if (r.isSuccessful) r.body?.bytes() else null
-        }
-    } catch (e: Exception) {
-        null
-    }
-}

@@ -28,6 +28,7 @@ object AndroidPhotoHost {
         com.andaxin.feature.brief.BriefEnv.aboutExtra = @Composable { open ->
             com.andaxin.feature.about.UpdateCard(open)
         }
+        com.andaxin.core.map.TileHost.store = com.andaxin.core.map.AndroidTileStore(context)
         com.andaxin.feature.brief.BriefEnv.appIcon = @Composable { size ->
             com.andaxin.core.design.AppIconTile(com.andaxin.core.launcher.LauncherIcons.current(context), size)
         }
