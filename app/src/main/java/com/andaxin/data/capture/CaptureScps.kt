@@ -178,9 +178,16 @@ class CaptureNotices(private val school: School) : NoticeFeed {
                     publishedAt = o.optString("publishTime").substringBeforeLast(':'),
                     source = o.optString("publishPerson").ifBlank { t.optString("type") },
                     coverUrl = o.optString("image1").takeIf { it.startsWith("http") },
+                    category = t.optString("type"),
                 )
             }
         }
+        /*
+         * 按发布时间从新到旧重排。以前是"一类十条，接下一类"就交出去 ——
+         * 四五个分类拼在一屏里，日期是来回跳的（学校要闻排完排学院动态，看着像坏了）。
+         * `publishTime` 是 "2026-10-19 10:57" 这种定长格式，字典序就是时间序，不用解析。
+         */
+        out.sortByDescending { it.publishedAt }
         return if (out.isEmpty()) {
             // 一条都没拿到时，把服务器/网络给的第一句原话带出去，别只说"没拉到"
             Result.failure(Exception(firstError?.message ?: "分类是空的，校方没给任何一条公告"))
