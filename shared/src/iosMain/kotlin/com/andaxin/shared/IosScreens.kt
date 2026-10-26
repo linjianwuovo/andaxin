@@ -18,6 +18,14 @@ import com.andaxin.feature.message.MessageDeps
 import com.andaxin.feature.message.MessageScreen
 import com.andaxin.feature.me.ProfileDeps
 import com.andaxin.feature.modules.AffairDetailScreen
+import com.andaxin.core.net.formUrlDecode
+import com.andaxin.feature.aiclass.CoursewareScreen
+import com.andaxin.feature.aiclass.RecordPlayScreen
+import com.andaxin.feature.aiclass.ScanScreen
+import com.andaxin.feature.web.encodeUrl
+import com.andaxin.feature.aiclass.OpenCourseDetailScreen
+import com.andaxin.feature.aiclass.OpenCourseListScreen
+import com.andaxin.feature.modules.GroupScreen
 import com.andaxin.feature.aiclass.AiClassListScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
 import com.andaxin.feature.modules.CampusCardScreen
@@ -45,6 +53,7 @@ import com.andaxin.feature.me.ProfileScreen
 import com.andaxin.feature.modules.LoginDeps
 import com.andaxin.feature.modules.LoginScreen
 import com.andaxin.feature.modules.OnboardingScreen
+import com.andaxin.feature.web.WebScreen
 import com.andaxin.feature.notice.NoticeDeps
 import com.andaxin.feature.notice.NoticeDetailDeps
 import com.andaxin.feature.notice.NoticeDetailScreen
@@ -313,6 +322,38 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         key == "aiclass" -> IosRoute("AI 课堂") { AiClassListScreen(open = open, onBack = {}) }
         key.startsWith("aiclass/detail/") -> IosRoute("课程详情") {
             CourseDetailScreen(courseId = detailId, open = open, onBack = {})
+        }
+
+        // 公开课、班级群、课件预览（那一串 id 的形状照安卓那条 Route 常量，不自创）
+        key == "opencourse" -> IosRoute("公开课") { OpenCourseListScreen(open = open, onBack = {}) }
+        key.startsWith("opencourse/detail/") -> IosRoute("公开课详情") {
+            OpenCourseDetailScreen(uid = detailId, onBack = {})
+        }
+        key == "group" -> IosRoute("班级群") { GroupScreen(onBack = {}) }
+
+        // 扫码：扫到的整条 URL 交应用内网页那一扇（安卓走的是带 cookie 的 QrSignScreen，差别写在
+        // ScanScreen.ios.kt 顶上那段，不在这儿重复）
+        key == "aiclass/scan" -> IosRoute("扫码签到") {
+            ScanScreen(onBack = {}, onSignUrl = { url -> push(host, "web/" + encodeUrl(url)) })
+        }
+        key.startsWith("aiclass/play/") -> IosRoute("看录像") {
+            RecordPlayScreen(resourceId = key.removePrefix("aiclass/play/"), onBack = {})
+        }
+
+        // 应用内网页：参数是 URL-safe Base64（无填充）后的地址，编解码都在共享层 UrlCodec 里
+        key.startsWith("web/") -> IosRoute("网页") {
+            WebScreen(encoded = key.removePrefix("web/"), title = "", onBack = {})
+        }
+        key.startsWith("aiclass/paper/") -> {
+            val rest = key.removePrefix("aiclass/paper/")
+            val ids = rest.substringBefore('?').split('/')
+            val title = formUrlDecode(rest.substringAfter("title=", ""))
+            if (ids.size < 3) null else IosRoute(title.ifBlank { "课件" }) {
+                CoursewareScreen(
+                    resourceId = ids[0], coursewareId = ids[1], teachClassId = ids[2],
+                    title = title, onBack = {},
+                )
+            }
         }
 
         // 公告详情：安卓那份的正文附图走 RemoteImage（OkHttp + BitmapFactory），
