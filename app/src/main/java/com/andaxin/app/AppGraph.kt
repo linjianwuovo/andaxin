@@ -247,7 +247,7 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
      * 契约是 10-20 晚拿我们自己那把活 token 四发逐条现打验的（`CaptureDormBoard` 顶上那段）。
      * 老的 `dormList`（从 ywlz 待办里挑 msgType=2）留着给待办那一屏用，两条路不互相覆盖。
      */
-    val dormBoard by lazy { CaptureDormBoard(school, session) }
+    override val dormBoard by lazy { CaptureDormBoard(school, session) }
     val dormTaskDetail: DetailSource by lazy { CaptureDormTaskDetail(school, dormBoard) }
     override val dormDetail: DetailSource by lazy {
         DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
@@ -282,7 +282,7 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
      * 校园卡（第三方新开普）。10-20 现打把三跳会话交换接通了，取证见 `CampusCardClient` 顶上那段。
      * 换出来的那把第三方 token 落在 `filesDir/ecard_token.txt` 复用 —— 每重换一次会踢掉上一把。
      */
-    val card: CampusCardClient by lazy {
+    override val card: CampusCardClient by lazy {
         CampusCardClient(school, session, files)
     }
 
@@ -291,20 +291,20 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
      * 校内的 access_token 要先经一次单点登录换成 FIF 自己的 JWT，业务请求全走 header。
      * 见 `FifSession` 顶上那段取证 —— 本轮还没现打通过，等有机内会话补。
      */
-    val fif: com.andaxin.data.capture.FifSession by lazy {
+    override val fif: com.andaxin.data.capture.FifSession by lazy {
         com.andaxin.data.capture.FifSession(store, session)
     }
 
-    val fifApi: com.andaxin.data.capture.FifApi by lazy { com.andaxin.data.capture.FifApi(fif) }
+    override val fifApi: com.andaxin.data.capture.FifApi by lazy { com.andaxin.data.capture.FifApi(fif) }
 
     /** 课程列表：走 FIF 自己的 myClassroom（抓包清点里是 A 级实样那条）。 */
     /**
      * 笔记站（FIF 的独立子域）。八条口 10-20 现打全通，取证见 `NoteApi` 顶上那段 ——
      * **`schoolId` 是隐式必填**，只发 `userId` 会静默回空数组。
      */
-    val notes: com.andaxin.data.capture.NoteApi by lazy { com.andaxin.data.capture.NoteApi(fif) }
+    override val notes: com.andaxin.data.capture.NoteApi by lazy { com.andaxin.data.capture.NoteApi(fif) }
 
-    val aiCourses: com.andaxin.data.capture.AiCourseFeed by lazy {
+    override val aiCourses: com.andaxin.data.capture.AiCourseFeed by lazy {
         com.andaxin.data.capture.AiCourseFeed(fif, fifApi)
     }
 

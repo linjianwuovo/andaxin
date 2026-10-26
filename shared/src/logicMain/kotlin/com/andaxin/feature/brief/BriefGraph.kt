@@ -35,4 +35,17 @@ interface BriefGraph {
     val affairForm: FormSource
     val dormList: ListSource
     val dormDetail: DetailSource
+
+    /**
+     * 下面这六条不是 `*Source`，是 capture 类本身 —— 因为用它们的那三块屏（查寝看板、校园卡、
+     * AI 课堂）不走 BriefKit 那个"列表/详情/表单"形状：查寝看板要的是月概览 + 月历 + 两节任务
+     * 一份整体状态，校园卡要的是余额 + 流水 + 那把第三方 token，AI 课堂要的是 FIF 那套独立鉴权。
+     * 硬塞进 `ListSource` 会把它们各自的形状抹平。
+     */
+    val dormBoard: com.andaxin.data.capture.CaptureDormBoard
+    val card: com.andaxin.data.capture.CampusCardClient
+    val fif: com.andaxin.data.capture.FifSession
+    val fifApi: com.andaxin.data.capture.FifApi
+    val notes: com.andaxin.data.capture.NoteApi
+    val aiCourses: com.andaxin.data.capture.AiCourseFeed
 }

@@ -69,8 +69,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import platform.Foundation.NSLog
 
@@ -131,7 +129,6 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     val noticeFeed: NoticeFeed = NoticeSource(CaptureNotices(school), localNotices, session)
 
     private val ywlz = YwlzTasks(school)
-    private val dormBoard = CaptureDormBoard(school, session)
     private val sportsFeed: SportsFeed = com.andaxin.data.capture.CaptureSports(
         school,
         com.andaxin.data.local.LocalSports(null),
@@ -197,6 +194,29 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         DetailSwitch(CaptureDormDetail(school, ywlz, dormCapture), Dorm.detail, session)
     }
 
+    /**
+     * 查寝看板 / 校园卡 / AI 课堂这三块的数据口。同样一句照 AppGraph 抄。
+     *
+     * `files` 是 iOS 那份 AppFiles（Documents 下，见 IosFiles）：校园卡那把第三方 token
+     * 要落在文件里复用 —— 每重换一次会踢掉上一把，落不了文件就是每次进那一屏都重新换一把。
+     */
+    private val files = com.andaxin.core.store.IosFiles(documentsPath)
+
+    override val card: com.andaxin.data.capture.CampusCardClient by lazy {
+        com.andaxin.data.capture.CampusCardClient(school, session, files)
+    }
+
+    /** AI 课堂（FIF）跟 in.aiit 是两套鉴权：校内 token 先换成 FIF 自己的 JWT，业务全走 header。 */
+    override val fif: com.andaxin.data.capture.FifSession by lazy {
+        com.andaxin.data.capture.FifSession(store, session)
+    }
+    override val fifApi: com.andaxin.data.capture.FifApi by lazy { com.andaxin.data.capture.FifApi(fif) }
+    override val notes: com.andaxin.data.capture.NoteApi by lazy { com.andaxin.data.capture.NoteApi(fif) }
+    override val aiCourses: com.andaxin.data.capture.AiCourseFeed by lazy {
+        com.andaxin.data.capture.AiCourseFeed(fif, fifApi)
+    }
+    override val dormBoard: CaptureDormBoard = CaptureDormBoard(school, session)
+
     val dashboardFeed: DashboardFeed by lazy {
         DashboardSource(
             school, session,
@@ -258,16 +278,6 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     }
 
     /**
-     * 「先不登录，随便看看」这一格在 iOS 上的保险：LoginScreen 自己那条 launch 起在 Compose
-     * 的作用域里，那儿插不进异常处理器 —— 存储一抛就是闪退。这条走图里的 scope（有 graphFailure
-     * 接着），同一个键写第二遍：值是 "1"，幂等，不 corrupt。
-     * 换根本身不归它管，见 watchRoot。
-     */
-    fun browseAsGuest() {
-        scope.launch { session.browseWithoutLogin() }
-    }
-
-    /**
      * 启动期那一次换根：挂起查完登录态，回主线程告诉 Swift（isSignedIn 是普通 Boolean）。
      *
      * 94 那发我把启动换根也交给 watchRoot，结果模拟器里进程活着、界面却压根没上前台，
@@ -287,21 +297,49 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
      * 所以「先不登录逛逛」「我的 → 去登录」「退出登录」这三格点了都只震一下：
      * 标志写进去了，根没人换。
      *
-     * distinctUntilChanged 是为了别在改宿舍/拉资料这种 session 更新时
-     * 把用户当前那一格的导航栈掀掉。
-     *
-     * 这里**不 drop(1)**。上一版 drop 是为了把首帧让给 resolveGate，但 StateFlow 只存最新值：
-     * `-AndaXinGuest` 那发（CI 截五格用）写 browsing 就在几毫秒内，watchRoot 开始 collect 时
-     * 第一次收到的就已经是 true 了 —— drop(1) 把这一口吃掉，后面再没有 emission，
-     * 日志里 browseAsGuest 打了、根却没换。换根本身是幂等的（SceneDelegate.swap 存着
-     * showingTabs，同值直接 return），所以首帧重复一次没有副作用，不该为它丢状态。
+     * 去重自己做（`last`），不用 distinctUntilChanged：那样每次原始 emission 都能打出一行，
+     * 把"流根本没再发"和"发了但派生值没变"这两种情况分开。101 那发的现场就是靠这个才看清的 ——
+     * 上一版我拿 `drop(1)` 解释"逛逛没换根"，删了 drop 重跑，日志里仍然只有
+     * `Gate 变了 showTabs=false` 一行，写完标志之后再没有第二次 emission —— 那个解释是错的。
+     * 换根本身幂等（SceneDelegate.swap 存着 showingTabs，同值直接 return），首帧重复一次没副作用。
      */
     fun watchRoot(onChange: (showTabs: Boolean) -> Unit) {
         scope.launch {
-            session.state
-                .map { it.loggedIn || it.browsing }
-                .distinctUntilChanged()
-                .collect { onChange(it) }
+            var last: Boolean? = null
+            session.state.collect { s ->
+                val show = s.loggedIn || s.browsing
+                NSLog("AndaXin 图：Gate 发 loggedIn=" + s.loggedIn + " browsing=" + s.browsing + " → showTabs=" + show)
+                if (show != last) {
+                    last = show
+                    onChange(show)
+                }
+            }
+        }
+    }
+
+    /**
+     * 「先不登录，随便看看」这一格在 iOS 上的两步：写标志 + 换根。
+     *
+     * 换根这一步**不等那条流**，写完直接回调宿主 —— 因为 101 那发证实在 iOS 上
+     * `session.state` 写完标志后并没有再发一次（为什么没发是另一条线在查，见 watchRoot
+     * 那行日志），而这一格点了以后什么都没发生是不能接受的：界面不能等一个不来的东西。
+     * 标志该写还是写，所以下次冷启动仍然站在逛逛里。
+     *
+     * 走"注册一个回调"而不是留一个可空函数属性：K/N 把函数类型导出给 Swift 时，
+     * 属性那种 `var hook: (() -> Unit)?` 桥接不干净，参数形式（跟 resolveGate/watchRoot 一样）是验过的。
+     */
+    private var guestHook: (() -> Unit)? = null
+
+    fun onGuest(onWanted: () -> Unit) {
+        guestHook = onWanted
+    }
+
+    fun browseAsGuest() {
+        scope.launch {
+            val why = runCatching { session.browseWithoutLogin() }
+                .exceptionOrNull()?.let { "失败：" + it } ?: "成功"
+            NSLog("AndaXin 图：逛逛标志写盘" + why + "，换根直接交 onGuest 那个回调")
+            guestHook?.invoke()
         }
     }
 }
