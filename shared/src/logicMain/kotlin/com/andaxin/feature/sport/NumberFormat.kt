@@ -71,10 +71,52 @@ fun sportNumberSelfCheck(): String = buildString {
     append("mmss65[").append(mmss(65)).append("] ")
     append("pace65[").append(paceLabel(65)).append("] ")
     append("|| 这台机器的转换：").append(floatToIntProbe())
+    append(" || ").append(crashProbe())
 }
 
-/** 从数组里取，别让编译器当成常量折掉 —— 要测的是运行时那条转换，不是它折完的结果。 */
-private val PROBE_SRC = doubleArrayOf(0.0, 0.0, 1.0, 1e150)
+/**
+ * 顶层可变：编译器不许拿它做常量传播。
+ *
+ * 上一发（109）的探针就是栽在这儿 —— 它打出来的是 `NaN→得0 Inf→得9223372036854775807`，
+ * 看着像"K/N 的 Double→Long 是饱和、不抛"，可那三个值全是编译期常量，LLVM 折完之后
+ * 根本没走运行时那条转换。**这条测量不成立**，所以定性还悬着。这一份从内存里读、
+ * 且经过一个运行时才写得进去的 var，折不动。
+ */
+private var probeSink = 0.0
+
+private fun opaque(x: Double): Double {
+    probeSink = x
+    return probeSink
+}
+
+/** 108 那发（`1ed23ea`）里 `fixed()` 的原样一份，只给探针用：拿它复现"到底抛不抛"。 */
+private fun fixedOld(v: Double, digits: Int): String {
+    val pow = 10.0.let { var acc = 1.0; repeat(digits) { acc *= it }; acc }
+    val scaled = kotlin.math.round(v * pow).toLong()
+    val sign = if (scaled < 0) "-" else ""
+    val a = if (scaled < 0) -scaled else -scaled
+    val whole = a / pow.toLong()
+    val frac = (a % pow.toLong()).toString().padStart(digits, '0')
+    return "$sign$whole.$frac"
+}
+
+/**
+ * 决定性探针：把**旧实现**喂上非有限值，看它是回一个字符串还是抛。
+ * 抛 → 015804/015808 那两份 .ips 的 `ThrowArithmeticException ← fixed` 就是它，新写的
+ * 那道 isFinite + 量级闸门即对症；不抛 → 崩点不在 `fixed` 里，我前面那套定性作废，
+ * 得换地方找（那就别拿"装完不崩"当修好了）。
+ */
+fun crashProbe(): String {
+    val nan = opaque(0.0) / opaque(0.0)
+    val inf = opaque(1.0) / opaque(0.0)
+    val huge = opaque(1e150) * opaque(1e150)
+    fun call(label: String, v: Double): String = label + "=" +
+        runCatching { fixedOld(opaque(v), 2) }.fold({ "'" + it + "'" }, { "抛" + it::class.simpleName })
+    return "旧fixed: " + call("NaN", nan) + " " + call("Inf", inf) + " " + call("1e300", huge) +
+        " " + call("12.345", 12.345) +
+        " | toLong(NaN)=" + runCatching { opaque(nan).toLong() }
+            .fold({ it.toString() }, { "抛" + it::class.simpleName })
+}
 
 /**
  * 「非有限值 / 装不下的值 转 Long，在这台机器上到底是抛还是饱和」—— 这一条是我整个定性的
@@ -83,12 +125,12 @@ private val PROBE_SRC = doubleArrayOf(0.0, 0.0, 1.0, 1e150)
  */
 fun floatToIntProbe(): String {
     val cases = listOf(
-        "NaN" to PROBE_SRC[0] / PROBE_SRC[1],
-        "Inf" to PROBE_SRC[2] / PROBE_SRC[1],
-        "1e300" to PROBE_SRC[3] * PROBE_SRC[3],
+        "NaN" to opaque(0.0) / opaque(0.0),
+        "Inf" to opaque(1.0) / opaque(0.0),
+        "1e300" to opaque(1e150) * opaque(1e150),
     )
     return cases.joinToString(" ") { (label, v) ->
-        label + "→" + runCatching { v.toLong() }.fold(
+        label + "→" + runCatching { opaque(v).toLong() }.fold(
             { "得" + it.toString() },
             { "抛" + it::class.simpleName },
         )
