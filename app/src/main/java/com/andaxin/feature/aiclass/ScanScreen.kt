@@ -100,8 +100,8 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
             when {
                 granted -> CameraPreview(onCode = { raw ->
                     code = raw
-                    // 签到码扫出来是个网页链接 —— 官方就是拿带会话的 WebView 打开它完成签到。
-                    // 第一次识别到就跳过去，别让人再点一下（上课那几分钟经不起多点一次）。
+                    // 码里那条链接交给签到那一屏去发（带着会话自己发一次，读 302 的落点）。
+                    // 第一次识别到就跳过去，别让人再点一下 —— 上课那几分钟经不起多按一次。
                     if (raw.startsWith("http", ignoreCase = true)) onSignUrl(raw)
                 })
                 denied -> Text("没给相机权限", fontSize = Type.body, color = Color.White)

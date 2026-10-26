@@ -1,87 +1,68 @@
 package com.andaxin.feature.aiclass
 
-import android.annotation.SuppressLint
-import android.graphics.Bitmap
-import android.webkit.CookieManager
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Type
 import com.andaxin.feature.brief.ScaffoldPage
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 
-/**
- * 扫码签到：把二维码里那个网页原样打开。
+/*
+ * 扫码签到：把码里那条链接带着 AI 课堂的会话**自己发一次**，读那一发的 302 落点。
  *
- * 为什么不是自己发接口：FIF 那个码解出来是
- * `https://sttp.fifedu.com/coursecenter-interaction/qrcodeV2/qrcodeHandler?token=…&openTheWay=2`，
- * 它回的是 **H5 页面**（`text/html`），签到是页面带着 FIF 会话去完成的。
- * 我拿 Bearer 直发过同族的 `checkQrcodeHandler`，回的是 `code:1000 服务器异常` ——
- * 说明那条口要的字段不止 JS 里那三个，再猜下去只会把"签没签上"变得更难查。
- * 所以走官方那条路：把 App 里这份 FIF 会话的 cookie 灌进 WebView，再打开这个链接。
+ * 这一屏以前是个 WebView（把 FIF 的 cookie 灌进 WebView，再打开那个网页，让页面去签）。
+ * 那条路是错的，10-26 早上他扫课堂签到码扫出来的就是它的下场：整屏只剩一个蓝色 i 和
+ * 「请在微信客户端打开链接」，而顶上还挂着"正在打开签到页…"看着像在忙。
+ * 为什么必然走到那儿：FIF 那一发要的是 `authorization: Basic <jwt>` 这个头，
+ * 而它服务端**一条 Set-Cookie 都不发**（`FifSession` 文件头那条实测就是这件事）——
+ * 拿 cookie 当会话递过去，递过去的是空的，那一跳就被推去登录，登录页又是微信专用的。
  *
- * 页面里是学校自己的内容，我们只负责把会话递过去、把结果照原样显示 ——
- * 不注入任何脚本，也不替用户点页面上的按钮。
+ * 现在照官方那一发自己做：`qrcodeHandler?token=…&openTheWay=2` + 那两个头 + WebView 那串 UA，
+ * 不跟跳转，看 `Location` 里是 `signSuccess` / `codeExpired` / `loginManage`。
+ * 细节都在 `FifSession.qrSign`，那一层注释里把取证归属标清了。
  *
- * **但不是每条码都这样打得开，这一屏得先认出来。** 10-26 08:17 他扫课堂签到码，
- * 整屏就一个蓝色 i 加一句「请在微信客户端打开链接」，而顶上还挂着"正在打开签到页…"，
- * 看着像在加载 —— 那是微信挡在 `open.weixin.qq.com/connect/oauth2/...` 这类链接前面的门：
- * 它要的是微信内置浏览器那套 JSBridge 和微信登录态。我们的 WebView 换什么 UA 都进不去，
- * 换了也只是让同一句拒绝早点出现。所以这种码在**加载之前**就判掉，别把一屏白底留给人猜"签上了没有"。
+ * 扫到码就发，不让人多点一次 —— 上课那几分钟经不起多按一次；失败才给一颗「再发一次」，
+ * 按一次发一次，不自动重试。
  */
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun QrSignScreen(url: String, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
     val ink = LocalInk.current
-    var done by remember { mutableStateOf(false) }
-    var trouble by remember { mutableStateOf<String?>(null) }
-    // 跳到了 App 打不开的那一类链接（微信专用）时，把原因写在这儿，而不是继续显示那一页拒绝
-    var blocked by remember { mutableStateOf<String?>(null) }
+    // 递增一次就重跑上面那个 LaunchedEffect —— 重试只有人按这一条路
+    var tryNo by remember { mutableIntStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+    var ok by remember { mutableStateOf(false) }
+    var line by remember { mutableStateOf<String?>(null) }
 
     val wechat = wechatOnly(url)
 
-    // cookie 要在 loadUrl 之前塞进去，否则第一跳就是未登录的那一版页面
-    LaunchedEffect(url) {
-        if (wechat) return@LaunchedEffect          // 这一发根本不该出去
-        runCatching {
-            val header = graph.fif.cookieHeader("fifedu.com")
-            if (header.isBlank()) {
-                // 会话是空的：那条链接自己带 token，也许照样能签；但万一它把页面推去登录，
-                // 原因得在这儿先写着，别等回头猜。
-                trouble = "没带上 AI 课堂那套的会话（本机没登录它）"
-            } else {
-                CookieManager.getInstance().apply {
-                    setAcceptCookie(true)
-                    header.split("; ").forEach { pair ->
-                        val i = pair.indexOf('=')
-                        if (i > 0) {
-                            setCookie("https://sttp.fifedu.com", "${pair.substring(0, i)}=${pair.substring(i + 1)}; path=/")
-                        }
-                    }
-                }
-            }
-        }.onFailure { trouble = "会话没递过去：${it.message ?: it.javaClass.simpleName}" }
+    LaunchedEffect(url, tryNo) {
+        if (url.isBlank() || wechat) return@LaunchedEffect
+        busy = true
+        ok = false
+        line = null
+        graph.fif.qrSign(url).fold(
+            onSuccess = { ok = true; line = it },
+            onFailure = { line = it.message ?: it.javaClass.simpleName },
+        )
+        busy = false
     }
 
     ScaffoldPage(title = "扫码签到", onBack = onBack) {
@@ -89,96 +70,67 @@ fun QrSignScreen(url: String, onBack: () -> Unit) {
             Text("码里没有链接", fontSize = Type.body, color = ink.muted)
             return@ScaffoldPage
         }
-        // 这条码到底指向哪儿 —— 只报主机名，不带后面那串 token
-        Text(
-            "码里是 ${hostOf(url)}",
-            fontSize = Type.micro,
-            color = ink.faint,
-            modifier = Modifier.padding(bottom = Gap.xs),
-        )
-        trouble?.let {
-            Text(it, fontSize = Type.meta, color = ink.muted)
-        }
-        if (wechat || blocked != null) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = Gap.screen, vertical = Gap.xl)) {
-                Text(
-                    "这一条 App 里签不成。",
-                    fontSize = Type.body,
-                    fontWeight = FontWeight.Medium,
-                    color = ink.strong,
-                )
-                Spacer(Modifier.height(Gap.sm))
-                Text(
-                    text = (blocked ?: "这条码指向的是微信的授权入口") +
-                        " —— 它只认微信内置浏览器那一套（要微信自己的登录态和 JSBridge）。" +
-                        "App 里的浏览器打开它，对面回的就是「请在微信客户端打开链接」：" +
-                        "那一页是微信的拒绝页，不是签到页。这一发没签上。",
-                    fontSize = Type.meta,
-                    color = ink.muted,
-                    lineHeight = Type.metaLine,
-                )
-                Spacer(Modifier.height(Gap.sm))
-                Text(
-                    "要签的是这门课的课堂签到，那这条码不是 AI 课堂那套发的 —— " +
-                        "它给的是 sttp.fifedu.com 那条，那种在这里打得开。",
-                    fontSize = Type.meta,
-                    color = ink.faint,
-                    lineHeight = Type.metaLine,
-                )
-            }
+        // 只报主机名：那串 token 不上屏
+        Text("码里是 ${hostOf(url)}", fontSize = Type.micro, color = ink.faint)
+        Spacer(Modifier.height(Gap.lg))
+
+        if (wechat) {
+            Text(
+                "这一条不是 AI 课堂的码。",
+                fontSize = Type.body,
+                fontWeight = FontWeight.Medium,
+                color = ink.strong,
+            )
+            Spacer(Modifier.height(Gap.sm))
+            Text(
+                "它指向 ${hostOf(url)} —— 微信的授权入口，只认微信内置浏览器那一套。" +
+                    "这种码我们这边发不出去，也没法替你签。",
+                fontSize = Type.meta,
+                color = ink.muted,
+                lineHeight = Type.metaLine,
+            )
             return@ScaffoldPage
         }
-        Box(Modifier.fillMaxSize().padding(top = 4.dp)) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.userAgentString = settings.userAgentString + " Android"
-                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageStarted(view: WebView?, u: String?, favicon: Bitmap?) {
-                                done = false
-                            }
 
-                            override fun onPageFinished(view: WebView?, u: String?) {
-                                done = true
-                            }
-
-                            /**
-                             * 页面自己往微信那一跳（签到失败跳去"请用微信打开"）时拦下来。
-                             * 不拦的话 WebView 会停在那句拒绝上，看着像加载完了。
-                             */
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView?, request: android.webkit.WebResourceRequest?,
-                            ): Boolean {
-                                val to = request?.url?.toString().orEmpty()
-                                if (wechatOnly(to)) {
-                                    blocked = "这一页把你送去了 ${hostOf(to)}"
-                                    return true      // 那一跳不跟
-                                }
-                                return false
-                            }
-
-                            override fun onReceivedError(
-                                view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?,
-                            ) {
-                                trouble = error?.description?.toString()
-                            }
-                        }
-                        loadUrl(url)
-                    }
-                },
+        Text(
+            text = when {
+                busy -> "正在签到…"
+                ok -> "签到成功"
+                else -> line ?: "没签上"
+            },
+            fontSize = if (ok) Type.title else Type.body,
+            fontWeight = if (ok || busy) FontWeight.Medium else FontWeight.Normal,
+            color = when {
+                ok -> if (ink.dark) Palette.NightTeal else Palette.TealInk
+                busy -> ink.muted
+                else -> ink.strong
+            },
+        )
+        if (!ok && line != null && !busy) {
+            Spacer(Modifier.height(Gap.sm))
+            Text(
+                "这一发没签上，原因就是上面那句。",
+                fontSize = Type.meta,
+                color = ink.faint,
+                lineHeight = Type.metaLine,
             )
-            if (!done && trouble == null) {
-                Text(
-                    "正在打开签到页…",
-                    fontSize = Type.meta,
-                    color = ink.muted,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                )
+            Spacer(Modifier.height(Gap.lg))
+            MiuixButton(
+                onClick = { tryNo++ },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColorsPrimary(),
+            ) {
+                Text("再发一次", fontSize = Type.title, fontWeight = FontWeight.Medium)
             }
+        }
+        if (ok) {
+            Spacer(Modifier.height(Gap.sm))
+            Text(
+                "签到状态是学校那侧记的，回到 AI 课堂那一栏才看得见落没落上。",
+                fontSize = Type.meta,
+                color = ink.faint,
+                lineHeight = Type.metaLine,
+            )
         }
     }
 }
@@ -187,14 +139,13 @@ fun QrSignScreen(url: String, onBack: () -> Unit) {
  * 这条链接是不是"只能在微信里打开"的那一类。
  *
  * 认的是入口形状，不猜内容：`weixin://` 那一套 scheme、微信开放平台的 OAuth 域名、
- * 小程序的 URL Link / URL Scheme 短链域名。公众号文章（`mp.weixin.qq.com/s/...`）不在里头 ——
+ * 小程序的 URL Link / URL Scheme 短链域名。公众号文章（`mp.weixin.qq.com/s/...`）不算在内 ——
  * 那种普通浏览器打得开，拦它就是把能用的东西弄坏。
  */
 private fun wechatOnly(url: String): Boolean {
-    val u = url.lowercase()
-    if (u.startsWith("weixin://")) return true
+    if (url.lowercase().startsWith("weixin://")) return true
     val host = hostOf(url)
-    return host == "open.weixin.qq.com" || host.endsWith("open.weixin.qq.com") ||
+    return host == "open.weixin.qq.com" || host.endsWith(".open.weixin.qq.com") ||
         host == "wxaurl.cn" || host.endsWith(".wxaurl.cn") ||
         host == "wxmpurl.cn" || host.endsWith(".wxmpurl.cn")
 }
@@ -202,4 +153,3 @@ private fun wechatOnly(url: String): Boolean {
 /** 只取主机名：屏幕上要说"这条码指向哪儿"，但那串 token 不该跟着上屏。 */
 private fun hostOf(url: String): String =
     runCatching { java.net.URI(url).host.orEmpty() }.getOrDefault(url.substringAfter("://").substringBefore("/"))
-

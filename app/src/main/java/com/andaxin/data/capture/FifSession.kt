@@ -279,6 +279,132 @@ class FifSession(
     }
 
     /**
+     * 扫码签到：把码里那条链接**自己发一次**，读 302 的 `Location` 判结果。
+     *
+     * 为什么不是拿 WebView 打开（上一版是）：这一发根本不需要浏览器。它就是一个带着会话的 GET，
+     * 服务端签完回一个 302，成没成全写在 `Location` 里。走 WebView 等于把会话交给 cookie 罐去碰运气 ——
+     * 而这一层自己的注释就写着 FIF 服务端一条 Set-Cookie 都不发，罐子是空的；那一跳于是被推去登录，
+     * 登录页又是微信专用的，屏幕上只剩「请在微信客户端打开链接」，签到压根没发生。
+     *
+     * 【取证 · 归属按本仓的三等同规矩标】
+     * ③（目标 App 发出、被我们自己抓到的报文）：旧项目 2026-10-13 那一轮抓到的官方那一发 ——
+     *   `GET /coursecenter-interaction/qrcodeV2/qrcodeHandler?token=…&openTheWay=2`，
+     *   头是 `authorization: Basic <jwt>` + `Visit-Type: mobile` + 手机 WebView 那串 UA + `X-Requested-With`，
+     *   回 302，`Location` 里分别见过 `signSuccess` / `codeExpired` / `loginManage` 这三种落点。
+     * ②（我们发出去、看到回的）：**还没打过**。手上没有一张活码，装到机上真扫一次才算数 ——
+     *   所以下面每一种落点都照原样把话说清楚，不许静默当成功。
+     */
+    suspend fun qrSign(raw: String): Result<String> {
+        val trimmed = raw.trim()
+        val token = qrToken(trimmed) ?: return Result.failure(IOException("码里没找到 token"))
+        var attempt = qrSignOnce(qrUrl(trimmed, token))
+            ?: return Result.failure(IOException("签到那一发没发出去（网络）"))
+        if (attempt.first == 302 && attempt.second.contains("login", ignoreCase = true)) {
+            // 会话过期：重跑一遍单点登录，只再发这一回。再不行就把原因交给人，不循环重试
+            val back = performSso().getOrNull()
+                ?: return Result.failure(IOException("AI 课堂的会话过期了，重登也没换到新会话"))
+            saveIdentityCookies(bareJwt().orEmpty(), back)
+            attempt = qrSignOnce(qrUrl(trimmed, token))
+                ?: return Result.failure(IOException("重试那一发没发出去（网络）"))
+        }
+        return qrRead(attempt.first, attempt.second)
+    }
+
+    /** 码可能是完整 URL（带 `token=`），也可能整串就是 token。 */
+    private fun qrToken(raw: String): String? {
+        runCatching { raw.toHttpUrl().queryParameter("token") }.getOrNull()
+            ?.takeIf { it.isNotBlank() }?.let { return it }
+        Regex("[?&]token=([^&#]+)").find(raw)?.groupValues?.getOrNull(1)?.let { return it }
+        return raw.takeIf { it.matches(Regex("^[A-Za-z0-9_-]{20,}$")) }
+    }
+
+    /**
+     * 拼上官方那一跳带的身份参数。
+     *
+     * `qrcodeHandler` 认的不只是 `token`：登录名、学号、appId 这几个都在 query 里带着，
+     * 少带就被当成没登录的人扫了个码 —— 那正是被推去 `loginManage` 的那一类。
+     * 码里已经有的参数一个都不覆盖（学校自己发的那种长链，参数比我们还全）。
+     */
+    private suspend fun qrUrl(raw: String, token: String): String {
+        val base = if (raw.startsWith("http", ignoreCase = true)) {
+            raw
+        } else {
+            "$HOST_STTP/coursecenter-interaction/qrcodeV2/qrcodeHandler?token=${urlEnc(token)}&openTheWay=2"
+        }
+        val inner = school.identity()
+        val jwt = bareJwt().orEmpty()
+        if (inner == null || jwt.isBlank()) return base
+        return runCatching {
+            val u = base.toHttpUrl()
+            // `queryParameter` 是 HttpUrl 上的，Builder 没有 —— 先拿住原 URL 再判
+            fun blank(k: String) = u.queryParameter(k).isNullOrBlank()
+            u.newBuilder().apply {
+                fun put(k: String, v: String) {
+                    if (blank(k) && v.isNotBlank()) addQueryParameter(k, v)
+                }
+                put("access_token", jwt)
+                put("_userCode", inner.userCode)
+                put("code", inner.userCode)
+                put("userCode", inner.userCode)
+                put("_userName", inner.userName)
+                put("_userType", inner.userType)
+                put("appId", School.APP_ID)
+                put("returnFromIscToAppFunc", "ReturnDefault")
+            }.build().toString()
+        }.getOrDefault(base)   // 码里那串不是合法 URL（少见）就别自己加工，照原样发
+    }
+
+    /** 发那一发，回 `HTTP 码 → Location`。网络本身挂了回 null。 */
+    private suspend fun qrSignOnce(url: String): Pair<Int, String>? = withIo {
+        val builder = Request.Builder().url(url).get()
+            .header("User-Agent", WEB_UA)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Upgrade-Insecure-Requests", "1")
+            .header("X-Requested-With", "com.andaxin")
+        authHeader()?.let { builder.header("authorization", it) }
+        builder.header("Visit-Type", "mobile")
+        qrCookies(url).takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
+        runCatching {
+            client.newCall(builder.build()).execute().use { it.code to (it.header("Location").orEmpty()) }
+        }.getOrNull()
+    }
+
+    /**
+     * 这一跳要带的 cookie：罐子里那些，加上身份那三条。
+     *
+     * 那三条（`id`/`studentId`/`currentUserName`）是**我们手动放进罐子的**（见 `saveIdentityCookies`）——
+     * FIF 服务端自己一条都不发，等罐子攒出来是等不到的。
+     */
+    private suspend fun qrCookies(url: String): String {
+        val merged = LinkedHashMap<String, String>()
+        runCatching {
+            val httpUrl = url.toHttpUrl()
+            jar[httpUrl.host].orEmpty().filter { it.matches(httpUrl) }.forEach { merged[it.name] = it.value }
+        }
+        ids()?.let {
+            if (it.studentId.isNotBlank()) {
+                merged["id"] = it.studentId
+                merged["studentId"] = it.studentId
+            }
+            if (it.userName.isNotBlank()) merged["currentUserName"] = urlEnc(it.userName)
+        }
+        return merged.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+    }
+
+    /** 把 302 的落点翻译成人话。认不出的照实说认不出，别替学校宣布成功。 */
+    private fun qrRead(code: Int, location: String): Result<String> {
+        fun has(k: String) = location.contains(k, ignoreCase = true)
+        return when {
+            code != 302 -> Result.failure(IOException("签到那一发回了 HTTP $code（不是跳转），没签上"))
+            has("signSuccess") -> Result.success("签到成功")
+            has("codeExpired") -> Result.failure(IOException("这个码已经过期了，让老师重新开一张"))
+            has("login") -> Result.failure(IOException("AI 课堂的会话失效了，重登一次也没签上"))
+            has("course") -> Result.failure(IOException("没签上：这一跳被送去了课程页（码可能不是这堂课的）"))
+            else -> Result.failure(IOException("没签上：跳转落点认不出来 ${location.take(70)}"))
+        }
+    }
+
+    /**
      * 资源中心（`resc.fifedu.com`）那一发专用：带**裸 JWT**、**不带 `Visit-Type`**、
      * 带 `Referer/Origin: mresc.fifedu.com`。照主站习惯带头会回 200 + `data:null`。
      * 【取证】③ 出自旧项目 2026-10-13 抓到的官方那一发。
