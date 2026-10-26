@@ -13,3 +13,10 @@ actual fun clickHaptic(): () -> Unit {
 
 /** 安卓自己画顶栏（"‹ 返回"那三个字一直是这仓的说法），契约见 commonMain 的 `PlatformHooks.kt`。 */
 actual val hostDrawsTopBar: Boolean = false
+
+
+/** 安卓这一端有真的生命周期广播：见 commonMain 契约里那段"为什么 iOS 不等价"。 */
+@Composable
+actual fun onReturnToScreen(block: () -> Unit) {
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { block() }
+}

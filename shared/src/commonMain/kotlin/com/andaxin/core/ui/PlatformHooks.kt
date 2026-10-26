@@ -30,3 +30,15 @@ expect fun clickHaptic(): () -> Unit
  * JVM（测试架）= false，跟安卓一致。
  */
 expect val hostDrawsTopBar: Boolean
+
+/**
+ * 「回到这一屏就重拉一次」那个钩子。
+ *
+ * 安卓 = `LifecycleEventEffect(ON_RESUME)`：从签到详情签完退回来，列表上那行"没签"要跟着变。
+ * iOS = 每次这一屏第一次进组合时跑一次。为什么不等价也说清楚：iOS 这边每次 push 都新建一台
+ * 承载屏（见 IosScreens.routeOf），所以"从入口再进一次"是会重拉的；真正漏的是
+ * **从更深一层 pop 回这一层** —— UIKit 把那一层的组合留着不重建，没有安卓那个 ON_RESUME 广播。
+ * 补它要在宿主 VC 的 `viewWillAppear` 上再牵一根回调，那是另一发的事，不在这里假装已经好了。
+ */
+@Composable
+expect fun onReturnToScreen(block: () -> Unit)

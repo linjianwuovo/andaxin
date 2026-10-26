@@ -29,3 +29,16 @@ actual fun clickHaptic(): () -> Unit {
 
 /** 顶栏交给 `UINavigationController` 画，契约见 commonMain 的 `PlatformHooks.kt`。 */
 actual val hostDrawsTopBar: Boolean = true
+
+
+/*
+ * iOS 这一端没有 ON_RESUME 那种广播可订阅：每次 push 都新建一台承载屏（IosScreens.routeOf），
+ * 所以"从入口再进一次"这一格是准的 —— 新组合起来，这一句就跑。
+ * 漏的那一格是"从更深一层 pop 回这一层"：UIKit 把那层的组合留着不重建，这里等不到事件。
+ * 要补得在宿主 VC 的 viewWillAppear 上牵一根回调进来，那是另一发的事，别在这儿装好。
+ * 契约与口径见 commonMain 的 PlatformHooks。
+ */
+@Composable
+actual fun onReturnToScreen(block: () -> Unit) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { block() }
+}

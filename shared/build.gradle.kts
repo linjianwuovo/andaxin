@@ -98,6 +98,8 @@ kotlin {
             implementation(libs.okhttp)
             // SharedViewModel 的 Android actual 挂 androidx.lifecycle.ViewModel（scope = viewModelScope）
             implementation(libs.lifecycle.viewmodel.ktx)
+            // onReturnToScreen 的安卓实现就是 LifecycleEventEffect(ON_RESUME)，见 commonMain 的 PlatformHooks
+            implementation(libs.lifecycle.runtime.compose)
         }
         jvmMain.dependencies {
             implementation(libs.okhttp)
