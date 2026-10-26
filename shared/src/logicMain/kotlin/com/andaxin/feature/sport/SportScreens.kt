@@ -89,7 +89,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
         starting = true
         startWhy = null
         scope.launch {
-            val r = try { graph.sports.beginRun() } catch (e: Exception) { Result.failure(e) }
+            val r = try { graph.sports.beginRun() } catch (e: Throwable) { Result.failure(e) }
             starting = false
             r.onSuccess { session ->
                 // 选上了线就让 beta 那份的端内回放沿这条线三秒喂一个点（他自己写的那套）；
@@ -125,7 +125,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
      */
     LaunchedEffect(tryNo) {
         planWhy = null
-        val r = try { graph.sports.plan() } catch (e: Exception) { Result.failure(e) }
+        val r = try { graph.sports.plan() } catch (e: Throwable) { Result.failure(e) }
         plan = r.getOrNull()
         planWhy = r.exceptionOrNull()?.message
     }
@@ -849,7 +849,15 @@ internal fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String
 
 @Composable
 private fun LaunchedLoad(block: suspend () -> Unit) {
-    androidx.compose.runtime.LaunchedEffect(Unit) { block() }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        // 这一层 runCatching 是 105 那两份崩溃文件换来的：K/N 里组合作用域（LaunchedEffect 建的
+        // 那个 UndispatchedCoroutine）抛出去没人接，直接 terminateWithUnhandledException → abort 进程，
+        // 而 IosAppGraph 上挂的 graphFailure 只管图自己那个 scope，够不到这儿。
+        // 栈顶是 handleCoroutineException ← StandaloneCoroutine.handleJobException 的崩溃，都是这条链。
+        // 接住之后：原话打到 stdout（CI 那趟 -AndaXinOpen 会收进 console3.txt），
+        // 界面上剩下的就是"这一栏没拉到"，不再拿一次闪退当报错。
+        runCatching { block() }.onFailure { println("AndaXin 运动：这一屏拉数据抛了：" + it) }
+    }
 }
 
 internal fun lengthOf(points: List<LatLng>): Double {
