@@ -30,10 +30,12 @@ private fun fixed(v: Double, digits: Int): String {
     val d = digits.coerceIn(0, 9)
     var pow = 1L
     repeat(d) { pow *= 10L }
-    // 乘完还要再判一次：v 自己是有限的，可 1e308 × 100 就是 Infinity 了，
-    // 到那一步再 toLong() 一样抛 —— 判据要落在真正进转换的那个数上，不是落在入口参数上
+    // 乘完还要再判：v 自己是有限的，可 1e308 × 100 就不是了
     val scaledD = kotlin.math.round(v * pow.toDouble())
-    if (!scaledD.isFinite()) return NOT_NUM
+    // 上限这一档是 108 那发的自检逼出来的：Kotlin/Native 的 Double→Long 对**有限但装不下**
+    // 的值是饱和（1e300 打出来是 92233720368547758.07），不抛 —— 也就是说光判 isFinite
+    // 挡不住它，只会把一串天文数字画上屏。这种量级的"里程"本来就是垃圾，照"没给准数"处理。
+    if (!scaledD.isFinite() || scaledD < -9.0e18 || scaledD > 9.0e18) return NOT_NUM
     val scaled = scaledD.toLong()
     val neg = scaled < 0
     // 取绝对值这一步别写成 -scaled：万一 scaled 就是 Long.MIN_VALUE，取负还是负数，
@@ -67,7 +69,30 @@ fun sportNumberSelfCheck(): String = buildString {
     append("0→[").append(f1(0.0)).append("] ")
     append("经纬度[").append(latLng5(117.123456, 36.654321)).append("] ")
     append("mmss65[").append(mmss(65)).append("] ")
-    append("pace65[").append(paceLabel(65)).append("]")
+    append("pace65[").append(paceLabel(65)).append("] ")
+    append("|| 这台机器的转换：").append(floatToIntProbe())
+}
+
+/** 从数组里取，别让编译器当成常量折掉 —— 要测的是运行时那条转换，不是它折完的结果。 */
+private val PROBE_SRC = doubleArrayOf(0.0, 0.0, 1.0, 1e150)
+
+/**
+ * 「非有限值 / 装不下的值 转 Long，在这台机器上到底是抛还是饱和」—— 这一条是我整个定性的
+ * 最后一环，而它只能在 iOS 上测：JVM（安卓、电脑上跑的任何东西）都是饱和，永远复现不出来。
+ * 108 那发的自检已经给出一个答案：1e300（有限但装不进 Long）是**饱和**，不抛。
+ */
+fun floatToIntProbe(): String {
+    val cases = listOf(
+        "NaN" to PROBE_SRC[0] / PROBE_SRC[1],
+        "Inf" to PROBE_SRC[2] / PROBE_SRC[1],
+        "1e300" to PROBE_SRC[3] * PROBE_SRC[3],
+    )
+    return cases.joinToString(" ") { (label, v) ->
+        label + "→" + runCatching { v.toLong() }.fold(
+            { "得" + it.toString() },
+            { "抛" + it::class.simpleName },
+        )
+    }
 }
 
 /** 65 秒 -> "1:05"；3665 秒 -> "1:01:05" 不用，运动那一栏最长也就几十分钟。 */
@@ -98,7 +123,7 @@ private fun fixed5(v: Double): String {
     // 同一个坑的第五位小数版：非有限值别去 toLong()，那在 K/N 里就是抛
     if (!v.isFinite()) return NOT_NUM
     val scaledD = kotlin.math.round(v * 100000)
-    if (!scaledD.isFinite()) return NOT_NUM
+    if (!scaledD.isFinite() || scaledD < -9.0e18 || scaledD > 9.0e18) return NOT_NUM
     val a = scaledD.toLong()
     val sign = if (a < 0) "-" else ""
     val n = if (a == Long.MIN_VALUE) Long.MAX_VALUE else if (a < 0) -a else a
