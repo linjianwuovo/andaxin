@@ -70,7 +70,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import platform.Foundation.NSLog
@@ -278,16 +277,20 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
      * 所以「先不登录逛逛」「我的 → 去登录」「退出登录」这三格点了都只震一下：
      * 标志写进去了，根没人换。
      *
-     * drop(1) 是把"首帧"让给 resolveGate（见上），别两条路抢同一次换根；
      * distinctUntilChanged 是为了别在改宿舍/拉资料这种 session 更新时
      * 把用户当前那一格的导航栈掀掉。
+     *
+     * 这里**不 drop(1)**。上一版 drop 是为了把首帧让给 resolveGate，但 StateFlow 只存最新值：
+     * `-AndaXinGuest` 那发（CI 截五格用）写 browsing 就在几毫秒内，watchRoot 开始 collect 时
+     * 第一次收到的就已经是 true 了 —— drop(1) 把这一口吃掉，后面再没有 emission，
+     * 日志里 browseAsGuest 打了、根却没换。换根本身是幂等的（SceneDelegate.swap 存着
+     * showingTabs，同值直接 return），所以首帧重复一次没有副作用，不该为它丢状态。
      */
     fun watchRoot(onChange: (showTabs: Boolean) -> Unit) {
         scope.launch {
             session.state
                 .map { it.loggedIn || it.browsing }
                 .distinctUntilChanged()
-                .drop(1)
                 .collect { onChange(it) }
         }
     }
