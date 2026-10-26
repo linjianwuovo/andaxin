@@ -106,9 +106,12 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
 
     // 共享层那批列表/详情/表单屏要 session 和那十几条数据源（见 logicMain 的 BriefEnv）：
     // 安卓在 AppGraph 插，iOS 在这儿插。赋的是 this，不会提前触发下面任何一条 lazy。
+    // canOpen 那一句是给「更多功能」那张入口表用的：iOS 只列这张表认得的 key，
+    // 查一下不建屏（routeOf 只回"标题 + 屏本体"这一对，真建屏在 push 里）。
     private val briefEnv = com.andaxin.feature.brief.BriefEnv.also {
         it.session = session
         it.graph = this
+        it.canOpen = { key -> routeOf(null, key) != null }
     }
 
     // 数据源开关（照 AppGraph 的 Source(capture, local, session) 三件套）

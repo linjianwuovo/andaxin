@@ -30,6 +30,7 @@ import com.andaxin.feature.modules.HolidayFormScreen
 import com.andaxin.feature.modules.HolidayListScreen
 import com.andaxin.feature.modules.LaborDetailScreen
 import com.andaxin.feature.modules.LaborListScreen
+import com.andaxin.feature.modules.MoreScreen
 import com.andaxin.feature.modules.RepairDetailScreen
 import com.andaxin.feature.modules.RepairFormScreen
 import com.andaxin.feature.modules.RepairListScreen
@@ -230,27 +231,32 @@ fun IosAppGraph.loginViewController(onDone: () -> Unit): UIViewController {
 }
 
 /**
- * iOS 的路由 —— 安卓那台 NavHost（RootShell:113-175 那张表）在这儿的对应物。
+ * 一张路由就是「标题 + 屏本体」这一对。为什么不一步建成 UIViewController：
+ * 「更多功能」那一屏每次组合都要问十几遍"这一扇开得动吗"（共享层 `BriefEnv.canOpen`），
+ * 问一次就 new 一台 ComposeUIViewController 是不能干的 —— 所以表只回答"有没有"，
+ * 真建屏留给 push 那一句。标题挂 navigationItem（`hostDrawsTopBar` 为真，Compose 那条顶栏不画），
+ * 屏自己的 onBack 一律给空函数：返回是系统栏那颗，不是屏里画的。
+ */
+internal class IosRoute(val title: String, val screen: @Composable () -> Unit)
+
+/**
+ * iOS 的路由表 —— 安卓那台 NavHost（RootShell:113-175 那张表）在这儿的对应物，
  * key 照那张表原样抄，不自创名字。
  *
- * 10-26 这批发完，简报那一族全通了：待办事务（含四个 tab、单据详情、发起请假）、成绩、学分、
- * 劳动、节假日离返校、报修、查寝详情 —— 同一批屏，安卓用 NavHost 推，iOS 用 UINavigationController 推。
- * 还留在 `app/` 的那些（运动 868 行、查寝看板 401 行、AI 课堂 1360 行、WebView、主题）搬一屏进来这里就多一条 case；
- * 认不出的 key 就地什么都不做，不弹"未实现"糊弄。
+ * 10-26 这批发完，简报那一族全通了：更多功能、待办事务（含四个 tab、单据详情、发起请假）、
+ * 成绩、学分、劳动、节假日离返校、报修、查寝详情 —— 同一批屏，安卓用 NavHost 推，
+ * iOS 用 UINavigationController 推。还留在 `app/` 的那些（运动 868 行、查寝看板 401 行、
+ * AI 课堂 1360 行、校园卡、WebView、主题）搬一屏进来这里就多一条 case；
+ * 认不出的 key 回 null，入口自己就不画（见上），不弹"未实现"糊弄。
  */
-/**
- * 被 push 进来的那一屏。标题挂 navigationItem（`hostDrawsTopBar` 为真，Compose 那条顶栏不画），
- * 所以屏自己的 onBack 一律给空函数 —— 返回是系统栏那颗，不是屏里画的。
- */
-private fun iosBrief(title: String, screen: @Composable () -> Unit): UIViewController =
-    ComposeUIViewController { screen() }.also { it.navigationItem.title = title }
-
-private fun IosAppGraph.routeViewController(host: UIViewController?, key: String): UIViewController? {
+internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute? {
     // 列表行、那颗「＋ 发起请假」都靠它往下推，推的就是我脚下这条 nav
     val open: (String) -> Unit = { push(host, it) }
     val detailId = if (key.endsWith("/form") || !key.contains("/detail/")) "" else key.substringAfter("/detail/")
     return when {
-        key == "profile" -> iosBrief("个人信息") {
+        key == "more" -> IosRoute("更多功能") { MoreScreen(open = open, onBack = {}) }
+
+        key == "profile" -> IosRoute("个人信息") {
             ProfileScreen(
                 deps = ProfileDeps(
                     session = session,
@@ -261,34 +267,34 @@ private fun IosAppGraph.routeViewController(host: UIViewController?, key: String
             )
         }
 
-        key == "dekt" -> iosBrief("第二课堂") {
+        key == "dekt" -> IosRoute("第二课堂") {
             SecondClassScreen(deps = SecondClassDeps(secondClass), onBack = {})
         }
 
         // ── 待办事务（ywlz）：四个 tab 各自一条口，详情/请假表都从这儿进 ──
         key == "affair" || key.startsWith("affair/tab/") -> {
             val startTab = key.substringAfter("affair/tab/", "0").toIntOrNull() ?: 0
-            iosBrief("待办事务") { AffairTabsScreen(open = open, onBack = {}, startTab = startTab) }
+            IosRoute("待办事务") { AffairTabsScreen(open = open, onBack = {}, startTab = startTab) }
         }
-        detailId.isNotEmpty() && key.startsWith("affair/detail/") -> iosBrief("单据详情") {
+        detailId.isNotEmpty() && key.startsWith("affair/detail/") -> IosRoute("单据详情") {
             AffairDetailScreen(id = detailId, onBack = {})
         }
-        key == "affair/form" -> iosBrief("发起请假") { AffairFormScreen(onBack = {}) }
+        key == "affair/form" -> IosRoute("发起请假") { AffairFormScreen(onBack = {}) }
 
         // ── 成绩 / 学分 / 劳动 / 节假日 / 报修：同一套 BriefKit 三种页 ──
-        key == "exam" -> iosBrief("考试成绩") { ExamListScreen(open = open, onBack = {}) }
-        key.startsWith("exam/detail/") -> iosBrief("成绩明细") { ExamDetailScreen(id = detailId, onBack = {}) }
-        key == "credit" -> iosBrief("素质学分") { CreditListScreen(open = open, onBack = {}) }
-        key.startsWith("credit/detail/") -> iosBrief("学分明细") { CreditDetailScreen(id = detailId, onBack = {}) }
-        key == "labor" -> iosBrief("劳动教育") { LaborListScreen(open = open, onBack = {}) }
-        key.startsWith("labor/detail/") -> iosBrief("工时明细") { LaborDetailScreen(id = detailId, onBack = {}) }
-        key == "holiday" -> iosBrief("节假日离返校") { HolidayListScreen(open = open, onBack = {}) }
-        key.startsWith("holiday/detail/") -> iosBrief("假期详情") { HolidayDetailScreen(id = detailId, onBack = {}) }
-        key == "holiday/form" -> iosBrief("离返校登记") { HolidayFormScreen(onBack = {}) }
-        key == "repair" -> iosBrief("报修") { RepairListScreen(open = open, onBack = {}) }
-        key.startsWith("repair/detail/") -> iosBrief("报修单") { RepairDetailScreen(id = detailId, onBack = {}) }
-        key == "repair/form" -> iosBrief("新建报修") { RepairFormScreen(onBack = {}) }
-        key.startsWith("dorm/detail/") -> iosBrief("查寝详情") { DormDetailScreen(id = detailId, onBack = {}) }
+        key == "exam" -> IosRoute("考试成绩") { ExamListScreen(open = open, onBack = {}) }
+        key.startsWith("exam/detail/") -> IosRoute("成绩明细") { ExamDetailScreen(id = detailId, onBack = {}) }
+        key == "credit" -> IosRoute("素质学分") { CreditListScreen(open = open, onBack = {}) }
+        key.startsWith("credit/detail/") -> IosRoute("学分明细") { CreditDetailScreen(id = detailId, onBack = {}) }
+        key == "labor" -> IosRoute("劳动教育") { LaborListScreen(open = open, onBack = {}) }
+        key.startsWith("labor/detail/") -> IosRoute("工时明细") { LaborDetailScreen(id = detailId, onBack = {}) }
+        key == "holiday" -> IosRoute("节假日离返校") { HolidayListScreen(open = open, onBack = {}) }
+        key.startsWith("holiday/detail/") -> IosRoute("假期详情") { HolidayDetailScreen(id = detailId, onBack = {}) }
+        key == "holiday/form" -> IosRoute("离返校登记") { HolidayFormScreen(onBack = {}) }
+        key == "repair" -> IosRoute("报修") { RepairListScreen(open = open, onBack = {}) }
+        key.startsWith("repair/detail/") -> IosRoute("报修单") { RepairDetailScreen(id = detailId, onBack = {}) }
+        key == "repair/form" -> IosRoute("新建报修") { RepairFormScreen(onBack = {}) }
+        key.startsWith("dorm/detail/") -> IosRoute("查寝详情") { DormDetailScreen(id = detailId, onBack = {}) }
 
         else -> null
     }
@@ -300,11 +306,13 @@ private fun IosAppGraph.routeViewController(host: UIViewController?, key: String
  */
 fun IosAppGraph.push(host: UIViewController?, key: String) {
     val nav = host?.navigationController ?: return
-    val vc = routeViewController(host, key) ?: return
+    val route = routeOf(host, key) ?: return
     // 栏的显隐不在这儿动：SceneDelegate 那个 willShow 回调是唯一的出口，一次转场只让它改一次。
     // 原来这里先补一句 setNavigationBarHidden(false, animated = true)，紧接着 delegate 又按
     // animated:false 改一遍 —— 一次进场两次外观变更，正是"Unbalanced calls to begin/end
-    // appearance transitions"和侧滑卡住的来路。
+    // appearance transitions"的来路。
+    val vc = ComposeUIViewController { route.screen() }
+    vc.navigationItem.title = route.title
     nav.pushViewController(vc, animated = true)
 }
 fun IosAppGraph.onboardingViewController(onAgree: () -> Unit): UIViewController =
