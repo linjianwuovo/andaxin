@@ -37,3 +37,16 @@ fun paceLabel(secondsPerKm: Int): String {
 /** 一场跑步的本地 id：原来用 `java.util.UUID.randomUUID()`，共享层没这个。 */
 fun newRunId(): String =
     kotlin.random.Random.nextLong().toULong().toString(16) + kotlin.random.Random.nextLong().toULong().toString(16)
+
+/**
+ * 经纬度那一行：原来写的是 `String.format(Locale.US, "%.5f, %.5f", lng, lat)`。
+ * 五位小数是校方那条口收的精度，别拿 `f2` 凑 —— 差一位就是差十米。
+ */
+fun latLng5(lng: Double, lat: Double): String = fixed5(lng) + ", " + fixed5(lat)
+
+private fun fixed5(v: Double): String {
+    val a = kotlin.math.round(v * 100000).toLong()
+    val sign = if (a < 0) "-" else ""
+    val n = if (a < 0) -a else a
+    return sign + (n / 100000).toString() + "." + (n % 100000).toString().padStart(5, '0')
+}
