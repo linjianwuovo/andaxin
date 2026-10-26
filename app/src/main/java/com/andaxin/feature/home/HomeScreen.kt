@@ -29,6 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -44,6 +48,7 @@ import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
+import com.andaxin.core.design.MascotBall
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Rhythm
@@ -203,14 +208,41 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
              */
             val collapse by remember { derivedStateOf { (scroll.value / 60f).coerceIn(0f, 1f) } }
             val titleSize = Type.display * (1f - collapse * 0.36f)
-            Row(verticalAlignment = Alignment.Bottom) {
+            /*
+             * 名字右边那枚会看人的小球（他 10-26 深夜：「我想做进软件里放名字右边」）。
+             * 视线取的是"手指在这一行上的位置"：Initial 那一道过一遍、什么都不消费，
+             * 所以滚动照旧归外层那个下拉刷新容器管，球只是顺便看一眼你的手指。
+             * 松手回零向量 —— 那是"没人碰它"，球自己慢慢飘、每几秒眨一下（见 core/design/Mascot.kt）。
+             */
+            var gaze by remember { mutableStateOf(Offset.Zero) }
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier.fillMaxWidth().pointerInput(Unit) {
+                    awaitEachGesture {
+                        while (true) {
+                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                            val p = ev.changes.firstOrNull { it.pressed } ?: break
+                            gaze = Offset(
+                                ((p.position.x / size.width) * 2f - 1f).coerceIn(-1f, 1f),
+                                ((p.position.y / size.height) * 2f - 1f).coerceIn(-1f, 1f),
+                            )
+                        }
+                        gaze = Offset.Zero
+                    }
+                },
+            ) {
                 Text(
                     text = (d?.greeting ?: "…") + if (session.loggedIn && name.length in 2..4) "，$name" else "",
                     fontSize = titleSize,
                     fontWeight = FontWeight.SemiBold,
                     color = ink.strong,
-                    modifier = Modifier.weight(1f),
+                    // fill=false：不铺满剩下的宽度，球才贴得住名字末尾，不会被顶到屏幕右边
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                Spacer(Modifier.width(Gap.sm))
+                // 跟着大标题一起收：折叠的时候字小了，球单独留着就是个不动的图章
+                MascotBall(gaze = gaze, size = (titleSize.value * 1.15f).dp)
+                Spacer(Modifier.weight(1f))
                 // 屏幕上这批数字是上一份快照时，明写"更新中" —— 不把旧数字冒充成刚拉的
                 if (state.refreshing && state.data != null) {
                     Text("更新中…", fontSize = Type.micro, color = ink.faint)
