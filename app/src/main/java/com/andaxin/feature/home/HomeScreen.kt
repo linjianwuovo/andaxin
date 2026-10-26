@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -140,7 +141,9 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     var todoCounts by remember { mutableStateOf<List<String>?>(null) }
     var todoWhy by remember { mutableStateOf<String?>(null) }
     var todoTry by remember { mutableStateOf(0) }
-    LaunchedEffect(session.generation, todoTry) {
+    // 抽成一个可等的函数：下拉那一把手和按首页那颗球都要"等这四发真的回来"，
+    // 只把 todoTry+1 交给 LaunchedEffect 是等不到的 —— 球的"思考中"会提前停。
+    val loadTodo: suspend () -> Unit = {
         todoCounts = null
         todoWhy = null
         val feeds = listOf(graph.affairList, graph.toReadList, graph.myAffairList, graph.handledList)
@@ -151,6 +154,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         todoCounts = got.map { r -> r.getOrNull()?.size?.toString() ?: "—" }
         todoWhy = got.firstNotNullOfOrNull { it.exceptionOrNull()?.message }
     }
+    LaunchedEffect(session.generation, todoTry) { loadTodo() }
 
     val d = state.data
     /*
@@ -183,11 +187,22 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     // 下拉这一把手：数据只在进屏时拉一次，签完查寝、批完假之后不想杀进程重开。
     // 刷新时旧内容留在原位（不清空、不闪），新的到了再换 —— 一路加载一路蹦是他最烦的。
     // 两趟一起等：上面那一叠数和下半屏那几发不是一个来源，只等一边就是假动作。
-    Refreshable({
-        model.refresh()
-        todoTry++
-        runCatching { graph.home.load() }.getOrNull()?.onSuccess { extras = it }
-    }, modifier.fillMaxSize()) {
+    //
+    // 同一趟也挂到首页那颗球上（他 10-27 那句「我要点击小球可以更新数据并且小球开始思考中的动画」）：
+    // busy 是给球看的状态 —— `state.refreshing` 只知道自己那一站，这趟还有另外两发。
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val reload: suspend () -> Unit = {
+        busy = true
+        try {
+            model.refresh()
+            loadTodo()
+            runCatching { graph.home.load() }.getOrNull()?.onSuccess { extras = it }
+        } finally {
+            busy = false
+        }
+    }
+    Refreshable(reload, modifier.fillMaxSize()) {
         val scroll = rememberScrollState()
         Column(
             modifier = Modifier
@@ -280,8 +295,16 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                  *
                  * 左边那两行现在整体是 `weight(1f)` 的一列，球只是行尾那一格 ——
                  * 它再大也只吃自己那点宽度，不会再像 0.8.61 那样把文本挤到半行宽去折行。
+                 *
+                 * 按下 = 走上面那一整趟重拉（和下拉那把手同一条），整趟里它走"思考中"那档：
+                 * 眼环逐点形变换档 + 目光来回扫 + 身体歪 3 度。忙的时候再按不重复发。
                  */
-                MascotBall(gaze = gaze, size = (titleSize.value * 2.1f).dp)
+                MascotBall(
+                    gaze = gaze,
+                    thinking = busy,
+                    onTap = { if (!busy) scope.launch { reload() } },
+                    size = (titleSize.value * 2.1f).dp,
+                )
             }
 
             /*
