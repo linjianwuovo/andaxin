@@ -57,13 +57,6 @@ import top.yukonga.miuix.kmp.basic.SmallTopAppBar
  * （校方那条就有 `#/portal/index` 这种井号路由）。
  * 所以进出各转一次 URL-safe Base64（无填充），字符集只剩 A-Za-z0-9-_，一定安全。
  */
-fun encodeUrl(url: String): String =
-    java.util.Base64.getUrlEncoder().withoutPadding()
-        .encodeToString(url.toByteArray(Charsets.UTF_8))
-
-fun decodeUrl(s: String): String =
-    runCatching { String(java.util.Base64.getUrlDecoder().decode(s), Charsets.UTF_8) }.getOrDefault("")
-
 @Composable
 @SuppressLint("SetJavaScriptEnabled")
 fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
