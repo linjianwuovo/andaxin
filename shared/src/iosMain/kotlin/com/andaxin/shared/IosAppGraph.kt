@@ -381,6 +381,10 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
 
     fun browseAsGuest() {
         scope.launch {
+            // 数字自检：这一排只有在真平台上打出来才算证据（见 sportNumberSelfCheck 的注释）。
+            // 走 NSLog 而不是 println —— CI 那几趟是 `simctl launch --console`，stderr 收进
+            // console2/console3.txt，上一发就是因为把兜底写成 println 又恰好崩在排版里，日志一个字没多。
+            NSLog(com.andaxin.feature.sport.sportNumberSelfCheck())
             val why = runCatching { session.browseWithoutLogin() }
                 .exceptionOrNull()?.let { "失败：" + it } ?: "成功"
             NSLog("AndaXin 图：逛逛标志写盘" + why + "，换根直接交 onGuest 那个回调")

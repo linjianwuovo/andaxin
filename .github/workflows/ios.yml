@@ -206,6 +206,10 @@ jobs:
           GPID=$!
           sleep 12
           xcrun simctl io "$UDID" screenshot iosApp/simulator-guest.png || true
+          # 这一句必须在第三趟之前判：第三趟起 app 带的也是 --terminate-running-process，
+          # 它会把第二趟那个正被 kill -0 检查的进程顶掉 —— 上一发就是这样报了个
+          # "逛逛那五格：自己退了，这就是崩"的假崩（17:45:27 起、17:45:43 被顶、判定排在后面）。
+          if kill -0 "$GPID" 2>/dev/null; then echo "逛逛那五格：12 秒还在跑"; else echo "逛逛那五格：自己退了，这才是真崩"; fi
 
           # 第三趟：带 -AndaXinOpen 直接把某一屏推进去，stderr 收进 console3.txt。
           # 这是给"某屏一点就 abort"那类问题准备的自证通道 —— Kotlin 的异常原话只走 stderr，
@@ -220,7 +224,6 @@ jobs:
           echo "--- 推 $OPEN_KEY 那一扇之后的 stderr（$(wc -c < console3.txt) 字节，异常原话就在这儿）"
           tail -60 console3.txt 2>/dev/null || echo "console3.txt 空的"
           if kill -0 "$GPID3" 2>/dev/null; then echo "推完之后还活着：那一屏没崩"; else echo "推完之后进程没了：这一扇就是崩点"; fi
-          if kill -0 "$GPID" 2>/dev/null; then echo "逛逛那五格：12 秒还在跑"; else echo "逛逛那五格：自己退了，这就是崩"; fi
           kill "$GPID" 2>/dev/null || true
           echo "--- 第二趟的 stderr（$(wc -c < console2.txt) 字节）"
           head -40 console2.txt 2>/dev/null || true
@@ -308,9 +311,11 @@ jobs:
             iosApp/simulator-launch.png
             iosApp/simulator-later.png
             iosApp/simulator-guest.png
+            iosApp/simulator-open-*.png
             simlog.txt
             console.txt
             console2.txt
+            console3.txt
             AndaXin-unsigned.ipa
             shared-framework.zip
           if-no-files-found: warn
