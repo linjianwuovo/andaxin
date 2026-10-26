@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -226,7 +227,14 @@ fun MeScreen(deps: MeDeps, open: (String) -> Unit = {}, modifier: Modifier = Mod
         }
 
         SectionTitle("功能")
-        EntryGrid(ENTRIES + Entry("关于", deps.versionName, "about"), deps.entryIcon, open)
+        // 这一端路由开不动的那几格整格不画 —— 判据同 MoreScreen：问路由表本身，不另立一套开关。
+        // 安卓那台 NavHost 全在，canOpen 默认全 true，这一句在安卓等于不过滤；
+        // iOS 搬一屏进来，那一格就自己长回来（现在缺的是运动/主题/公开课/班级群那几格）。
+        EntryGrid(
+            (ENTRIES + Entry("关于", deps.versionName, "about"))
+                .filter { it.route == null || BriefEnv.canOpen(it.route) },
+            deps.entryIcon, open,
+        )
 
         ShelfTail()
     }

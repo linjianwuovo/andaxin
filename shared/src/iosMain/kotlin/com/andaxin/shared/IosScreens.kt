@@ -18,6 +18,11 @@ import com.andaxin.feature.message.MessageDeps
 import com.andaxin.feature.message.MessageScreen
 import com.andaxin.feature.me.ProfileDeps
 import com.andaxin.feature.modules.AffairDetailScreen
+import com.andaxin.feature.aiclass.AiClassListScreen
+import com.andaxin.feature.aiclass.CourseDetailScreen
+import com.andaxin.feature.modules.CampusCardScreen
+import com.andaxin.feature.modules.CardFlowsScreen
+import com.andaxin.feature.modules.DormBoardScreen
 import com.andaxin.feature.modules.AffairFormScreen
 import com.andaxin.feature.modules.AffairTabsScreen
 import com.andaxin.feature.modules.CreditDetailScreen
@@ -298,6 +303,17 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         key.startsWith("repair/detail/") -> IosRoute("报修单") { RepairDetailScreen(id = detailId, onBack = {}) }
         key == "repair/form" -> IosRoute("新建报修") { RepairFormScreen(onBack = {}) }
         key.startsWith("dorm/detail/") -> IosRoute("查寝详情") { DormDetailScreen(id = detailId, onBack = {}) }
+
+        // 10-26 第二批：查寝看板、校园卡、AI 课堂这三块屏本身搬进共享层了（它们脚下那批
+        // capture 类早就在共享层）。这三扇之内的行要是再往"扫码 / 播放器 / 任务详情"里跳，
+        // iOS 这边开不动（相机、AVPlayer、DormTask 都还没接），点了不动是预期的，不是又坏了。
+        key == "dorm" -> IosRoute("查寝签到") { DormBoardScreen(open = open, onBack = {}) }
+        key == "card" -> IosRoute("校园卡") { CampusCardScreen(open = open, onBack = {}) }
+        key == "card/flows" -> IosRoute("校园卡流水") { CardFlowsScreen(onBack = {}) }
+        key == "aiclass" -> IosRoute("AI 课堂") { AiClassListScreen(open = open, onBack = {}) }
+        key.startsWith("aiclass/detail/") -> IosRoute("课程详情") {
+            CourseDetailScreen(courseId = detailId, open = open, onBack = {})
+        }
 
         // 公告详情：安卓那份的正文附图走 RemoteImage（OkHttp + BitmapFactory），
         // 这边同一格交 RemotePhoto —— 它只认 PhotoHost.attached，而那根插槽刚被 IosImages 插上。
