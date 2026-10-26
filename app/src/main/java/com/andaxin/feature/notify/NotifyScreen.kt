@@ -113,7 +113,11 @@ private fun ClassReminderRow() {
             Text("上课提醒", fontSize = Type.title, fontWeight = FontWeight.Medium, color = ink.strong)
             Spacer(Modifier.height(1.dp))
             Text(
-                text = if (on) "开 · 课前 $lead 分钟起，通知每分钟刷一次倒计时（不响）" else "没开",
+                text = if (on) {
+                    // 胶囊那一档只有系统真有这套 API 时才提（Android 16 起），老机器上不说空话
+                    val pill = if (LiveUpdates.supported()) "，状态栏那颗胶囊跟着走" else ""
+                    "开 · 课前 $lead 分钟起，通知每分钟刷一次倒计时（不响）$pill"
+                } else "没开",
                 fontSize = Type.meta,
                 color = if (needPermission) MaterialTheme.colorScheme.error else ink.muted,
             )
