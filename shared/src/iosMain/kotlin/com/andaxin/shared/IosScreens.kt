@@ -41,7 +41,10 @@ import com.andaxin.feature.modules.LoginDeps
 import com.andaxin.feature.modules.LoginScreen
 import com.andaxin.feature.modules.OnboardingScreen
 import com.andaxin.feature.notice.NoticeDeps
+import com.andaxin.feature.notice.NoticeDetailDeps
+import com.andaxin.feature.notice.NoticeDetailScreen
 import com.andaxin.feature.notice.NoticeScreen
+import com.andaxin.feature.brief.RemotePhoto
 import com.andaxin.feature.schedule.TimetableDeps
 import com.andaxin.feature.schedule.TimetableScreen
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -295,6 +298,21 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         key.startsWith("repair/detail/") -> IosRoute("报修单") { RepairDetailScreen(id = detailId, onBack = {}) }
         key == "repair/form" -> IosRoute("新建报修") { RepairFormScreen(onBack = {}) }
         key.startsWith("dorm/detail/") -> IosRoute("查寝详情") { DormDetailScreen(id = detailId, onBack = {}) }
+
+        // 公告详情：安卓那份的正文附图走 RemoteImage（OkHttp + BitmapFactory），
+        // 这边同一格交 RemotePhoto —— 它只认 PhotoHost.attached，而那根插槽刚被 IosImages 插上。
+        key.startsWith("notice/detail/") -> IosRoute("公告") {
+            NoticeDetailScreen(
+                deps = NoticeDetailDeps(
+                    feed = noticeFeed,
+                    attachment = { url ->
+                        RemotePhoto(url, "正文配图", "这张图没取到：网络或校方那个地址的问题")
+                    },
+                ),
+                id = detailId,
+                onBack = {},
+            )
+        }
 
         else -> null
     }
