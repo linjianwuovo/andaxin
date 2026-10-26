@@ -52,14 +52,17 @@ object IosImages {
         lock.withLock { decoded[url] }?.let { return it }
         val bytes = fetch(url) ?: return null
         // makeFromEncoded 对不是图的字节（校方偶尔回一整页 HTML 登录页）是抛，不是回 null
-        val bmp = runCatching { Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
-            ?: return null
+        val bmp = decodeBytes(bytes) ?: return null
         lock.withLock {
             if (decoded.size >= KEEP) decoded.remove(decoded.keys.first())
             decoded[url] = bmp
         }
         return bmp
     }
+
+    /** 字节解成图：远程图与刚拍的那张共用这一句。不是图的字节（校方回一整页 HTML）它抛，不回 null。 */
+    fun decodeBytes(bytes: ByteArray): ImageBitmap? =
+        runCatching { Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
 
     private suspend fun fetch(url: String): ByteArray? = suspendCancellableCoroutine { c ->
         val nsUrl = NSURL.URLWithString(url)
