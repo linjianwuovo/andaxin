@@ -524,16 +524,29 @@ object ClassReminder {
     /**
      * 状态栏那颗珠子上写的那一句。
      *
-     * 他 10-27 10:04 那张屏：珠子出来了，写的只有"21 分" —— 一句「有了但小岛不显示教室」。
-     * 平台上那颗 chip 只有**一个**文本位：SDK 源码 `Notification.getCompactContent()` 那段
-     * 有序列表第一档就是 `shortCriticalText`，没有第二个槽，所以想把教室塞进去就得挤掉别的。
-     * 顺序定成"教室·分钟"：真被 ROM 截尾，掉的也是分钟数 —— 那一串在展开的那条通知里还在，
-     * 而"这一节去哪儿上"是岛上一眼要用的那个信息。教室先过 `shortRoom`（去"楼/栋"、去括号），
-     * 再把空格去掉，一个字符都不白给。
+     * 他 10-27 10:04 那张屏：珠子出来了，写的只有"21 分" —— 一句「有了但小岛不显示教室」；
+     * 10:23 那三张接着说「不要博文，显示教室加时间不更好看」。所以这一句定成
+     * **房号 + 分钟**："A2E501·2分"，楼栋名（"博文"）不要 —— 珠子那点位子窄，
+     * 楼栋名一进去房号就被 ROM 挤掉，反而两头都看不清。
+     *
+     * 平台上那颗 chip 只有一个文本位（SDK 源码 `Notification.getCompactContent()` 那段有序列表，
+     * 第一档就是 `shortCriticalText`，没有第二个槽），完整那串在展开那一层：
+     * 课名 + "还有 N 分钟 · 第 3 节 · 10-27 10:25 · 博文楼（A2）E501"，一个字没少。
      */
     private fun capsuleText(left: Int, room: String): String {
-        val r = shortRoom(room).replace(" ", "")
-        return if (r.isBlank()) "$left 分" else "$r·$left 分"
+        val r = capsuleRoom(room)
+        return if (r.isBlank()) "${left}分" else "$r·${left}分"
+    }
+
+    /** 「博文楼（A2）E501」→「A2E501」：只留区号 + 房号。括号两种写法都认（校方那边给过全角的）。 */
+    private fun capsuleRoom(room: String): String {
+        val text = room.trim()
+        val open = listOf('（', '(').map { text.indexOf(it) }.filter { it > 0 }.minOrNull() ?: -1
+        val close = listOf('）', ')').map { text.indexOf(it) }.firstOrNull { it > open } ?: -1
+        if (open <= 0 || close <= open) return shortRoom(text).replace(" ", "")
+        val zone = text.substring(open + 1, close)
+        val code = text.substring(close + 1).trim()
+        return (zone + code).replace(" ", "")
     }
 
     /** 撤干净：窗口那颗 + 正在跑的滴答链。调用方得自己再发一次 reschedule 才会重新排。 */
