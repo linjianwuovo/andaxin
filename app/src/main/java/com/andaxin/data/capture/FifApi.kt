@@ -103,6 +103,9 @@ class FifApi(private val fif: FifSession) {
                     // 换页图那一条就会静默回空（10-21 10:46 就是这么"没拿到页面图"的）。
                     "coursewareId" to firstOf(o, "courseWareId", "coursewareId"),
                     "url" to o.optString("resourceUrl"),
+                    // 校方那侧的"允许不允许下载"标记（实样里见过 0）。它不决定我们拿不拿得到直链——
+                    // `resourceUrl` 就在这条响应里 —— 只决定界面上要不要把这句话说明白。
+                    "isDownload" to o.optString("isDownload"),
                 ),
             )
         }
