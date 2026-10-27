@@ -141,11 +141,19 @@ private fun IosTopInset(content: @Composable () -> Unit) {
      * 而那丑其实跟我们定的那套蓝青墨没关系，是**根本没上我们的主题**。
      * 明暗与强调色读的是共享层那一份外观设置，也就是「主题」那一屏改的东西。
      */
+    Box(Modifier.fillMaxSize().padding(top = inset.dp)) { IosThemeWrap { content() } }
+}
+
+/**
+ * 主题这一层单独抽出来，是因为**登录页不走 [IosTopInset]**（它没有导航栏那一截要让，
+ * 是裸的 ComposeUIViewController）—— 118 那张 sport 截图把这件事照出来了：顶上"登录"两个字，
+ * 勾选框是出厂紫、输入框底是出厂淡紫。所以登录页也得套，不然第一屏就是两种颜色。
+ */
+@Composable
+internal fun IosThemeWrap(content: @Composable () -> Unit) {
     val look = BriefEnv.graph.appearance.state
         .collectAsState(initial = com.andaxin.core.settings.Appearance()).value
-    Box(Modifier.fillMaxSize().padding(top = inset.dp)) {
-        com.andaxin.core.design.AndaXinTheme(dayNight = look.dayNight, accentHex = look.accent) { content() }
-    }
+    com.andaxin.core.design.AndaXinTheme(dayNight = look.dayNight, accentHex = look.accent) { content() }
 }
 
 private var topInsetLogged = true
@@ -246,26 +254,28 @@ fun IosAppGraph.meViewController(): UIViewController {
 fun IosAppGraph.loginViewController(onDone: () -> Unit): UIViewController {
     var host: UIViewController? = null
     val child = ComposeUIViewController {
-        LoginScreen(
-            deps = LoginDeps(
-                auth = auth,
-                session = session,
-                vault = vault,
-                kicked = MutableStateFlow(null),
-                consumeKicked = {},
-            ),
-            onDone = onDone,
-            onBack = {
-                val nav = host?.navigationController
-                if (nav != null && nav.viewControllers.size > 1) {
-                    nav.popViewControllerAnimated(true)
-                } else {
-                    // 它就是根（没登录直接进来那条路）：这一格是「先不登录，随便看看」。
-                    // 换根由 watchRoot 负责，这儿只补一条有异常兜底的写标志路径。
-                    browseAsGuest()
-                }
-            },
-        )
+        IosThemeWrap {
+            LoginScreen(
+                deps = LoginDeps(
+                    auth = auth,
+                    session = session,
+                    vault = vault,
+                    kicked = MutableStateFlow(null),
+                    consumeKicked = {},
+                ),
+                onDone = onDone,
+                onBack = {
+                    val nav = host?.navigationController
+                    if (nav != null && nav.viewControllers.size > 1) {
+                        nav.popViewControllerAnimated(true)
+                    } else {
+                        // 它就是根（没登录直接进来那条路）：这一格是「先不登录，随便看看」。
+                        // 换根由 watchRoot 负责，这儿只补一条有异常兜底的写标志路径。
+                        browseAsGuest()
+                    }
+                },
+            )
+        }
     }
     host = child
     return navigated(child, "登录")
@@ -432,14 +442,16 @@ fun IosAppGraph.push(host: UIViewController?, key: String) {
     // 原来这里先补一句 setNavigationBarHidden(false, animated = true)，紧接着 delegate 又按
     // animated:false 改一遍 —— 一次进场两次外观变更，正是"Unbalanced calls to begin/end
     // appearance transitions"的来路。
-    val vc = ComposeUIViewController { route.screen() }
+    // 推出去的每一扇也要套主题：114/115 那次只把 IosTopInset（底栏那五格）接上了，
+    // 这一句 push 出来的路由（校园卡、查寝、主题本身…）还是裸的 —— 一推就露出出厂紫。
+    val vc = ComposeUIViewController { IosThemeWrap { route.screen() } }
     vc.navigationItem.title = route.title
     nav.pushViewController(vc, animated = true)
 }
 fun IosAppGraph.onboardingViewController(onAgree: () -> Unit): UIViewController =
     navigated(
         ComposeUIViewController {
-            OnboardingScreen(onAgree = onAgree)
+            IosThemeWrap { OnboardingScreen(onAgree = onAgree) }
         },
         "安大信",
     )
