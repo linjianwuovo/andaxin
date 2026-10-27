@@ -84,7 +84,10 @@ private fun ClassReminderRow() {
         val p = graph.store.snapshot()
         on = com.andaxin.core.schedule.ClassReminder.isOn(p, graph.store)
         lead = com.andaxin.core.schedule.ClassReminder.leadOf(p, graph.store)
-        status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable)
+        status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable) +
+            // 进这一屏也补一发：他可能就是"三分钟后上课"才想起来看的，那一节已经被排程跳过了
+            com.andaxin.core.schedule.ClassReminder.catchUpNow(graph.context, graph.store, graph.timetable)
+                .let { if (it == null) "" else " · $it" }
     }
 
     fun write(nv: Boolean, nLead: Int) {
@@ -97,7 +100,10 @@ private fun ClassReminderRow() {
             // fromUser = 他亲手拨的：正在跑的倒计时链一起撤掉，别让他按了关还看见"还有 12 分钟"
             status = com.andaxin.core.schedule.ClassReminder.reschedule(
                 graph.context, graph.store, graph.timetable, fromUser = true,
-            )
+            ) +
+                // 拨到"开"时如果已经在某一节的提前窗口里，当场补一发，别干等到下一节
+                com.andaxin.core.schedule.ClassReminder.catchUpNow(graph.context, graph.store, graph.timetable)
+                    .let { if (it == null) "" else " · $it" }
         }
         if (nv && !androidx.core.app.NotificationManagerCompat.from(graph.context).areNotificationsEnabled()) {
             needPermission = true
