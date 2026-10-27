@@ -59,6 +59,20 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         g.resolveGate { [weak self] signed in
             guard let self else { return }
             let tabs = signed.boolValue
+            /*
+             * 这条是冷启动那**一次性**的答案，它可能晚到 —— 120 的日志就是活证：
+             * `Gate 变了 showTabs=true` 在 08:08:42.963，这条回 `signed=false，换根` 在
+             * 15 毫秒之后，于是刚立起来的五格又被掀回登录页；那扇"直接推一屏"的门
+             * 连等六轮都等不到根定下来（`CI 推 sport 放弃`），截图永远是登录页。
+             * 规矩收成一句：**这条过期答案只许把人往五格升，不许把五格掀回登录**。
+             * （往五格升是真信号：token 验过了；往登录退是拿一个旧读数去否定
+             *   watchRoot/onGuest 已经做出的新决定。用户手上"逛逛"那条路同理会被它打断，
+             *   不是只有 CI 才踩得到。）
+             */
+            if !tabs && self.showingTabs == true {
+                NSLog("AndaXin 壳：Gate 回了 signed=false，但根已经在五格里（这条是过期答案），不换根")
+                return
+            }
             NSLog("AndaXin 壳：Gate 回了 signed=\(tabs)，换根")
             self.swap(toTabs: tabs, g)
         }
