@@ -165,6 +165,9 @@ private fun ClassReminderRow() {
     }
 }
 
+/** 两道闸各打一个勾：界面上"已允许"那两个字以前会把"权限给了、系统那档没开"也盖成绿灯。 */
+private fun tick(ok: Boolean): String = if (ok) "✓" else "✗"
+
 /**
  * 实况更新（状态栏那颗胶囊）这两行。三条坑为什么这么问，见 `core/notification/LiveUpdates.kt`。
  */
@@ -190,20 +193,22 @@ private fun LiveUpdateRows() {
 
     RowLine(
         title = "实况更新权限",
-        // 这一行右边还要摆状态那两个字，副标题写长了会被裁成"…"，所以压到一句
-        sub = if (canPost) "能发：倒计时那几档会同时上状态栏那颗胶囊。"
-            else "不给也能用，只是不上状态栏那颗胶囊。",
+        // 两道闸分开摆（0.8.67 那版塌成一句"已允许"）：`canPost` 是"权限或系统任一为真"，
+        // 于是"权限给了、系统那档关着"也会显示已允许 —— 那是假绿灯，他 10-27 就是被这句绕过的。
+        sub = if (LiveUpdates.supported())
+            "API ${LiveUpdates.apiLevel()} · ${if (canPost) "能发：倒计时那几档会同时上状态栏那颗胶囊。"
+                else "不给也能用，只是不上状态栏那颗胶囊。"}"
+        else "这台没有这套能力，倒计时只走通知栏。",
         right = when {
-            // "这台没有"以前是一句没法核对的话 —— 现在把他机器报的那个 API 号一起写出来
-            !LiveUpdates.supported() -> "这台没有 · API ${LiveUpdates.apiLevel()}"
-            canPost -> "已允许 · API ${LiveUpdates.apiLevel()}"
-            else -> "没允许 · API ${LiveUpdates.apiLevel()}"
+            !LiveUpdates.supported() -> "API ${LiveUpdates.apiLevel()}"
+            else -> "权限${tick(LiveUpdates.granted(ctx))} 系统${tick(LiveUpdates.systemAllows(ctx))}"
         },
         onClick = {
-            if (LiveUpdates.supported() && !canPost) {
-                askPromoted.launch(android.Manifest.permission.POST_PROMOTED_NOTIFICATIONS)
-            } else {
-                jumped = LiveUpdates.openPromotedSettings(ctx)
+            when {
+                !LiveUpdates.supported() -> jumped = LiveUpdates.openPromotedSettings(ctx)
+                // 系统那一档关着：跳官方那条提升设置页，弹权限框没用
+                !LiveUpdates.systemAllows(ctx) -> jumped = LiveUpdates.openPromotedSettings(ctx)
+                else -> askPromoted.launch(android.Manifest.permission.POST_PROMOTED_NOTIFICATIONS)
             }
         },
     )
