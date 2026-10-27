@@ -122,7 +122,9 @@ private fun ClassReminderRow() {
                 text = if (on) {
                     // 胶囊那一档只有系统真有这套 API 时才提（Android 16 起），老机器上不说空话
                     val pill = if (LiveUpdates.supported()) "，状态栏那颗胶囊跟着走" else ""
-                    "开 · 课前 $lead 分钟起，通知每分钟刷一次倒计时（不响）$pill"
+                    // 0.8.69 起这一档是前台服务挂的常驻通知（他明确要的就是这条），
+                    // 所以副标题必须写明"那几分钟划不掉"，不能让他自己去发现
+                    "开 · 课前 $lead 分钟起每分钟刷一次倒计时（不响，那 $lead 分钟里划不掉）$pill"
                 } else "没开",
                 fontSize = Type.meta,
                 color = if (needPermission) MaterialTheme.colorScheme.error else ink.muted,
