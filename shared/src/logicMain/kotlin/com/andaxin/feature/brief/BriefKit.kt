@@ -16,6 +16,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
@@ -72,6 +78,7 @@ import com.andaxin.shell.Sheet
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -747,47 +754,99 @@ private fun FieldRow(
                 }
             } else {
                 /*
-                 * 分两排：上面一排是"堆"，下面一排是这一堆里的条目。
-                 *
-                 * 报修那张表是校方字典，故障类型 57 条、地点 98 条，全平铺就是一整屏丸子
-                 * （他 10-25 晚上那句"这一页太杂了你整合一下"）。堆是数据层按字典自己的一级分好的，
-                 * 值仍是**整条原文** —— 提交时那张"整条 → id"的对照表一个字没改。
+                 * 57 条、98 条这种东西不该摊在屏上让人一行行扫。这里是一行"点这里选"，
+                 * 点开是一屏列表：按校方字典自己的一级 / 楼栋分节，选中那条右边打个勾，点一下就收起。
+                 * （10-25 他拿别的 App 那种下拉列表问「报修里面为什么不能做成这样选」。
+                 * 这一发 10-27 从 main 上 `8d2822a` 搬进共享层 —— 也就是他 7 条里那条
+                 * "新建报修界面没有整合"，安卓先修好的那份。）
+                 * 值仍是整条原文 —— 提交时那两张"整条 → id"的对照表一个字没改。
                  */
                 val cur = get(field.key)
-                // 他自己点开的那一堆（没点过就跟着已选那条走，再没有就第一堆）
-                val pinned = remember(field.key) { mutableStateOf<String?>(null) }
-                val home = field.groups.firstOrNull { cur in it.options }?.name
-                val open = pinned.value ?: home ?: field.groups.first().name
-                val group = field.groups.firstOrNull { it.name == open } ?: field.groups.first()
-                androidx.compose.foundation.layout.FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-                    verticalArrangement = Arrangement.spacedBy(Gap.sm),
+                var open by remember(field.key) { mutableStateOf(false) }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .pressClick(shrink = false) { open = true }
+                        .padding(vertical = Gap.sm),
                 ) {
-                    field.groups.forEach { g ->
-                        val one = g.options.size == 1
-                        Chip(g.name, g.name == open) {
-                            pinned.value = g.name
-                            // 一堆里就一条的（校方那棵树里有些楼栋没有楼层）：点堆就等于选中它，
-                            // 不再逼人多按一次去点下面那颗孤零零的丸子
-                            if (one) put(field.key, g.options.first())
+                    Text(field.label, fontSize = Type.meta, color = ink.muted)
+                    Spacer(Modifier.height(Gap.xxs))
+                    Text(
+                        text = cur.ifBlank { "点这里选" },
+                        fontSize = Type.title,
+                        color = if (cur.isBlank()) ink.faint else ink.strong,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (open) PickDialog(
+                    field, cur,
+                    onPick = { put(field.key, it); open = false },
+                    onDismiss = { open = false },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 选项很多时的那一屏列表：分节 + 勾，点一条就收起。
+ *
+ * 高度封顶 460dp：地点那一族 98 条，不封顶这个弹窗会比屏幕还长，最后几条永远点不到。
+ * 单选，所以没有"确定"那颗键；按返回或点外面也一样收起，什么都不改。
+ * 期望上门那 12 个时间段、请假那些没分节的表还走丸子 —— 一屏看得完，点开再收起反而多一步。
+ */
+@Composable
+private fun PickDialog(
+    field: Field.Choice,
+    cur: String,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val ink = LocalInk.current
+    val accent = MaterialTheme.colorScheme.primary
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(MiuixTheme.colorScheme.surface)
+                .padding(top = Gap.md, bottom = Gap.xs),
+        ) {
+            Text(
+                field.label,
+                fontSize = Type.title,
+                fontWeight = FontWeight.SemiBold,
+                color = ink.strong,
+                modifier = Modifier.padding(horizontal = Gap.md, vertical = Gap.xs),
+            )
+            Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                field.groups.forEach { g ->
+                    Text(
+                        g.name,
+                        fontSize = Type.micro,
+                        color = ink.faint,
+                        modifier = Modifier.padding(start = Gap.md, end = Gap.md, top = Gap.sm, bottom = Gap.xxs),
+                    )
+                    g.options.forEach { o ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .pressClick(shrink = false) { onPick(o) }
+                                .padding(horizontal = Gap.md, vertical = Gap.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = optionTail(g.name, o),
+                                fontSize = Type.body,
+                                color = if (o == cur) accent else ink.strong,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (o == cur) Text("✓", fontSize = Type.body, color = accent)
                         }
                     }
-                }
-                if (group.options.size > 1) {
-                    Spacer(Modifier.height(Gap.sm))
-                    androidx.compose.foundation.layout.FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-                        verticalArrangement = Arrangement.spacedBy(Gap.sm),
-                    ) {
-                        group.options.forEach { opt ->
-                            Chip(optionTail(group.name, opt), cur == opt) { put(field.key, opt) }
-                        }
-                    }
-                }
-                // 已选那条在别的一堆里时，这一屏看不见它 —— 得说一句，不然看着像没选上
-                if (cur.isNotBlank() && cur !in group.options) {
-                    Spacer(Modifier.height(Gap.xs))
-                    Text("已选 $cur", fontSize = Type.micro, color = ink.faint)
                 }
             }
         }
