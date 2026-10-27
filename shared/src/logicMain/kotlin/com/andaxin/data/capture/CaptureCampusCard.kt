@@ -336,9 +336,19 @@ class CampusCardClient(
                 ?: FALLBACK_LIGHT
         }.getOrElse { return Result.failure(Exception(it.message)) }
 
-        // hub 那两跳共用一台带 cookie 罐的临时引擎：light.action 落的 JSESSIONID 由罐自动带到 redirect 那跳
+        // hub 那两跳共用一台带 cookie 罐的临时引擎：light.action 落的 JSESSIONID 由罐自动带到 redirect 那跳。
+        //
+        // 这台引擎**不跟重定向**，原因在 iOS 那侧：安卓的 OkHttp 每跟一跳就喂一次 cookieJar，
+        // 而我们 iOS 那台引擎只把**最后一跳**的响应头交回来 —— light.action 只要回 302，
+        // 挂在 302 上的那条 JSESSIONID 就永远进不了罐，下一跳 redirect.action 于是回
+        // 14 字节纯文本 "Access timeout"（HTTP 还是 200，看着像通了）。10-27 早上他手机上
+        // 那张校园卡截图正是这一句。所以这里自己一跳一跳跟，每跳的 Set-Cookie 都由引擎落罐。
+        val jar = MapJar()
         val hub = createHttpEngine(
-            HttpEngineConfig(connectTimeoutMs = 15_000, readTimeoutMs = 20_000, cookieStore = MapJar()),
+            HttpEngineConfig(
+                connectTimeoutMs = 15_000, readTimeoutMs = 20_000,
+                followRedirects = false, cookieStore = jar,
+            ),
         )
         val withIdentity = appendQueryParams(
             light,
@@ -353,12 +363,22 @@ class CampusCardClient(
                 "returnFromIscToAppFunc" to "ReturnDefault",
             ),
         )
-        val code = runCatching {
-            hub.execute(
-                HttpCall(method = "GET", url = withIdentity, headers = listOf("Accept" to "*/*")),
-            ).status
-        }.getOrElse { return Result.failure(Exception("连不上校园卡入口：" + (it.message ?: ""))) }
-        if (code != 200) return Result.failure(Exception("校园卡入口回 $code"))
+        var target = withIdentity
+        var hops = 0
+        var code = 0
+        while (true) {
+            val reply0 = runCatching {
+                hub.execute(
+                    HttpCall(method = "GET", url = target, headers = listOf("Accept" to "*/*")),
+                )
+            }.getOrElse { return Result.failure(Exception("连不上校园卡入口：" + (it.message ?: ""))) }
+            code = reply0.status
+            val loc = reply0.headers.firstOrNull { it.first.equals("Location", true) }?.second
+            if (code !in 300..399 || loc.isNullOrBlank() || hops >= 3) break
+            target = resolveAgainst(target, loc)
+            hops++
+        }
+        if (code != 200) return Result.failure(Exception("校园卡入口回 $code（跟了 $hops 跳）"))
 
         val userData = JSONObject()
             .put("access_token", accessToken)
@@ -385,12 +405,14 @@ class CampusCardClient(
             )
         }.getOrElse { return Result.failure(Exception("连不上校园卡换会话那跳：" + (it.message ?: ""))) }
         val text = reply.bodyText
-        // 少 cookie 时这里是 14 字节纯文本 "Access timeout"，HTTP 仍是 200 —— 别当 JSON 解
+        // 少 cookie 时这里是 14 字节纯文本 "Access timeout"，HTTP 仍是 200 —— 别当 JSON 解。
+        // 出错时把"罐里到底有没有东西"一起带出来：这句决定下一步是查 cookie 还是查那把 token。
         val root = runCatching { JSONObject(text) }.getOrNull()
             ?: return Result.failure(
                 Exception(
-                    "换校园卡会话没成（服务端回的是纯文本：${text.take(24)}；" +
-                        "入口 ${withIdentity.substringBefore('?')}）",
+                    "换校园卡会话没成：服务端回的是纯文本「${text.take(24)}」" +
+                        "（入口 ${withIdentity.substringBefore('?')}，light 那跳跟了 $hops 跳、" +
+                        "罐里现有 ${jar.load(HUB_HOST, "/bsacs").size} 条 cookie）",
                 ),
             )
         val token = root.optString("token")
@@ -411,6 +433,7 @@ class CampusCardClient(
 
     private companion object {
         const val HUB = "https://hub.17wanxiao.com/bsacs"
+        const val HUB_HOST = "hub.17wanxiao.com"
         const val ECARD = "https://ecardh5.17wanxiao.com/ecardh5"
         /** 换出来的第三方 token 落这份文件（还是原来那个 ecard_token.txt）。 */
         const val TOKEN_FILE = "ecard_token.txt"
@@ -432,8 +455,7 @@ class CampusCardClient(
 }
 
 /** 够把 hub 那一跳的 JSESSIONID 带到下一跳就行，不做持久化。 */
-private class MapJar : CookieStore {
-    private val store = HashMap<String, MutableList<RawCookie>>()
+private class MapJar : CookieStore {    private val store = HashMap<String, MutableList<RawCookie>>()
 
     override fun save(host: String, cookies: List<RawCookie>) {
         val bucket = store.getOrPut(host) { mutableListOf() }
@@ -445,4 +467,18 @@ private class MapJar : CookieStore {
 
     override fun load(host: String, path: String): List<RawCookie> =
         store[host].orEmpty().filter { it.matches(host, path) }
+}
+
+/**
+ * 把 302 的 `Location` 拼成下一条要请求的绝对地址。
+ *
+ * 校方/第三方这三种写法都见过：绝对地址、根相对 `/bsacs/xxx`、同目录相对 `xxx.action`。
+ * 引擎自己跟的时候是它负责拼，现在我们自己跟，就得自己拼 —— 拼错的表现是"入口回 404"，
+ * 不是静默失败，所以照 RFC 3986 的简化规则来就够。
+ */
+private fun resolveAgainst(base: String, loc: String): String = when {
+    loc.startsWith("http://") || loc.startsWith("https://") -> loc
+    loc.startsWith("/") -> base.substringBefore("//") + "//" +
+        base.substringAfter("//").substringBefore('/') + loc
+    else -> base.substringBefore("?").substringBeforeLast('/') + "/" + loc
 }
