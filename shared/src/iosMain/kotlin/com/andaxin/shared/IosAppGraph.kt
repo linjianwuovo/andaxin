@@ -384,6 +384,36 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     }
 
     /**
+     * 明暗那一档交给宿主落到系统上。形状照 [onGuest]：注册一个回调，
+     * 不留可空函数属性（K/N 往 Swift 导出函数类型那步有坑，见 onGuest 上面那段）。
+     */
+    private var dayNightHook: ((String) -> Unit)? = null
+
+    fun onDayNight(onChange: (String) -> Unit) {
+        dayNightHook = onChange
+    }
+
+    /**
+     * 起来之后把明暗那一档喂宿主一次，之后跟着存储走。
+     *
+     * 不接这一根的后果很具体：「主题 → 夜间」只换了 Compose 里的颜色，系统那根底栏还是亮底 ——
+     * 半屏黑半屏白。为什么是这边推过去而不是 Swift 自己读：iOS 这份首选项是**文件**
+     * （`IosFiles` 落在 Documents），不是 NSUserDefaults，Swift 侧根本没有同一个键可读。
+     */
+    fun watchAppearance() {
+        scope.launch {
+            var last = ""
+            appearance.state.collect { a ->
+                if (a.dayNight.name != last) {
+                    last = a.dayNight.name
+                    NSLog("AndaXin 图：明暗 → " + a.dayNight.name)
+                    dayNightHook?.invoke(a.dayNight.name)
+                }
+            }
+        }
+    }
+
+    /**
      * 「先不登录，随便看看」这一格在 iOS 上的两步：写标志 + 换根。
      *
      * 换根这一步**不等那条流**，写完直接回调宿主 —— 因为 101 那发证实在 iOS 上

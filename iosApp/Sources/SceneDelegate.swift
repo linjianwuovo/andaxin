@@ -76,6 +76,23 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             self.swap(toTabs: true, g)
         }
 
+        // 明暗那一档由 Kotlin 推过来（那份首选项是 Documents 下的文件，Swift 自己读不到同一个键），
+        // 落到 **window** 的 overrideUserInterfaceStyle 上而不是 rootViewController 上：
+        // 换根（登录页 ⇄ 五格）之后挂在旧 VC 上的设置会跟着丢，挂在 window 上整棵树都跟着走。
+        // 不接这一根的话「主题 → 夜间」只黑半屏 —— Compose 里黑了，系统那根底栏还亮着。
+        g.onDayNight { [weak self] name in
+            guard let self else { return }
+            let style: UIUserInterfaceStyle
+            switch name {
+            case "Light": style = .light
+            case "Dark": style = .dark
+            default: style = .unspecified
+            }
+            self.window?.overrideUserInterfaceStyle = style
+            NSLog("AndaXin 壳：明暗落到 \(name)")
+        }
+        g.watchAppearance()
+
         // 只给 CI 用的一扇门：带 `-AndaXinGuest` 启动参数时才走「先不登录，随便看看」。
         // 平时用户手上那一发永远不带这个参数，所以它是个死分支，不改任何正常行为。
         // 为什么要它：CI 那台模拟器永远是未登录，五格（顶栏、底栏水滴、红点、真数据）
