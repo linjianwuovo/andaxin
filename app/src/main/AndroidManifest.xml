@@ -24,6 +24,8 @@
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- 上课倒计时那 30 分钟的前台服务用的类型（specialUse），见下面 <service> 那段注释 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- 扫码签到才用相机；不是必须，没相机也能用这个应用 -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -144,6 +146,21 @@
             android:name=".core.run.RunService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!--
+          上课倒计时那 30 分钟挂的那条常驻通知（他 10-27 明确要这一条）。
+          类型走 specialUse：它既不是定位也不是通话，"把一条倒计时钉成划不掉的常驻通知"
+          在平台那 11 种类型里本来没有对应物，硬套一个（比如 fitness）才是撒谎。
+          property 那条是官方要求写的用途说明，不是给系统看的开关，缺了它也能跑。
+        -->
+        <service
+            android:name=".core.schedule.ClassLiveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="class-countdown" />
+        </service>
 
         <!-- 查寝签到拍照：相机把图写到 cache/checkin/，经 FileProvider 授权给它写 -->
         <provider
