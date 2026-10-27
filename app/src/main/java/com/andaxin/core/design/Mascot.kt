@@ -58,6 +58,8 @@ import kotlinx.coroutines.delay
  *    上抬，身体 `rotate: -3`。这里的弹簧换成 Compose 的 `spring(stiffness = 6², dampingRatio = 1)`，
  *    物理量一一对得上（ω=6、无阻尼过冲）；差别是它 `_setExpr` 把"正在显示的那一环"冻成起点直接
  *    奔向池里任意一格，这里是沿池子顺序一格一格走过去 —— 跳格时路径不同，形变本身是同一套。
+ *    目光那一处是**照他的数改过的**：原式只左右扫，他要"转圈"（10-27 一句「要思考转圈那个思考」），
+ *    所以补一个 cos 分量画成椭圆、周期 2600 收到 1800 —— 这两条写在下面 `scanT` / `lookY` 那两处。
  *
  * 没抄的两样，是平台不一样，不是我想省事：它是 DOM+SVG 靠鼠标 `pointermove` 驱动，
  * 我们这边没有鼠标 —— 视线取的是"手指在问候语那一块上的位置"（松手回待机）；
@@ -165,10 +167,13 @@ fun MascotBall(
         infiniteRepeatable(tween(2_800, easing = LinearEasing), RepeatMode.Restart),
         label = "drift",
     )
-    // 它"思考中"的目光：`anims: lookX sine amp 9 / period 2600`
+    // 它"思考中"的目光：原式是 `lookX sine amp 9 / period 2600`（只左右扫）。
+    // 他 10-27 要的是**转圈**："那个小球加载动画要思考转圈那个思考" —— 所以同一对振幅
+    // 补一个 cos 分量（纵向 6.5，球面上下比左右窄，给到 9 就要顶到轮廓钳制线），
+    // 周期从 2600 收到 1800：一次典型刷新是 1~2 秒，2600 那一圈他看不到一半就结束了。
     val scanT = tr.animateFloat(
         0f, 1f,
-        infiniteRepeatable(tween(2_600, easing = LinearEasing), RepeatMode.Restart),
+        infiniteRepeatable(tween(1_800, easing = LinearEasing), RepeatMode.Restart),
         label = "scan",
     )
     /*
@@ -231,8 +236,10 @@ fun MascotBall(
             val lookX =
                 if (thinking) 9f * sin(2f * PI.toFloat() * scanT.value) + gaze.x * 8f
                 else gaze.x * 14f + 2.4f * sin(2f * PI.toFloat() * driftT.value)
-            // 它"思考中" eyes.both 的 `y: -2` + `lookY: -6`；待机就跟着手指走
-            val lookY = if (thinking) -8f + gaze.y * 6f else gaze.y * 9f
+            // 它"思考中" eyes.both 的 `y: -2` + `lookY: -6` = 整体抬 8；待机就跟着手指走
+            val lookY =
+                if (thinking) -8f + 6.5f * cos(2f * PI.toFloat() * scanT.value)
+                else gaze.y * 9f
             if (thinking) {
                 // 它 body 的 `rotate: -3`：歪的是整个人那一格，眼睛跟着一起歪
                 withTransform({ rotate(THINK_TILT, pivot = Offset(HEAD_C, HEAD_C)) }) {

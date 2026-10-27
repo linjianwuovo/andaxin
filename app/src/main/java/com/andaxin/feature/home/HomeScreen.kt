@@ -301,7 +301,10 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                  */
                 MascotBall(
                     gaze = gaze,
-                    thinking = busy,
+                    // 两个来源都算"在取数"：`busy` 是这一整趟（含待办四发和首页清单），
+                    // `state.refreshing` 还盖着冷启动/进屏那一次自动刷新 ——
+                    // 他要的是"加载的时候它在转圈思考"，那冷启动那几秒也该转。
+                    thinking = busy || state.refreshing,
                     onTap = { if (!busy) scope.launch { reload() } },
                     size = (titleSize.value * 2.1f).dp,
                 )
