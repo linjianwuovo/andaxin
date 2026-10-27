@@ -132,6 +132,25 @@ object ClassReminder {
         timetable: TimetableFeed,
         now: Calendar = Calendar.getInstance(),
         fromUser: Boolean = false,
+    ): String = armNext(context, store, slotsFor(timetable), now, fromUser)
+
+    /**
+     * 排程要的那两片课表（本周 + 下周）。抽出来只有一个原因：`week()` 后面没有缓存，
+     * 每调一次就是两发真请求 —— 打开 App 那一趟要连着用两份，不能各要一遍。
+     */
+    private suspend fun slotsFor(timetable: TimetableFeed): List<Pair<Int, TimetableSlot>> =
+        listOf(0, 1).flatMap { off ->
+            timetable.week(off).getOrElse { emptyList() }
+                .filter { it.startPeriod >= 1 }
+                .map { off to it }
+        }
+
+    private suspend fun armNext(
+        context: Context,
+        store: Store,
+        slots: List<Pair<Int, TimetableSlot>>,
+        now: Calendar,
+        fromUser: Boolean,
     ): String {
         val alarm = context.getSystemService(AlarmManager::class.java)
         val p = store.snapshot()
@@ -148,13 +167,8 @@ object ClassReminder {
         // 连排两周：只排本周的话，周五晚上最后一颗闹钟响完就再也接不上了 ——
         // 那时候"本周剩下的课"是空的，于是取消闹钟，然后一直等到下周一有人打开 App 才恢复。
         // 那几天里上课是不会提醒的，而"我明明开了它怎么不响"是最难查的一种坏。
-        // `startPeriod = 0` 是校方那条"阳光晨跑"活动占位，不是课 —— 别给它排闹钟。
+        // `startPeriod = 0` 是校方那条"阳光晨跑"活动占位，不是课 —— 别给它排闹钟（在 `slotsFor` 里已滤掉）。
         // 这一条 10-21 下午跟他那句"为什么课表里多了阳光晨跑"一起查出来的。
-        val slots = listOf(0, 1).flatMap { off ->
-            timetable.week(off).getOrElse { emptyList() }
-                .filter { it.startPeriod >= 1 }
-                .map { off to it }
-        }
         if (slots.isEmpty()) {
             return "课表没拉到，暂时排不上提醒（登录掉了先去登一次）。"
         }
@@ -187,6 +201,74 @@ object ClassReminder {
         return "已排：%s · %s（提前 %d 分钟起，每分钟刷一次倒计时）%s".format(
             course, at, lead, arm(context, alarm, next.triggerAt, pi),
         )
+    }
+
+    /**
+     * 打开 App 那一刻把上课提醒这条路整个接回来：先排往后那颗窗口闹钟，再给"已经在窗口里"的那一节补一发。
+     *
+     * 【他 10-27 早上：「打开应用没有流体云而且我马上有课」】排程以前只有两个入口 ——
+     * 进「通知」那一屏、以及闹钟链自己接续，**打开 App 什么都不排**。于是这三种情况都是"没有提醒"：
+     * ① 刚覆盖安装（上一版排下去那颗带的 PendingIntent 换过包就不一定还认）；
+     * ② ROM 省电策略把那颗闹钟掐了或压晚了（任务 #120 量的就是这条）；
+     * ③ 他从没进过「通知」那一屏。
+     * 更要命的是 `armNext` 只排"提前量那一分钟还没到"的课：他打开 App 时离上课只剩三分钟，
+     * 这一节已经被 `at <= now` 跳过了 —— 那连普通通知都没有，更不用说状态栏那颗胶囊。
+     *
+     * 所以补两下：排程照旧走（往后那颗一定挂上），然后自己看一眼有没有哪一节**正在窗口里**，
+     * 有就照闹钟本来要做的那一发打一遍 —— `tick` 会刷倒计时、也会把下一分钟那颗滴答排上，
+     * 号（NOTE_ID / TICK_CODE）都是固定的，链本来在跑也不会多出第二条。
+     * 一个会话只做一遍（`generation` 变了才再做），因为课表那两发后面没缓存，别每次回前台都敲门。
+     */
+    suspend fun onAppOpen(
+        context: Context,
+        store: Store,
+        timetable: TimetableFeed,
+        generation: Long,
+    ): String? {
+        if (openPass == generation) return null
+        openPass = generation
+        val slots = runCatching { slotsFor(timetable) }.getOrElse { return null }
+        val why = armNext(context, store, slots, Calendar.getInstance(), fromUser = false)
+        val caught = catchUp(context, store, slots)
+        return if (caught == null) why else "$why · $caught"
+    }
+
+    /** 进程活着的时候，"打开 App 补一次"每个会话只做一遍。 */
+    private var openPass: Long? = null
+
+    /**
+     * 「通知」那一屏也用一次：他把开关拨到"开"的那一刻离上课只剩三分钟的话，
+     * `armNext` 会把这一节整个跳过（提前量那一分钟已经过了），那一屏就会显示"已排：下一节…"
+     * 而眼下这一节什么都不发。补一发，屏上那句和状态栏那颗就对得上了。
+     */
+    suspend fun catchUpNow(context: Context, store: Store, timetable: TimetableFeed): String? =
+        catchUp(context, store, slotsFor(timetable))
+
+    /** 有一节正处在提前窗口里就补发那一发倒计时，回它剩几分钟；不在窗口里回 null。 */
+    private suspend fun catchUp(
+        context: Context,
+        store: Store,
+        slots: List<Pair<Int, TimetableSlot>>,
+    ): String? {
+        val p = store.snapshot()
+        if (!isOn(p, store)) return null
+        val lead = leadOf(p, store)
+        val now = Calendar.getInstance()
+        val hit = slots.mapNotNull { (off, slot) ->
+            val begin = Periods.slotStart(slot.day, slot.startPeriod, now, off) ?: return@mapNotNull null
+            val startMs = begin.timeInMillis
+            val left = minutesLeft(startMs, now.timeInMillis)
+            // 只补"还没上课、且已经进了提前量"的那一节；正在上的那一节不补（那是"现在上课"那一档）
+            if (left <= 0 || left > lead) null else slot to startMs
+        }.minByOrNull { minutesLeft(it.second, now.timeInMillis) } ?: return null
+        ensureChannel(context)
+        val (slot, startMs) = hit
+        val left = minutesLeft(startMs, now.timeInMillis)
+        tick(
+            context, slot.course.ifBlank { "一节课" }, slot.room, slot.startPeriod,
+            timeFmt().format(Date(startMs)), startMs, lead,
+        )
+        return "离上课还有 $left 分钟，这一发的倒计时补上了"
     }
 
     /** 排好待武装的那一节：触发时刻、是哪节课、真正上课的墙钟毫秒。
