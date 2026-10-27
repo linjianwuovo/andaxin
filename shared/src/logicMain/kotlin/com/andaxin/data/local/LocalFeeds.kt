@@ -54,9 +54,9 @@ class LocalNotices : NoticeFeed {
         delay(120)
         return Result.success(
             listOf(
-                NoticeItem("n1", "关于本学期期中考试安排的通知", "10-19", "教务处", null),
-                NoticeItem("n2", "图书馆开放时间调整", "10-18", "图书馆", null),
-                NoticeItem("n3", "校园卡系统维护公告", "10-16", "信息化中心", null),
+                NoticeItem("n1", "关于本学期期中考试安排的通知", "10-19", "教务处", null, "教学"),
+                NoticeItem("n2", "图书馆开放时间调整", "10-18", "图书馆", null, "场馆"),
+                NoticeItem("n3", "校园卡系统维护公告", "10-16", "信息化中心", null, "服务"),
             )
         )
     }

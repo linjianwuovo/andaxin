@@ -1,11 +1,14 @@
 package com.andaxin.feature.notice
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -25,6 +28,7 @@ import com.andaxin.core.net.formUrlEncode
 import com.andaxin.data.NoticeBody
 import com.andaxin.data.NoticeFeed
 import com.andaxin.feature.brief.ScaffoldPage
+import com.andaxin.shell.Chip
 import com.andaxin.shell.ErrorLine
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Refreshable
@@ -74,6 +78,8 @@ class NoticeDetailDeps(
 @Composable
 fun NoticeScreen(deps: NoticeDeps, open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val state by deps.model.state.collectAsState()
+    // 换分类不重新发请求：数据本来就是一次全拉的，这一层只是筛
+    var picked by remember { mutableStateOf<String?>(null) }
 
     // 只有列表这一支需要下拉刷新，详情那一屏没什么可刷的
     Refreshable({ deps.model.refresh() }, modifier.fillMaxSize()) {
@@ -87,18 +93,37 @@ fun NoticeScreen(deps: NoticeDeps, open: (String) -> Unit = {}, modifier: Modifi
             Text("公告", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
             Spacer(Modifier.height(Gap.md))
 
+            /*
+             * 校方这个列表本来就是分好类的（学校要闻 / 学院动态 / 通知公告 / 学术信息…），
+             * 而我们是一发一类各拉十条拼成一屏 —— 以前不分类也别想看清是谁家的。
+             * 丸子只摆"这一屏真拿到了的类别"，一条没有的类别不摆（摆一颗点出空列表的丸子是坑人）。
+             */
+            val cats = state.items.map { it.category }.filter { it.isNotBlank() }.distinct()
+            if (cats.size > 1) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(bottom = Gap.md),
+                    horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                ) {
+                    Chip("全部", picked == null) { picked = null }
+                    cats.forEach { c -> Chip(c, picked == c) { picked = c } }
+                }
+            }
+            val shown = state.items.filter { picked == null || it.category == picked }
+
             // 原来一条一行、一行自己画一条分隔线，三十条就是三十块卡片。
             // 现在一张卡里分行，行间细线，时间和来源在右
-            if (state.items.isNotEmpty()) {
+            if (shown.isNotEmpty()) {
                 Sheet {
-                    state.items.forEachIndexed { i, item ->
+                    shown.forEachIndexed { i, item ->
                         RowLine(
                             title = item.title,
-                            sub = item.source,
+                            // 类别排在来源前面：分着看的时候"这是哪一类"比"谁发的"更有用
+                            sub = listOf(item.category, item.source).filter { it.isNotBlank() }
+                                .distinct().joinToString(" · "),
                             right = item.publishedAt.removePrefix("20").replace('-', '.'),
                             onClick = { open(NOTICE_ROUTE + formUrlEncode(item.id)) },
                         )
-                        if (i != state.items.lastIndex) {
+                        if (i != shown.lastIndex) {
                             Spacer(Modifier.height(Gap.xs))
                             Hairline()
                             Spacer(Modifier.height(Gap.xs))
