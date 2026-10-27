@@ -29,9 +29,11 @@ import kotlinx.coroutines.launch
  *
  * 五件事决定它长这样：
  *
- * ① **节次表是我们自己拍的**。抓到的接口里没有一条给"第几节几点上课"（见 `Periods` 顶上那段），
- *    所以这条通知说的时间不是校方给的。设置那一行把这句话写明白了，不藏。
- *    真按那张表提醒，误差在"学校改作息没通知"这种时候才会咬人。
+ * ① **那张节次表是照校方作息表一行行抄的，不是我们自己排的**（10 节：第 1 节 08:30–09:15、
+ *    第 7 节 15:55–16:35 那种，来源见 `Periods` 顶上那段）。校方那边没有一条**接口**给
+ *    "第几节几点上课"，所以这张表只能手抄着跟 —— 误差只在"学校改了作息没公告"这种时候才咬人。
+ *    （0.8.74 之前这条写成"是我们自己排的"，他 10-27 一句「节次是我们自己安排的是什么鬼」
+ *    把它钉回来了：那是早期这张表真是我拍的时候留下的话，表换了，话没换。）
  * ② **一次只挂一颗闹钟**：只排"下一节"，响了之后由接收者再排下一颗。
  *    把一整天八颗都排下去的话，状态栏那个闹钟图标会一直挂着，而且课表一改就得整批重排。
  * ③ 先排**精确闹钟**（`setAlarmClock`），系统不给权限就退化成 `setAndAllowWhileIdle`，
@@ -106,7 +108,7 @@ object ClassReminder {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "上课提醒", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "从课前那个提前量起，每分钟把这条通知的倒计时刷一遍，直到上课。不响。" +
-                    "节次时间是我们自己排的表，不是校方给的。"
+                    "节次时间照的是校方那张作息表（10 节），接口里没有这一项，学校改了得我们跟着改。"
                 setSound(null, null)
                 enableVibration(false)
                 vibrationEffect = null
@@ -464,7 +466,7 @@ object ClassReminder {
             .setSmallIcon(R.drawable.ic_tab_schedule)
             .setContentTitle(course.ifBlank { if (left > 0) "快上课了" else "上课了" })
             .setContentText(body)
-            .setSubText("上课提醒 · 节次时间是我们自己排的")
+            .setSubText("上课提醒 · 节次时间照校方作息表")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             // 一条都不响（10-25 他"不要响"）。两道一起上：建渠道时就把声音清了，
