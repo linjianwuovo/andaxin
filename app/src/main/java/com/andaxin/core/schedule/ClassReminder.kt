@@ -236,6 +236,11 @@ object ClassReminder {
     /** 进程活着的时候，"打开 App 补一次"每个会话只做一遍。 */
     private var openPass: Long? = null
 
+    /** 上一发倒计时走的是胶囊还是普通通知、为什么。给「通知」那一屏直接读，不落盘。 */
+    @Volatile
+    var lastLiveWhy: String? = null
+        private set
+
     /**
      * 「通知」那一屏也用一次：他把开关拨到"开"的那一刻离上课只剩三分钟的话，
      * `armNext` 会把这一节整个跳过（提前量那一分钟已经过了），那一屏就会显示"已排：下一节…"
@@ -469,6 +474,19 @@ object ClassReminder {
          */
         val promoted = left > 0 && lead > 0 &&
             com.andaxin.core.notification.LiveUpdates.canPost(context)
+        /*
+         * 上一发到底走了哪条、为什么，留在进程里给「通知」那一屏显示。
+         * 他 10-27 一句「我这是 ColorOS 17」 —— 设备不在我手边时，我不该再猜是哪一道闸卡的：
+         * 是"还在现在上课那一档"、"这颗闹钟没有提前量"、"权限没给"，还是 ROM 那一档关着，
+         * 这一句会自己说清（`LiveUpdates.whyNot` 把两道闸分开问一遍）。
+         */
+        lastLiveWhy = when {
+            left <= 0 -> "上一发是「现在上课」那一档 —— 这一档本来就不上胶囊（划得掉的那种）"
+            lead <= 0 -> "上一发没上胶囊：那颗闹钟是 0.8.59 之前排下去的，里没有提前量，进度画不出来"
+            promoted -> "上一发走了胶囊（API ${com.andaxin.core.notification.LiveUpdates.apiLevel()}）"
+            else -> "上一发没上胶囊：${com.andaxin.core.notification.LiveUpdates.whyNot(context)}"
+        }
+        android.util.Log.i("LxClass", lastLiveWhy.orEmpty())
         if (promoted) {
             b.setOngoing(true)
                 .setRequestPromotedOngoing(true)

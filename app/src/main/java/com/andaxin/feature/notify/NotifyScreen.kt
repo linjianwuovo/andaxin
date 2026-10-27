@@ -154,6 +154,15 @@ private fun ClassReminderRow() {
         Spacer(Modifier.height(Gap.xs))
         Text(status, fontSize = Type.micro, color = ink.faint)
     }
+    /*
+     * 上一发倒计时到底走了哪条 —— 这一句是 10-27 早上加进来的。
+     * "有没有胶囊"这件事由三道闸决定（系统有没有这套 API、运行时权限、ROM 按应用那一档），
+     * 设备不在手边时我不该猜；这一句是那三问之后的结论，原样摆出来，他念给我就行。
+     */
+    com.andaxin.core.schedule.ClassReminder.lastLiveWhy?.let {
+        Spacer(Modifier.height(Gap.xxs))
+        Text(it, fontSize = Type.micro, color = ink.faint, lineHeight = Type.metaLine)
+    }
 }
 
 /**
@@ -162,42 +171,55 @@ private fun ClassReminderRow() {
 @Composable
 private fun LiveUpdateRows() {
     val ctx = LocalContext.current
+    val ink = LocalInk.current
     // 每次进屏、每次点完都重新问一遍系统：ROM 那个开关是用户随时能在设置里拨的，
     // 缓存下来就成了"我明明开了它还说不行"
     var askTick by remember { mutableIntStateOf(0) }
     val canPost = askTick.let { LiveUpdates.canPost(ctx) }
+    // 上一发没上胶囊时那句"卡在哪"的原文，由发通知那一侧留下（ClassReminder.lastLiveWhy），
+    // 这里把它当副标题用；已经能发了就换成三道闸的现问现答。
+    var jumped by remember { mutableStateOf(true) }
     val askPromoted = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) {
         askTick++
         // 系统要是没弹这一发（权限本来就给了、或者这个 ROM 根本没那套弹层），就地把他送到
         // 应用的通知设置页 —— 点了没反应比点了报错更难查
-        if (!LiveUpdates.canPost(ctx)) LiveUpdates.openNotificationSettings(ctx)
+        if (!LiveUpdates.canPost(ctx)) jumped = LiveUpdates.openPromotedSettings(ctx)
     }
 
     RowLine(
         title = "实况更新权限",
         // 这一行右边还要摆状态那两个字，副标题写长了会被裁成"…"，所以压到一句
-        sub = "不给也能用，只是不上状态栏那颗胶囊。",
+        sub = if (canPost) "能发：倒计时那几档会同时上状态栏那颗胶囊。"
+            else "不给也能用，只是不上状态栏那颗胶囊。",
         right = when {
-            !LiveUpdates.supported() -> "这台没有"
-            canPost -> "已允许"
-            else -> "没允许"
+            // "这台没有"以前是一句没法核对的话 —— 现在把他机器报的那个 API 号一起写出来
+            !LiveUpdates.supported() -> "这台没有 · API ${LiveUpdates.apiLevel()}"
+            canPost -> "已允许 · API ${LiveUpdates.apiLevel()}"
+            else -> "没允许 · API ${LiveUpdates.apiLevel()}"
         },
         onClick = {
             if (LiveUpdates.supported() && !canPost) {
                 askPromoted.launch(android.Manifest.permission.POST_PROMOTED_NOTIFICATIONS)
             } else {
-                LiveUpdates.openNotificationSettings(ctx)
+                jumped = LiveUpdates.openPromotedSettings(ctx)
             }
         },
     )
     Hairline()
     RowLine(
         title = "系统里的实况开关",
-        sub = "总开关、允许哪些应用上岛，都在那一页。",
+        // 官方给的是专门那一条 intent（API 36 起）；ColorOS 17 的流体云那一档不在通用通知页里，
+        // 所以先试专门那条，拉不起来才退回通知页、再退到应用信息页。三条全空就明说没打开。
+        sub = if (jumped) "总开关、允许哪些应用上岛，都在那一页。"
+            else "那几页这台机器都没应，去系统设置里搜「流体云」。",
         right = "›",
-        onClick = { LiveUpdates.openNotificationSettings(ctx) },
+        onClick = { jumped = LiveUpdates.openPromotedSettings(ctx) },
     )
+    if (!canPost && LiveUpdates.supported()) {
+        Spacer(Modifier.height(Gap.xs))
+        Text(LiveUpdates.whyNot(ctx), fontSize = Type.micro, color = ink.faint, lineHeight = Type.metaLine)
+    }
 }
 
