@@ -140,7 +140,14 @@ class AppGraph(val context: Context) {
      * 还欠的是本周跑量、报修、校园卡、AI 课堂、劳动教育、节假日离返校。
      */
     val timetable: TimetableFeed by lazy {
-        TimetableSource(CaptureTimetable(school), LocalTimetable(), session)
+        TimetableSource(
+            CaptureTimetable(school),
+            LocalTimetable(),
+            session,
+            // 本周课表落一份给冷启动垫屏：大退再开不该先空三秒（他 10-27 那句「先加载缓存然后刷新」）
+            readSnap = { com.andaxin.core.store.Snap.read(context, "week") },
+            writeSnap = { com.andaxin.core.store.Snap.write(context, "week", it) },
+        )
     }
 
     val messages: MessageFeed by lazy {

@@ -11,7 +11,9 @@ import java.io.File
  * 现在先用上次的数字把界面填上，网络回来了再整屏换一次；界面会同时写着"更新中"，
  * 不会把旧数字冒充成刚拉到的。
  *
- * 只存首页这种"看一眼就走"的内容；成绩、请假这些带身份的单据不在这里缓存。
+ * 只存"看一眼就走"的内容：首页那几格数字（`snap_home`）和本周课表（`snap_week`，
+ * 0.8.73 起 —— 他一句「大退重开为什么不能再从缓存先加载」）。
+ * 成绩、请假、待办单据这些带身份的东西不在这里缓存。
  */
 object Snap {
     private fun file(context: Context, name: String) = File(context.filesDir, "snap_$name.json")
