@@ -40,13 +40,13 @@ object LiveUpdates {
     fun apiLevel(): Int = Build.VERSION.SDK_INT
 
     /** 现在到底能不能发提升通知：权限和系统那句都问，任一为真就算能。 */
-    fun canPost(context: Context): Boolean {
-        if (!supported()) return false
-        if (granted(context)) return true
-        return runCatching {
-            context.getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
-        }.getOrDefault(false)
-    }
+    fun canPost(context: Context): Boolean = supported() &&
+        (granted(context) || systemAllows(context))
+
+    /** 系统那句 `canPostPromotedNotifications()` 答没答允（ROM 按应用那一档读的就是它）。 */
+    fun systemAllows(context: Context): Boolean = runCatching {
+        context.getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
+    }.getOrDefault(false)
 
     /** 能不能发不成时到底卡在哪一环，回一句人话（界面上直接摆出来，不用再靠猜）。 */
     fun whyNot(context: Context): String = when {
@@ -58,20 +58,25 @@ object LiveUpdates {
         else -> "看起来是能发的"
     }
 
-    private fun systemAllows(context: Context): Boolean = runCatching {
-        context.getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
-    }.getOrDefault(false)
-
     /**
-     * 系统里那一页"这个应用能不能上岛"。官方给的是专门那条 intent（API 36 起），
-     * 不是应用的通知设置页 —— ColorOS 17 把流体云那一档放在自己的入口里，
-     * 通知设置页翻到底也不一定有它。所以三条一路试：专门那条 → 本应用通知页 → 应用信息页，
-     * 哪条能拉起就走哪条；全拉不起来回 false，界面上就明说没打开。
+     * 系统里那一页"这个应用能不能上岛"。
+     *
+     * 官方那条 intent 是 `android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS`
+     * （`Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`，API 36 起，要带 EXTRA_APP_PACKAGE）——
+     * 这条是从本机 SDK 的 `android.provider.Settings` 源码里抄的字面值，不是我猜的：
+     * 上一版我按名字拼了一条 `MANAGE_APP_PROMOTED_NOTIFICATIONS`，那条根本不存在，
+     * 走的是 ActivityNotFoundException → 退回通用通知页，等于白改。
+     * ColorOS 的流体云那一档也不一定挂在通用通知页里，所以官方那条必须真对得上。
+     * 官方文档自己写着"匹配不到 Activity 是可能的，自己兜住"，所以三条一路试：
+     * 专门那条 → 本应用通知页 → 应用信息页；全拉不起来回 false，界面上就明说没打开。
      */
     fun openPromotedSettings(context: Context): Boolean {
         val tries = buildList {
             if (Build.VERSION.SDK_INT >= 36) {
-                add(Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS").setPackage(context.packageName))
+                add(
+                    Intent("android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS")
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                )
             }
             add(
                 Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
