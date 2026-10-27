@@ -509,8 +509,7 @@ object ClassReminder {
         if (promoted) {
             b.setOngoing(true)
                 .setRequestPromotedOngoing(true)
-                // 胶囊那几个字的位置：只放得下"11 分"这种，课名留给展开那一层
-                .setShortCriticalText("$left 分")
+                .setShortCriticalText(capsuleText(left, room))
                 .setStyle(
                     NotificationCompat.ProgressStyle()
                         .setProgress(((lead - left) * 100 / lead).coerceIn(0, 100)),
@@ -520,6 +519,21 @@ object ClassReminder {
                 .setAutoCancel(true)
         }
         return b.build()
+    }
+
+    /**
+     * 状态栏那颗珠子上写的那一句。
+     *
+     * 他 10-27 10:04 那张屏：珠子出来了，写的只有"21 分" —— 一句「有了但小岛不显示教室」。
+     * 平台上那颗 chip 只有**一个**文本位：SDK 源码 `Notification.getCompactContent()` 那段
+     * 有序列表第一档就是 `shortCriticalText`，没有第二个槽，所以想把教室塞进去就得挤掉别的。
+     * 顺序定成"教室·分钟"：真被 ROM 截尾，掉的也是分钟数 —— 那一串在展开的那条通知里还在，
+     * 而"这一节去哪儿上"是岛上一眼要用的那个信息。教室先过 `shortRoom`（去"楼/栋"、去括号），
+     * 再把空格去掉，一个字符都不白给。
+     */
+    private fun capsuleText(left: Int, room: String): String {
+        val r = shortRoom(room).replace(" ", "")
+        return if (r.isBlank()) "$left 分" else "$r·$left 分"
     }
 
     /** 撤干净：窗口那颗 + 正在跑的滴答链。调用方得自己再发一次 reschedule 才会重新排。 */
