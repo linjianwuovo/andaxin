@@ -7,9 +7,11 @@ import com.andaxin.core.net.HttpCall
 import com.andaxin.core.net.HttpEngine
 import com.andaxin.core.net.HttpEngineConfig
 import com.andaxin.core.net.RawCookie
+import com.andaxin.core.net.appendQueryParams
 import com.andaxin.core.net.createHttpEngine
 import com.andaxin.core.net.formUrlEncode
 import com.andaxin.core.net.matches
+import com.andaxin.core.net.queryParamOf
 import com.andaxin.core.store.SessionStore
 import com.andaxin.core.store.Store
 import kotlin.io.encoding.Base64
@@ -284,6 +286,153 @@ class FifSession(
             jar.map[HOST_STTP] = (
                 old.filterNot { n -> list.any { it.name == n.name } } + list
                 ).toMutableList()
+        }
+    }
+
+    /**
+     * 扫 AI 课堂那张码签到：**自己发那一跳，读 302 的落点**，不拿 WebView 打开那个网页。
+     *
+     * 【取证 · 归属照本仓的三等同规矩标】
+     * ③（目标 App 发出、被我们自己抓到的）：旧项目 10-13 那一轮里这条口有两种落点形状 ——
+     *   `GET /coursecenter-interaction/qrcodeV2/qrcodeHandler?token=…&openTheWay=2`，
+     *   头是 `authorization: Basic <jwt>` + `Visit-Type: mobile` + 手机 WebView 那串 UA + `X-Requested-With`，
+     *   回 302，`Location` 里分别见过 `signSuccess` / `codeExpired` / `loginManage` 这三种落点。
+     * ②（我们发出去、看到回的）：**还没打过**。手上没有一张活码，装到机上真扫一次才算数 ——
+     *   所以下面每一种落点都照原样把话说清楚，不许静默当成功。
+     *
+     * 为什么不走 WebView（这一发是 10-27 从 main 上 `7d07bc3` 搬过来的，安卓那侧他先修）：
+     * FIF 那一发要的是 `authorization` 这个**头**，而它服务端一条 Set-Cookie 都不发
+     * （见文件头那条实测）—— 拿 cookie 当会话递过去，递过去是空的，那一跳被推去登录，
+     * 登录页又是微信专用的，屏幕上就只剩「请在微信客户端打开链接」。
+     */
+    suspend fun qrSign(raw: String): Result<String> {
+        val trimmed = raw.trim()
+        val token = qrToken(trimmed) ?: return Result.failure(IOException("码里没找到 token"))
+        var attempt = qrSignOnce(qrUrl(trimmed, token))
+            ?: return Result.failure(IOException("签到那一发没发出去（网络）"))
+        if (attempt.first == 302 && attempt.second.contains("login", ignoreCase = true)) {
+            // 会话过期：重跑一遍单点登录，只再发这一回。再不行就把原因交给人，不循环重试
+            val back = performSso().getOrNull()
+                ?: return Result.failure(IOException("AI 课堂的会话过期了，重登也没换到新会话"))
+            saveIdentityCookies(bareJwt().orEmpty(), back)
+            attempt = qrSignOnce(qrUrl(trimmed, token))
+                ?: return Result.failure(IOException("重试那一发没发出去（网络）"))
+        }
+        return qrRead(attempt.first, attempt.second)
+    }
+
+    /** 码可能是完整 URL（带 `token=`），也可能整串就是 token。 */
+    private fun qrToken(raw: String): String? {
+        // 原来那行是 `raw.toHttpUrl().queryParameter("token")`，共享层这把同口径
+        queryParamOf(raw, "token")?.takeIf { it.isNotBlank() }?.let { return it }
+        Regex("[?&]token=([^&#]+)").find(raw)?.groupValues?.getOrNull(1)?.let { return it }
+        return raw.takeIf { it.matches(Regex("^[A-Za-z0-9_-]{20,}$")) }
+    }
+
+    /**
+     * 拼上官方那一跳带的身份参数。
+     *
+     * `qrcodeHandler` 认的不只是 `token`：登录名、学号、appId 这几个都在 query 里带着，
+     * 少带就被当成没登录的人扫了个码 —— 那正是被推去 `loginManage` 的那一类。
+     * 码里已经有的参数一个都不覆盖（学校自己发的那种长链，参数比我们还全）。
+     */
+    private suspend fun qrUrl(raw: String, token: String): String {
+        val base = if (raw.startsWith("http", ignoreCase = true)) {
+            raw
+        } else {
+            "$HOST_STTP/coursecenter-interaction/qrcodeV2/qrcodeHandler?token=${urlEnc(token)}&openTheWay=2"
+        }
+        val inner = school.identity()
+        val jwt = bareJwt().orEmpty()
+        if (inner == null || jwt.isBlank()) return base
+        val missing = listOf(
+            "access_token" to jwt,
+            "_userCode" to inner.userCode,
+            "code" to inner.userCode,
+            "userCode" to inner.userCode,
+            "_userName" to inner.userName,
+            "_userType" to inner.userType,
+            "appId" to School.APP_ID,
+            "returnFromIscToAppFunc" to "ReturnDefault",
+        ).filter { (k, v) -> v.isNotBlank() && queryParamOf(base, k).isNullOrBlank() }
+        return if (missing.isEmpty()) base else appendQueryParams(base, missing)
+    }
+
+    /**
+     * 发那一发用的引擎：跟主那条一样的超时，但**不带 cookie 罐**、也**不跟重定向**。
+     *
+     * 不跟重定向是要自己读那一跳给的 `Location`（签没签上就写在那儿）。不带罐子的理由
+     * （main 上 `fe6c2e5` 那条）：罐子会**覆盖** `Cookie` 头 —— OkHttp 那台是
+     * `BridgeInterceptor` 拿 `cookieJar.loadForRequest(url)` 的结果盖上去，我们这台是引擎
+     * 在发之前问一次 `cookieStore.load(...)` 拼一条盖上去，同一个坑的两种写法。
+     * 而这一发的 `id`/`studentId` 那几条是**我们手动塞的**（见 [qrCookies]），
+     * 不能靠"罐子里恰好没有"来保。所以给一台没罐子的引擎，`Cookie` 头由 `qrCookies` 一个人说了算。
+     * （主那条的罐子不动 —— 那会影响 FIF 另外十来发。）
+     */
+    private val qrEngine: HttpEngine by lazy {
+        createHttpEngine(
+            HttpEngineConfig(
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 20_000,
+                followRedirects = false,
+                cookieStore = null,
+            ),
+        )
+    }
+
+    /** 发那一发，回 `HTTP 码 → Location`。网络本身挂了回 null。 */
+    private suspend fun qrSignOnce(url: String): Pair<Int, String>? = runCatching {
+        val reply = qrEngine.execute(
+            HttpCall(
+                method = "GET",
+                url = url,
+                headers = buildList {
+                    add("User-Agent" to WEB_UA)
+                    add("Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    add("Upgrade-Insecure-Requests" to "1")
+                    add("X-Requested-With" to "com.andaxin")
+                    authHeader()?.let { add("authorization" to it) }
+                    add("Visit-Type" to "mobile")
+                    qrCookies(url).takeIf { it.isNotBlank() }?.let { add("Cookie" to it) }
+                },
+            ),
+        )
+        reply.status to (reply.headers.firstOrNull { it.first.equals("Location", true) }?.second ?: "")
+    }.getOrNull()
+
+    /**
+     * 这一跳要带的 cookie：罐子里那些，加上身份那三条。
+     *
+     * 那三条（`id`/`studentId`/`currentUserName`）是**我们手动放进罐子的**（见
+     * [saveIdentityCookies]）—— FIF 服务端自己一条都不发，等罐子攒出来是等不到的。
+     */
+    private suspend fun qrCookies(url: String): String {
+        val merged = LinkedHashMap<String, String>()
+        val host = url.substringAfter("//", "").substringBefore('/')
+        if (host.isNotBlank()) {
+            // 罐子按 origin 分桶存，所以把桶里的摊出来、再照 cookie 自己的 domain/path 规则筛一遍
+            jar.map.values.flatten().filter { it.matches(host, "/") }.forEach { merged[it.name] = it.value }
+        }
+        ids()?.let {
+            if (it.studentId.isNotBlank()) {
+                merged["id"] = it.studentId
+                merged["studentId"] = it.studentId
+            }
+            if (it.userName.isNotBlank()) merged["currentUserName"] = urlEnc(it.userName)
+        }
+        return merged.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+    }
+
+    /** 把 302 的落点翻译成人话。认不出的照实说认不出，别替学校宣布成功。 */
+    private fun qrRead(code: Int, location: String): Result<String> {
+        fun has(k: String) = location.contains(k, ignoreCase = true)
+        return when {
+            code != 302 -> Result.failure(IOException("签到那一发回了 HTTP $code（不是跳转），没签上"))
+            has("signSuccess") -> Result.success("签到成功")
+            has("codeExpired") -> Result.failure(IOException("这个码已经过期了，让老师重新开一张"))
+            has("login") -> Result.failure(IOException("AI 课堂的会话失效了，重登一次也没签上"))
+            has("course") -> Result.failure(IOException("没签上：这一跳被送去了课程页（码可能不是这堂课的）"))
+            else -> Result.failure(IOException("没签上：跳转落点认不出来 ${location.take(70)}"))
         }
     }
 

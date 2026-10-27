@@ -23,6 +23,8 @@ import com.andaxin.core.net.formUrlDecode
 import com.andaxin.feature.aiclass.CoursewareScreen
 import com.andaxin.feature.aiclass.RecordPlayScreen
 import com.andaxin.feature.aiclass.ScanScreen
+import com.andaxin.feature.aiclass.QrSignScreen
+import com.andaxin.feature.web.decodeUrl
 import com.andaxin.feature.web.encodeUrl
 import com.andaxin.feature.aiclass.OpenCourseDetailScreen
 import com.andaxin.feature.aiclass.OpenCourseListScreen
@@ -370,14 +372,15 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         key.startsWith("sport/detail/") -> IosRoute("这一趟") { SportDetailScreen(recordId = detailId, onBack = {}) }
         key == "sport/maintain" -> IosRoute("运动维护") { SportMaintainScreen(onBack = {}) }
 
-        // 扫码：扫到的整条 URL 交应用内网页那一扇。10-27 早上补了"先把 FIF 会话灌进 WKWebView
-        // 的 cookie 罐、灌完再开"这一步 —— 之前直接开，那一页是未登录的那一版（安卓的
-        // QrSignScreen 一直是先塞 cookie 再 loadUrl 的，时序对齐照它）
+        // 扫码：扫到的那条链接**不再丢给 WebView** 了（10-27 从 main 上 `7d07bc3` 搬过来的做法）——
+        // 交给自己发那一跳的 QrSignScreen 读 302 落点。原来那扇"灌 cookie 再开网页"的门
+        // （IosWebCookies.kt）跟着删了：FIF 那一发认的是 `authorization` 头，服务端一条
+        // Set-Cookie 都不发，递 cookie 过去是空的，页面就被推去微信专用的登录页。
         key == "aiclass/scan" -> IosRoute("扫码签到") {
-            ScanScreen(onBack = {}, onSignUrl = { url ->
-                val header = runCatching { fif.cookieHeader("fifedu.com") }.getOrNull().orEmpty()
-                seedFifCookies(header) { push(host, "web/" + encodeUrl(url)) }
-            })
+            ScanScreen(onBack = {}, onSignUrl = { url -> push(host, "aiclass/signqr/" + encodeUrl(url)) })
+        }
+        key.startsWith("aiclass/signqr/") -> IosRoute("扫码签到") {
+            QrSignScreen(url = decodeUrl(key.removePrefix("aiclass/signqr/")), onBack = {})
         }
         key.startsWith("aiclass/play/") -> IosRoute("看录像") {
             RecordPlayScreen(resourceId = key.removePrefix("aiclass/play/"), onBack = {})
