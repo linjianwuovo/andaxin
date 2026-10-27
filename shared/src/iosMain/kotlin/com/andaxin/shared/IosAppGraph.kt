@@ -70,6 +70,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import platform.Foundation.NSLog
 
@@ -240,6 +242,25 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     override val im: com.andaxin.data.capture.CaptureIm by lazy { com.andaxin.data.capture.CaptureIm(school) }
     override val appearance: com.andaxin.core.settings.AppearanceStore by lazy {
         com.andaxin.core.settings.AppearanceStore(store)
+    }
+
+    /**
+     * 首页壁纸那一档，从同一份外观设置流出来。
+     *
+     * 之前 `homeViewController()` 里喂的是一个**写死的** `MutableStateFlow(HeroLook.Auto)` ——
+     * 也就是「主题」里选了晨雾/金树/月夜，首页不会有任何变化。安卓那侧喂的就是这个 map，照它。
+     */
+    val heroLook: kotlinx.coroutines.flow.StateFlow<com.andaxin.feature.home.HeroLook> by lazy {
+        appearance.state
+            .map { a ->
+                when (a.hero) {
+                    com.andaxin.core.settings.HeroStyle.Dawn -> com.andaxin.feature.home.HeroLook.Dawn
+                    com.andaxin.core.settings.HeroStyle.Dusk -> com.andaxin.feature.home.HeroLook.Dusk
+                    com.andaxin.core.settings.HeroStyle.Night -> com.andaxin.feature.home.HeroLook.Night
+                    com.andaxin.core.settings.HeroStyle.Auto -> com.andaxin.feature.home.HeroLook.Auto
+                }
+            }
+            .stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, com.andaxin.feature.home.HeroLook.Auto)
     }
     // 正式版没有那一档调试插座：安卓那边也是 stable flavor 给 null（见 app/build.gradle.kts）
     override val debug: com.andaxin.core.debug.DebugPanel? = null

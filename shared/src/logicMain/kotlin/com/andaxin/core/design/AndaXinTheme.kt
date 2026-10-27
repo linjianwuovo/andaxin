@@ -8,14 +8,35 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import com.andaxin.core.settings.DayNight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.TextStyles
 import top.yukonga.miuix.kmp.theme.darkColorScheme
+import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
+
+/**
+ * 全站主题。10-27 上午从 `app/.../core/design/AndaXinTheme.kt` 搬进共享层 ——
+ * iOS 那侧此前**根本没套这一层**：每个 `ComposeUIViewController` 里画的是 Material3
+ * 出厂默认色板（那副偏紫的 `surfaceVariant`），所以卡片底是一层发紫的灰、选中态是出厂紫。
+ * 他 09:2x 说「主题颜色太丑」，丑的就是这个默认色板，不是我们那套蓝青墨。
+ *
+ * 搬动时只去掉两处平台东西：
+ * ① `android.graphics.Color.parseColor` → 自己解十六进制（见 [hexToColor]）；
+ * ② MiSans 那批 `res/font` → 拿 [ThemeHost.textFont] 这根插槽递进来。
+ *    安卓在 `AndroidPhotoHost.install` 里插 MiSans；iOS 不插 = 用系统字体，
+ *    字体文件要进包得另配（那一档没做之前，iOS 是苹方，不是没有字体）。
+ */
+
+/** 宿主插的字体插槽。见上面那段第 ② 条。 */
+object ThemeHost {
+    var textFont: FontFamily? = null
+}
 
 private val LightInk = InkSet(
     strong = Palette.Ink,
@@ -37,11 +58,6 @@ private val DarkInk = InkSet(
     offFill = Palette.NightSand,
     dark = true,
 )
-
-/*
- * 平移注：`InkSet` 和 `LocalInk` 进共享层了（shared logicMain 的 `core/design/Ink.kt`），
- * 包名没变，下面装配主题的代码照常用它们 —— 共享层的界面（登录这一批）也认得这两样。
- */
 
 private val LightScheme: ColorScheme = lightColorScheme(
     primary = Palette.Blue,
@@ -72,11 +88,8 @@ private val DarkScheme: ColorScheme = darkColorScheme(
 )
 
 /*
- * 字号只有一张表 —— `Dimens.kt` 里的 [Type]。
- *
- * 这里以前另写了一套 24/20/17/15/13/11，界面各处又各自手写 sp，
- * 结果同一屏里"副标题"能同时出现 11/12/13 三种、大数字出现 17/20/24/30 四种。
- * 现在 Material 的 typography 也从那张表搭，谁再想加一档就得改 Dimens 那一处。
+ * 字号只有一张表 —— `Dimens.kt` 里的 [Type]。这里那套 24/20/17/15/13/11 早删了，
+ * 谁再想加一档就得改 Dimens 那一处。
  */
 private val AdxTypography = Typography(
     headlineSmall = TextStyle(fontSize = Type.display, fontWeight = FontWeight.SemiBold),
@@ -87,10 +100,47 @@ private val AdxTypography = Typography(
     labelSmall = TextStyle(fontSize = Type.micro, fontWeight = FontWeight.Medium),
 )
 
-private fun String.toColorOrNull(): Color? = runCatching {
-    if (isBlank()) return null
-    Color(android.graphics.Color.parseColor(if (startsWith("#")) this else "#$this"))
-}.getOrNull()
+/** 只换 family，字号/行高一个字不动 —— 动的是字形，不该顺手把字号阶梯再动一遍。 */
+private fun Typography.withFont(family: FontFamily?): Typography {
+    if (family == null) return this
+    fun TextStyle.on() = copy(fontFamily = family)
+    return Typography(
+        displayLarge = displayLarge.on(), displayMedium = displayMedium.on(), displaySmall = displaySmall.on(),
+        headlineLarge = headlineLarge.on(), headlineMedium = headlineMedium.on(), headlineSmall = headlineSmall.on(),
+        titleLarge = titleLarge.on(), titleMedium = titleMedium.on(), titleSmall = titleSmall.on(),
+        bodyLarge = bodyLarge.on(), bodyMedium = bodyMedium.on(), bodySmall = bodySmall.on(),
+        labelLarge = labelLarge.on(), labelMedium = labelMedium.on(), labelSmall = labelSmall.on(),
+    )
+}
+
+private fun miuixTextStyles(family: FontFamily?): TextStyles {
+    val s = defaultTextStyles()
+    if (family == null) return s
+    fun TextStyle.on() = copy(fontFamily = family)
+    return s.copy(
+        main = s.main.on(), paragraph = s.paragraph.on(), body1 = s.body1.on(), body2 = s.body2.on(),
+        button = s.button.on(), footnote1 = s.footnote1.on(), footnote2 = s.footnote2.on(),
+        headline1 = s.headline1.on(), headline2 = s.headline2.on(), subtitle = s.subtitle.on(),
+        title1 = s.title1.on(), title2 = s.title2.on(), title3 = s.title3.on(), title4 = s.title4.on(),
+    )
+}
+
+/**
+ * 十六进制 → Color，不带 `#` 也认。
+ *
+ * 原来那行是 `android.graphics.Color.parseColor`，共享层没有。**解法与安卓逐字对齐**：
+ * 六位按 RGB、八位按 AARRGGBB 读（安卓那侧 `Color.parseColor("#AARRGGBB")` 就是这个口径），
+ * 读不动回 null，不拿 0 当颜色画上去。
+ */
+internal fun hexToColor(raw: String): Color? {
+    val hex = raw.trim().removePrefix("#")
+    val v = hex.toLongOrNull(16) ?: return null
+    return when (hex.length) {
+        6 -> Color(0xFF000000L or v)
+        8 -> Color(v)
+        else -> null
+    }
+}
 
 private val Shapes = Shapes(
     extraSmall = Radius.tag,
@@ -112,11 +162,10 @@ fun AndaXinTheme(
         DayNight.Light -> false
         DayNight.Dark -> true
     }
-    androidx.compose.runtime.CompositionLocalProvider(
-        LocalInk provides if (dark) DarkInk else LightInk,
-    ) {
+    val font = ThemeHost.textFont
+    CompositionLocalProvider(LocalInk provides if (dark) DarkInk else LightInk) {
         val base = if (dark) DarkScheme else LightScheme
-        val accent = accentHex.toColorOrNull()
+        val accent = accentHex.takeIf { it.isNotBlank() }?.let(::hexToColor)
         val scheme = if (accent == null) base else base.copy(
             primary = accent,
             secondary = accent,
@@ -126,25 +175,22 @@ fun AndaXinTheme(
         )
         MaterialTheme(
             colorScheme = scheme,
-            typography = AdxTypography.withMiSans(),
+            typography = AdxTypography.withFont(font),
             shapes = Shapes,
             content = {
                 /*
-                 * 字体走 MiSans。Material3 这边换 Typography 还不够：
                  * 大部分 `Text` 只写了字号、没写 family，最终是从 `LocalTextStyle` 继承的，
-                 * 所以这里把当前那一档的 family 换掉，其余（字号、行高、字重）原样保留。
+                 * 所以这里把当前那一档的 family 换掉，其余原样保留。
                  */
-                val base = androidx.compose.material3.LocalTextStyle.current
-                androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.material3.LocalTextStyle provides base.copy(fontFamily = MiSans),
+                val baseStyle = androidx.compose.material3.LocalTextStyle.current
+                CompositionLocalProvider(
+                    androidx.compose.material3.LocalTextStyle provides
+                        if (font == null) baseStyle else baseStyle.copy(fontFamily = font),
                 ) {
-                    // Miuix 那套组件只认 MiuixTheme 的颜色，不认 MaterialTheme。两套并着走：
-                    // 已经换成 Miuix 零件的地方吃下面这份，还没换的吃上面那份。
-                    // 底子是 Miuix 自带的 HyperOS 色板（浅色 primary=0xFF3482FF），
-                    // 只把纸色/墨色/卡片/分隔线这几档换成我们自己的，免得一屏两副面孔。
+                    // Miuix 那套组件只认 MiuixTheme 的颜色，不认 MaterialTheme。两套并着走。
                     MiuixTheme(
                         colors = miuixColors(dark, accent),
-                        textStyles = MiSansMiuixTextStyles,
+                        textStyles = miuixTextStyles(font),
                         content = content,
                     )
                 }
@@ -157,8 +203,7 @@ fun AndaXinTheme(
  * 把我们的 `Palette` 接到 Miuix 的色板上。
  *
  * 只覆盖对得上的那几档，剩下（`primaryVariant`、`surfaceContainerHigh`、滑块那几档、
- * `windowDimming` 之类）留 Miuix 自己的值 —— 它那些是按 HyperOS 的对比度算过的，
- * 我们没理由重算一遍还更容易算错。
+ * `windowDimming` 之类）留 Miuix 自己的值 —— 它那些是按 HyperOS 的对比度算过的。
  */
 @Composable
 private fun miuixColors(dark: Boolean, accent: Color?) = run {

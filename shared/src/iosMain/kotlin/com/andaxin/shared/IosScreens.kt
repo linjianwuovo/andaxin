@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.uikit.LocalUIViewController
 import androidx.compose.ui.unit.dp
@@ -51,6 +52,7 @@ import com.andaxin.feature.modules.RepairFormScreen
 import com.andaxin.feature.modules.RepairListScreen
 import com.andaxin.feature.modules.SecondClassDeps
 import com.andaxin.feature.modules.SecondClassScreen
+import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.me.ProfileScreen
 import com.andaxin.feature.modules.LoginDeps
 import com.andaxin.feature.modules.LoginScreen
@@ -65,6 +67,7 @@ import com.andaxin.feature.notice.NoticeDeps
 import com.andaxin.feature.notice.NoticeDetailDeps
 import com.andaxin.feature.notice.NoticeDetailScreen
 import com.andaxin.feature.notice.NoticeScreen
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.feature.brief.RemotePhoto
 import com.andaxin.feature.schedule.TimetableDeps
 import com.andaxin.feature.schedule.TimetableScreen
@@ -130,7 +133,17 @@ private fun IosTopInset(content: @Composable () -> Unit) {
         topInsetLogged = false
         platform.Foundation.NSLog("AndaXin 壳：安全区顶部 = $inset pt（系统栏已藏，这一截由宿主让）")
     }
-    Box(Modifier.fillMaxSize().padding(top = inset.dp)) { content() }
+    /*
+     * 每一屏都套上共享层那份 AndaXinTheme。10-27 之前 iOS 一个都没套 —— 画的是 Material3
+     * 出厂那副色板（偏紫的 surfaceVariant、出厂紫的选中态），所以他看见"主题颜色太丑"，
+     * 而那丑其实跟我们定的那套蓝青墨没关系，是**根本没上我们的主题**。
+     * 明暗与强调色读的是共享层那一份外观设置，也就是「主题」那一屏改的东西。
+     */
+    val look = BriefEnv.graph.appearance.state
+        .collectAsState(initial = com.andaxin.core.settings.Appearance()).value
+    Box(Modifier.fillMaxSize().padding(top = inset.dp)) {
+        com.andaxin.core.design.AndaXinTheme(dayNight = look.dayNight, accentHex = look.accent) { content() }
+    }
 }
 
 private var topInsetLogged = true
@@ -148,7 +161,9 @@ fun IosAppGraph.homeViewController(): UIViewController {
                     deps = HomeDeps(
                         model = homeModel,
                         session = session,
-                        heroStyle = MutableStateFlow(HeroLook.Auto),
+                        heroStyle = heroLook,
+                        // 这一端没有那三张 hero 图：null = 首页画 heroBrush 那三段渐变，
+                        // 和「主题 → 首页壁纸」那排缩略图共用同一份，选完看到的就是它
                         heroArt = null,
                         // 校历那一发和「待办事务」四个数：以前这里是一句写死的失败 + 空列表，
                         // 所以首页下半屏永远画四个「—」。安卓那侧 HomeTab 传的就是这四路，照搬。
@@ -343,6 +358,10 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         }
         key == "group" -> IosRoute("班级群") { GroupScreen(onBack = {}) }
         key == "about" -> IosRoute("关于安大信") { AboutScreen(onBack = {}) }
+        // 10-27 新开的这一扇：之前 routeOf 认不出 "theme"，「我的」那格里根本不会画这一行
+        // （入口是按 canOpen 决定画不画的），所以 iOS 上一直没有换颜色的地方。
+        // 现在这一屏改的三样（明暗/强调色/首页壁纸）当场生效 —— 见 IosTopInset 那段。
+        key == "theme" -> IosRoute("主题") { ThemeScreen(onBack = {}) }
 
         // 运动这一族（「选线面板」是 beta 那一档才有的东西，正式包和 iOS 都没有这一扇）
         key == "sport" -> IosRoute("运动") { SportStartScreen(open = open, onBack = {}) }

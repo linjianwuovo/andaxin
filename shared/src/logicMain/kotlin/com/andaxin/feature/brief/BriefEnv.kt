@@ -56,4 +56,22 @@ object BriefEnv {
      * 共享层只管把字节递给 `dormBoard.uploadPhoto`，不碰文件也不碰平台位图解码。
      */
     var takePhoto: (@Composable (onPhoto: (bytes: ByteArray, name: String, preview: androidx.compose.ui.graphics.ImageBitmap?) -> Unit) -> (() -> Unit))? = null
+
+    /**
+     * 「主题 → 首页壁纸」那一排缩略图怎么画。安卓 = `res/drawable-nodpi` 那三张 `hero_*`；
+     * iOS 不插 = 共享层画 `heroBrush` 那三段渐变，**和首页没图时画的是同一份**，
+     * 所以缩略图不骗人：选了之后首页真就长那样。
+     */
+    var heroThumb: (@Composable (art: com.andaxin.feature.home.HeroArt, label: String, modifier: androidx.compose.ui.Modifier) -> Unit)? = null
+
+    /** 「主题 → 启动图标」那一整格。alternate-icon 是安卓那套机制，iOS 没有对应物 → 整格不画。 */
+    var launcherIconSection: (@Composable () -> Unit)? = null
+
+    /**
+     * 底栏材质与那四根玻璃滑杆在这一端**有没有意义**。安卓 = true（底栏是我们自己画的那层玻璃）；
+     * iOS = false —— 那一端的底栏是系统 `UITabBar`，iOS 26 系统自己带浮起液态玻璃和水滴珠子，
+     * 我们既不该去设它的 `isTranslucent`/`backgroundColor`（那会把它压回死胶囊），也没有对应参数可调。
+     * 所以这一端不画这两格，而不是摆四根按了不动的滑杆。
+     */
+    var hasBarGlass: Boolean = true
 }

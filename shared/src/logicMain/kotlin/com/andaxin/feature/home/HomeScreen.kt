@@ -95,6 +95,18 @@ enum class HeroLook { Auto, Dawn, Dusk, Night }
 enum class HeroArt { Dawn, Dusk, Night }
 
 /**
+ * 没有壁纸图的那一端（iOS）拿这三段渐变当占位：早上晨雾、下午金树、夜里月亮。
+ *
+ * 首页那张 hero 卡和「主题 → 首页壁纸」那排缩略图**共用这一份**，
+ * 不然缩略图画得好看、选完首页却是另一块，等于骗人。
+ */
+fun heroBrush(art: HeroArt): Brush = when (art) {
+    HeroArt.Dawn -> Brush.linearGradient(listOf(Color(0xFF59A0FF), Color(0xFF2F6BFF)))
+    HeroArt.Dusk -> Brush.linearGradient(listOf(Color(0xFF7C5CFF), Color(0xFF2A3AA8)))
+    HeroArt.Night -> Brush.linearGradient(listOf(Color(0xFF2B3A72), Color(0xFF0E1633)))
+}
+
+/**
  * 首页这一格要接的。
  *
  * [todoFeeds] 四发**并着发、一起出现**（他定过一条：多数据源那一屏不许一路加载一路蹦），
@@ -528,10 +540,12 @@ private fun HeroWallpaper(
             art(picture)
         } else {
             // 占位：没有图的那一端给一块和日卡同族的渐变，白字照样读得清。
+            // 三档各一段（晨雾偏青蓝、金树偏暖、月夜偏暗蓝）——「主题 → 首页壁纸」那排
+            // 缩略图吃的就是这同一份，所以缩略图不会画一个首页没有的样子。
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Brush.linearGradient(listOf(Color(0xFF2F6BFF), Color(0xFF1E44C9)))),
+                    .background(heroBrush(picture)),
             )
         }
         // 下半截压暗：白字压在任何一张图上都要能读

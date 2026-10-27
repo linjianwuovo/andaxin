@@ -35,6 +35,11 @@ object AndroidPhotoHost {
             com.andaxin.feature.about.UpdateCard(open)
         }
         com.andaxin.core.map.TileHost.store = com.andaxin.core.map.AndroidTileStore(context)
+        // 全站字体与「主题」那三样平台件（hero 图、启动图标那格、底栏玻璃有没有意义）。
+        // 主题屏本身 10-27 进共享层了，iOS 那端只插这三样里的零样 —— 它没有 alternate-icon，
+        // 底栏也是系统 UITabBar，插了反而变成按不动的哑控件。
+        com.andaxin.core.design.ThemeHost.textFont = com.andaxin.core.design.MiSans
+        com.andaxin.feature.theme.AndroidThemeSlots.install()
         com.andaxin.core.location.SportHost.backBlock = @Composable { enabled, block ->
             if (enabled) androidx.activity.compose.BackHandler(onBack = block)
         }
