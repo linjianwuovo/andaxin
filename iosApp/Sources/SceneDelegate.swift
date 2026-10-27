@@ -121,11 +121,31 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if showingTabs == toTabs { return }
         showingTabs = toTabs
         window?.rootViewController = toTabs ? makeTabs(g) : makeLogin(g)
-        guard toTabs, let key = pendingOpen else { return }
-        pendingOpen = nil
-        // 晚一点再推：五格刚立起来时那条 nav 的 topViewController 还没定下来
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            self?.openRoute(key, g)
+        if toTabs { scheduleOpen(g, tries: 0) }
+    }
+
+    /// CI 那扇门的延时：**等根真的定下来再推**。
+    ///
+    /// 118/119 那两发拍到的都是登录页，原因在这儿：逛逛这条路上一共换三次根
+    /// （onGuest 换进五格 → resolveGate 回 signed=false 又换回登录 → Gate 那一流再换回五格），
+    /// 而原来那一句是在**第一次**换根后 0.8 秒就推 —— 推上去的那一扇跟着旧树一起被扔了。
+    /// 现在推之前先确认"脚下这棵五格就是 window 那棵"，不是就再等一轮（最多 6 轮，
+    /// 还不行就把话说清楚，别闷着）。
+    private func scheduleOpen(_ g: IosAppGraph, tries: Int) {
+        guard let key = pendingOpen else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self else { return }
+            guard self.window?.rootViewController === self.tabsController else {
+                if tries < 5 {
+                    self.scheduleOpen(g, tries: tries + 1)
+                } else {
+                    self.pendingOpen = nil
+                    NSLog("AndaXin 壳：CI 推 \(key) 放弃 —— 根换了 6 轮还没定下来")
+                }
+                return
+            }
+            self.pendingOpen = nil
+            self.openRoute(key, g)
         }
     }
 
