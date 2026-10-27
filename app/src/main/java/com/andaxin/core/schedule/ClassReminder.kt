@@ -158,6 +158,8 @@ object ClassReminder {
             alarm.cancel(pendingIntent(context, WINDOW_CODE, ACTION, "", "", "", 0, 0L))
             // 开关不在"开"，滴答链没有继续的理由
             cancelTick(context)
+            // 前台服务也一起收：他拨到"关"还留着一条划不掉的常驻通知是说不过去的
+            ClassLiveService.stop(context)
             if (fromUser) context.getSystemService(NotificationManager::class.java).run {
                 cancel(NOTE_ID); cancel(STARTED_ID)
             }
@@ -240,6 +242,10 @@ object ClassReminder {
     @Volatile
     var lastLiveWhy: String? = null
         private set
+
+    /** 这一节的倒计时有没有真的被前台服务挂住（`ClassLiveService` 写）。 */
+    @Volatile
+    var liveHeld: Boolean = false
 
     /**
      * 「通知」那一屏也用一次：他把开关拨到"开"的那一刻离上课只剩三分钟的话，
@@ -365,8 +371,9 @@ object ClassReminder {
         return 0L
     }
 
-    /** 还剩几分钟，向上取整：61 秒报"2 分钟"而不是"1 分钟"—— 倒计时不许少报。 */
-    private fun minutesLeft(startMs: Long, now: Long = System.currentTimeMillis()): Int {
+    /** 还剩几分钟，向上取整：61 秒报"2 分钟"而不是"1 分钟"—— 倒计时不许少报。
+     *  `internal` 是给 `ClassLiveService` 用的：它挂上去那一发也要按同一个数算进度。 */
+    internal fun minutesLeft(startMs: Long, now: Long = System.currentTimeMillis()): Int {
         if (startMs <= 0L) return 0
         val left = startMs - now
         if (left <= 0L) return 0
@@ -398,8 +405,18 @@ object ClassReminder {
         // 两条并成一条；那个旧号见到就顺手清掉，不然从那一版覆盖安装上来的人，
         // 通知栏里会一直挂着一条没人管的"现在上课"。
         nm.cancel(STARTED_ID)
+        /*
+         * 还在倒计时就把这一发挂到前台服务上（他 10-27：「那 30 分钟里多一条划不掉的常驻通知，
+         * 我要的就是这样」）。每分钟都递一次是故意的：同一组参数、同一个号，服务里就是再
+         * `startForeground` 一次更新；ROM 中途把服务端走，下一分钟这一发又把它捞回来。
+         * 数到 0 就不再递，并且当场 stop —— 那一条是划得掉的"现在上课"，不许继续挂着。
+         */
+        if (left > 0) ClassLiveService.start(context, course, room, period, at, startMs, lead)
         nm.notify(NOTE_ID, build(context, course, room, period, at, left, lead))
-        if (left <= 0) return false
+        if (left <= 0) {
+            ClassLiveService.stop(context)
+            return false
+        }
         val pi = tickIntent(context, course, room, at, period, startMs, lead)
         val now = System.currentTimeMillis()
         // 排在"这个数该翻牌的那一刻"再晚 1.5 秒：早一步会把同一个数再报一遍；
@@ -423,7 +440,7 @@ object ClassReminder {
         }.getOrDefault(false)
     }
 
-    private fun build(
+    internal fun build(
         context: Context,
         course: String,
         room: String,
@@ -483,7 +500,9 @@ object ClassReminder {
         lastLiveWhy = when {
             left <= 0 -> "上一发是「现在上课」那一档 —— 这一档本来就不上胶囊（划得掉的那种）"
             lead <= 0 -> "上一发没上胶囊：那颗闹钟是 0.8.59 之前排下去的，里没有提前量，进度画不出来"
-            promoted -> "上一发走了胶囊（API ${com.andaxin.core.notification.LiveUpdates.apiLevel()}）"
+            promoted -> "上一发走了胶囊（API ${com.andaxin.core.notification.LiveUpdates.apiLevel()}）" +
+                // 服务是异步起来的，第一分钟这一句可能还是上一分钟的数，从第二分钟起才准
+                if (liveHeld) "，前台服务挂住了" else "，前台服务还没挂上（走的是普通通知那条路）"
             else -> "上一发没上胶囊：${com.andaxin.core.notification.LiveUpdates.whyNot(context)}"
         }
         android.util.Log.i("LxClass", lastLiveWhy.orEmpty())
