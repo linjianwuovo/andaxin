@@ -426,12 +426,25 @@ private fun Gate(appearance: Appearance, open: (String) -> Unit) {
      * ② 校园卡要 hub → redirect → authorize 三跳换会话；
      * ③ 课表/首页各走各的，这里不碰。
      * 全都 fire-and-forget，失败不弹任何东西 —— 用户没点那一屏之前，这些失败不归他管。
+     *
+     * 第四条是 10-27 早上他一句「打开应用没有流体云而且我马上有课」加进来的：上课提醒以前
+     * 只在进「通知」那一屏和闹钟链自己接续时排，打开 App 一支都不排 —— 覆盖安装完、闹钟被 ROM
+     * 掐了、或者压根没进过设置屏，这一节就直接"什么都没有"。现在打开 App 先补排程、
+     * 再给已经进了提前窗口的那一节补一发倒计时。每个会话只做一遍，课表那两发后面没缓存。
      */
-    LaunchedEffect(session.loggedIn) {
+    LaunchedEffect(session.loggedIn, session.generation) {
         if (session.loggedIn) {
             launch { runCatching { graph.fif.ensure() } }
             launch { runCatching { graph.aiCourses.courses() } }
             launch { runCatching { graph.card.warm() } }
+            launch {
+                val why = runCatching {
+                    com.andaxin.core.schedule.ClassReminder.onAppOpen(
+                        graph.context, graph.store, graph.timetable, session.generation,
+                    )
+                }.getOrNull()
+                if (!why.isNullOrBlank()) android.util.Log.i("LxClass", why)
+            }
         }
     }
 
