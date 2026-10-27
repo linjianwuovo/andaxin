@@ -7,6 +7,7 @@ import com.andaxin.data.MessageFeed
 import com.andaxin.data.NoticeFeed
 import com.andaxin.data.SportsFeed
 import com.andaxin.data.TimetableFeed
+import com.andaxin.data.TimetableSlot
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -20,12 +21,67 @@ class TimetableSource(
     private val capture: TimetableFeed,
     private val local: TimetableFeed,
     private val session: SessionStore,
+    /** 本周课表那份垫屏快照（`filesDir/snap_week.json`，由 AppGraph 用 `Snap` 递进来）。 */
+    private val readSnap: () -> String? = { null },
+    private val writeSnap: (String) -> Unit = {},
 ) : TimetableFeed {
-    override suspend fun week(weekOffset: Int) =
-        if (session.signedIn()) capture.week(weekOffset) else local.week(weekOffset)
+    override suspend fun week(weekOffset: Int): Result<List<TimetableSlot>> {
+        if (!session.signedIn()) return local.week(weekOffset)
+        val r = capture.week(weekOffset)
+        // 只给"本周"落快照：下周那份是提前看的，不该在冷启动时冒充今天
+        if (weekOffset == 0) r.getOrNull()?.takeIf { it.isNotEmpty() }?.let { writeWeek(it) }
+        return r
+    }
 
     // 周次表是真数据那一发才有的东西；没登录时那份占位没有周次表，界面上会退回「本周/下周」两颗
     override suspend fun weeks() = if (session.signedIn()) capture.weeks() else local.weeks()
+
+    /**
+     * 读回来，**先验是哪一周**：快照里存的是这一周周一那个日期，对不上就当没有。
+     * 他 10-27 那句「明明课程表信息都在本地又存档，为什么不可以先加载缓存然后刷新」管的是
+     * 同一周内的大退重开；跨周那一档必须作废，不然换周那天会把上周的课摆出来。
+     */
+    override fun cachedWeek(): List<TimetableSlot> {
+        val text = readSnap() ?: return emptyList()
+        val o = runCatching { org.json.JSONObject(text) }.getOrNull() ?: return emptyList()
+        if (o.optString("monday") != mondayKey()) return emptyList()
+        val arr = o.optJSONArray("slots") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val s = arr.optJSONObject(i) ?: return@mapNotNull null
+            TimetableSlot(
+                courseId = s.optString("id"),
+                course = s.optString("course"),
+                teacher = s.optString("teacher"),
+                room = s.optString("room"),
+                day = s.optInt("day"),
+                startPeriod = s.optInt("start"),
+                periodCount = s.optInt("count", 1),
+            )
+        }
+    }
+
+    private fun writeWeek(slots: List<TimetableSlot>) {
+        runCatching {
+            val arr = org.json.JSONArray()
+            slots.forEach { s ->
+                arr.put(
+                    org.json.JSONObject()
+                        .put("id", s.courseId).put("course", s.course).put("teacher", s.teacher)
+                        .put("room", s.room).put("day", s.day)
+                        .put("start", s.startPeriod).put("count", s.periodCount),
+                )
+            }
+            writeSnap(org.json.JSONObject().put("monday", mondayKey()).put("slots", arr).toString())
+        }
+    }
+
+    private companion object {
+        /** 这一周周一的日期串 —— 快照的"是哪一周"。 */
+        fun mondayKey(): String =
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(
+                com.andaxin.core.schedule.Periods.weekMonday().time,
+            )
+    }
 }
 
 class MessageSource(

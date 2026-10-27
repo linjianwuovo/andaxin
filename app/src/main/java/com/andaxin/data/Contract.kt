@@ -81,6 +81,13 @@ interface TimetableFeed {
      * 默认回空 —— 占位那份数据没有周次表，界面上就退回「本周 / 下周」两颗，不摆一排空的。
      */
     suspend fun weeks(): WeekTable = WeekTable()
+
+    /**
+     * 本机存着的**这一周**课表，给冷启动垫屏（大退再开不该先空三秒）。
+     * 默认回空 = 这份数据源没缓存；实现那边必须自己认"是不是本周"，
+     * 上一周那份不算 —— 宁可等网络，也不把上周的课摆成今天的。
+     */
+    fun cachedWeek(): List<TimetableSlot> = emptyList()
 }
 
 /** 一学期一共几周、现在第几周。`weeks` 是 1..N 的周次序号。 */
