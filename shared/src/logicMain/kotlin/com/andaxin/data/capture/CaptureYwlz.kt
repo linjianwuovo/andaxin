@@ -103,20 +103,31 @@ class YwlzTasks(private val school: School) {
     suspend fun all(): Result<List<YwlzTask>> {
         val hit = cached
         if (hit != null && nowMillis() - cachedAt < TTL) return Result.success(hit)
-        return school.postH5(
-            "$YWLZ/mobile/flowRuTask/getRunTaskByUserCode.do",
-            "approvedType" to "1",
-            "currentPageNo" to "1",
-            "pageSize" to PAGE,
-        ).mapCatching { root ->
-            val arr = School.rows(root)
-            (0 until arr.length()).mapNotNull { i -> parse(arr.optJSONObject(i)) }
-        }.also { r ->
-            r.getOrNull()?.let {
-                cached = it
-                cachedAt = nowMillis()
-            }
+        /*
+         * 这一发 10-27 早上在他手机上撞过一次 `-1200/-9816`（服务器在 TLS 中途把连接掐了，
+         * 一个字都没回）。那是**连接层**的失败：请求根本没到达校方，所以补发一次不会重复提交
+         * 任何东西。只给这一条读补，不给写口补 —— 写口重试的代价是签两次到。
+         */
+        var r = fetch()
+        if (r.isFailure) {
+            kotlinx.coroutines.delay(700)
+            r = fetch()
         }
+        r.getOrNull()?.let {
+            cached = it
+            cachedAt = nowMillis()
+        }
+        return r
+    }
+
+    private suspend fun fetch(): Result<List<YwlzTask>> = school.postH5(
+        "$YWLZ/mobile/flowRuTask/getRunTaskByUserCode.do",
+        "approvedType" to "1",
+        "currentPageNo" to "1",
+        "pageSize" to PAGE,
+    ).mapCatching { root ->
+        val arr = School.rows(root)
+        (0 until arr.length()).mapNotNull { i -> parse(arr.optJSONObject(i)) }
     }
 
     /**

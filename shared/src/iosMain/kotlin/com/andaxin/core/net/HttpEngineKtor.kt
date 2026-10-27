@@ -59,42 +59,46 @@ private class KtorEngine(private val config: HttpEngineConfig) : HttpEngine {
             ?.let { store -> store.load(host!!, pathOf(call.url)).takeIf { it.isNotEmpty() } }
             ?.joinToString("; ") { "${it.name}=${it.value}" }
 
-        val response: HttpResponse = withContext(Dispatchers.Default) {
-            client.request(call.url) {
-                method = HttpMethod(call.method)
-                headers {
-                    call.headers.forEach { (k, v) -> append(k, v) }
-                    cookieLine?.let { append(HttpHeaders.Cookie, it) }
-                }
-                when (val b = call.body) {
-                    null -> {}
-                    is HttpBody.Form -> setBody(
-                        FormDataContent(
-                            Parameters.build {
-                                b.fields.forEach { (k, v) -> append(k, v) }
-                            },
-                        ),
-                    )
-                    is HttpBody.Text -> setBody(TextContent(b.content, ContentType.parse(b.contentType)))
-                    is HttpBody.Upload -> {
-                        val boundary = "andaxin-${nowMillis()}"
-                        val head = buildString {
-                            append("--").append(boundary).append("\r\n")
-                            append("Content-Disposition: form-data; name=\"").append(b.field)
-                            append("\"; filename=\"").append(b.fileName).append("\"\r\n")
-                            append("Content-Type: ").append(b.mime).append("\r\n\r\n")
-                        }.encodeToByteArray()
-                        val tail = "\r\n--$boundary--\r\n".encodeToByteArray()
-                        setBody(
-                            RawContent(
-                                head + b.bytes + tail,
-                                ContentType.parse("multipart/form-data; boundary=$boundary"),
+        val response: HttpResponse = try {
+            withContext(Dispatchers.Default) {
+                client.request(call.url) {
+                    method = HttpMethod(call.method)
+                    headers {
+                        call.headers.forEach { (k, v) -> append(k, v) }
+                        cookieLine?.let { append(HttpHeaders.Cookie, it) }
+                    }
+                    when (val b = call.body) {
+                        null -> {}
+                        is HttpBody.Form -> setBody(
+                            FormDataContent(
+                                Parameters.build {
+                                    b.fields.forEach { (k, v) -> append(k, v) }
+                                },
                             ),
                         )
+                        is HttpBody.Text -> setBody(TextContent(b.content, ContentType.parse(b.contentType)))
+                        is HttpBody.Upload -> {
+                            val boundary = "andaxin-${nowMillis()}"
+                            val head = buildString {
+                                append("--").append(boundary).append("\r\n")
+                                append("Content-Disposition: form-data; name=\"").append(b.field)
+                                append("\"; filename=\"").append(b.fileName).append("\"\r\n")
+                                append("Content-Type: ").append(b.mime).append("\r\n\r\n")
+                            }.encodeToByteArray()
+                            val tail = "\r\n--$boundary--\r\n".encodeToByteArray()
+                            setBody(
+                                RawContent(
+                                    head + b.bytes + tail,
+                                    ContentType.parse("multipart/form-data; boundary=$boundary"),
+                                ),
+                            )
+                        }
                     }
+                    if (timeoutMs != null) timeout { requestTimeoutMillis = timeoutMs }
                 }
-                if (timeoutMs != null) timeout { requestTimeoutMillis = timeoutMs }
             }
+        } catch (t: Throwable) {
+            throw compactNetError(call.url, t)
         }
 
         if (host != null) {
@@ -161,5 +165,41 @@ private class KtorEngine(private val config: HttpEngineConfig) : HttpEngine {
         val jdn = day.toInt() + (153 * mo + 2) / 5 + 365L * y + y / 4 - y / 100 + y / 400 - 32045
         val epochSec = (jdn - 2440588) * 86400L + hh.toInt() * 3600 + mm.toInt() * 60 + ss.toInt()
         return epochSec * 1000
+    }
+
+    /**
+     * NSURLSession 抛回来的是**整段 NSError 描述**（他 08:23 那张截图糊满一屏的就是那个），
+     * 原样当"错误原因"画到界面上，谁都读不动。这里压成一行：一句人话 + 两个码 + 主机名。
+     *
+     * 码对照 `<Security/SecureTransport.h>`：外层 -1200 = "TLS 没谈成"；里层那个才是原因 ——
+     * **-9816 = errSSLClosedNoNotify，服务器一个字没告就把连接关了**。证书那类是 -9813/-9814/-9815，
+     * 版本/套件谈不拢是 -9824/-9836。所以这一条既不是我们证书装错，也不是 ATS 拦的：
+     * 10-27 凌晨我从这台机对着 `ywlz.aiit.edu.cn` 现打了一遍，TLS 1.2 通、1.1 与 1.3 都被它拒
+     * （拒 1.3 时回的是干净的 alert 70，不是掐连接）—— 客户端同时带 1.2/1.3 时落 1.2 没问题，
+     * 所以真机上那次 -9816 是**它主动断的**，不是版本谈不拢。
+     */
+    private fun compactNetError(url: String, t: Throwable): Exception {
+        val text = buildString {
+            append(t.message.orEmpty()).append(' ')
+            var c: Throwable? = t.cause
+            while (c != null) { append(c.message.orEmpty()).append(' '); c = c.cause }
+        }
+        val outer = Regex("""Code=(-?\d+)""").find(text)?.groupValues?.get(1)
+        val inner = Regex("""kCFStreamErrorCodeKey=(-?\d+)""").find(text)?.groupValues?.get(1)
+        val why = when (inner) {
+            "-9816" -> "服务器在 TLS 中途把连接掐了（没告而终）"
+            "-9813", "-9814", "-9815" -> "校方那张证书系统不认（链或有效期）"
+            "-9824", "-9836" -> "TLS 版本/加密套件谈不拢"
+            "-1009", "-1003" -> "这台设备现在连不上那台服务器"
+            "-1001" -> "那台服务器没在限时内答话"
+            else -> null
+        }
+        val host = hostOf(url).orEmpty()
+        val parts = listOfNotNull(
+            why,
+            "码 ${outer ?: "?"}/${inner ?: "-"}",
+            host.ifBlank { null },
+        )
+        return Exception("这一发请求没成：" + parts.joinToString(" · "))
     }
 }
