@@ -74,4 +74,15 @@ object BriefEnv {
      * 所以这一端不画这两格，而不是摆四根按了不动的滑杆。
      */
     var hasBarGlass: Boolean = true
+
+    /**
+     * "这链接交给系统浏览器"。回 true = 真交出去了；回 false = 这台交不出去，
+     * 调用方要退回应用内那台 WebView —— 按了什么都不发生，是这里最坏的一种坏。
+     *
+     * 为什么要插槽而不是共享层自己发：安卓是 `Intent(ACTION_VIEW)`（还得带 `NEW_TASK`），
+     * iOS 是 `UIApplication.openURL`（一台浏览器都没有时它自己回 false）。
+     * 现在只有「关于 → 爱发电」这一行走它：那页要登录、付款要跳微信/支付宝，
+     * 塞进我们自己的 WebView 就是让人付不了款。
+     */
+    var openOutside: ((url: String) -> Boolean)? = null
 }

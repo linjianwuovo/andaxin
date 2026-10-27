@@ -67,6 +67,17 @@ object AndroidPhotoHost {
         com.andaxin.feature.brief.BriefEnv.appIcon = @Composable { size ->
             com.andaxin.core.design.AppIconTile(com.andaxin.core.launcher.LauncherIcons.current(context), size)
         }
+        // 「关于 → 爱发电」那一行交系统浏览器：那页要登录、付款要跳微信/支付宝，
+        // 塞进我们自己的 WebView 就是让人付不了款。发不出去（没装浏览器/被 ROM 拦）回 false，
+        // 共享层那一句会退回应用内 WebView —— 按了什么都不发生是最坏的一种坏。
+        com.andaxin.feature.brief.BriefEnv.openOutside = { url ->
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }.isSuccess
+        }
         val app = context.applicationContext
 
         // 详情里那张附图：走 app 那台带磁盘缓存的解码器

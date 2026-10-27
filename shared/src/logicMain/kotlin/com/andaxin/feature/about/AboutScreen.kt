@@ -98,11 +98,13 @@ fun AboutScreen(
         Sheet {
             // 那张规格屏上这里有两行：GitHub 仓库、小红书·我的主页（右边写的是"复制链接"）。
             // 小红书那一行等他把主页链接发过来再上屏 —— 摆一颗按不动的键比没有这一行更糟。
-            LINKS.forEachIndexed { i, (name, url) ->
+            LINKS.forEachIndexed { i, row ->
                 if (i > 0) {
                     Spacer(Modifier.height(Gap.xxs)); Hairline(); Spacer(Modifier.height(Gap.xxs))
                 }
-                RowLine(name, right = "›", onClick = { open("web/" + encodeUrl(url)) })
+                RowLine(row.name, right = "›", onClick = {
+                    if (row.external) openOutside(row.url, open) else open("web/" + encodeUrl(row.url))
+                })
             }
         }
 
@@ -130,4 +132,20 @@ fun AboutScreen(
  * 手上没有他那串主页地址，而摆一颗按下去什么都不发生的键，比这一行缺着更糟。
  * 链接给我，填进这个表就是一行字。
  */
-private val LINKS = listOf("GitHub 仓库" to UpdateFeed.BASE)
+private val LINKS = listOf(
+    LinkRow("GitHub 仓库", UpdateFeed.BASE),
+    LinkRow("爱发电", "https://afdian.com/a/ljwovo", external = true),
+)
+
+/** 关于页底下一行：名字、去处、要不要交给系统浏览器。 */
+private data class LinkRow(val name: String, val url: String, val external: Boolean = false)
+
+/**
+ * 交给系统浏览器（安卓 = `Intent(ACTION_VIEW)`，iOS = `UIApplication.openURL`，
+ * 两边都收在 [BriefEnv.openOutside] 那一根插槽里）。
+ * 一台浏览器都没有、或者被 ROM 拦了，就退回应用内那个 WebView —— 别什么都不发生，
+ * 按了不动是这里最坏的一种坏。
+ */
+private fun openOutside(url: String, open: (String) -> Unit) {
+    if (BriefEnv.openOutside?.invoke(url) != true) open("web/" + encodeUrl(url))
+}

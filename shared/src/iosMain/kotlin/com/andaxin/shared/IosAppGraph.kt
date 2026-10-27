@@ -141,6 +141,13 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         IosCamera.install()
         com.andaxin.core.map.TileHost.store =
             com.andaxin.core.map.IosTileStore(com.andaxin.core.store.IosFiles(documentsPath))
+        // 「关于 → 爱发电」那一行交系统浏览器（安卓那侧是 Intent(ACTION_VIEW)，见 AndroidPhotoHost）。
+        // `openURL(_:)` 回 false = 这台机没可交的浏览器，共享层那句会退回应用内 WebView，
+        // 不会按了什么都不发生。绑定形状是 dump-metadata 出来的：成员函数、收 NSURL、回 Boolean。
+        com.andaxin.feature.brief.BriefEnv.openOutside = { url ->
+            val target = platform.Foundation.NSURL.URLWithString(url)
+            target != null && platform.UIKit.UIApplication.sharedApplication.openURL(target)
+        }
     }
 
     // 数据源开关（照 AppGraph 的 Source(capture, local, session) 三件套）
