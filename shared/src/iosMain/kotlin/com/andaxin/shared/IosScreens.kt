@@ -351,10 +351,14 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         key.startsWith("sport/detail/") -> IosRoute("这一趟") { SportDetailScreen(recordId = detailId, onBack = {}) }
         key == "sport/maintain" -> IosRoute("运动维护") { SportMaintainScreen(onBack = {}) }
 
-        // 扫码：扫到的整条 URL 交应用内网页那一扇（安卓走的是带 cookie 的 QrSignScreen，差别写在
-        // ScanScreen.ios.kt 顶上那段，不在这儿重复）
+        // 扫码：扫到的整条 URL 交应用内网页那一扇。10-27 早上补了"先把 FIF 会话灌进 WKWebView
+        // 的 cookie 罐、灌完再开"这一步 —— 之前直接开，那一页是未登录的那一版（安卓的
+        // QrSignScreen 一直是先塞 cookie 再 loadUrl 的，时序对齐照它）
         key == "aiclass/scan" -> IosRoute("扫码签到") {
-            ScanScreen(onBack = {}, onSignUrl = { url -> push(host, "web/" + encodeUrl(url)) })
+            ScanScreen(onBack = {}, onSignUrl = { url ->
+                val header = runCatching { fif.cookieHeader("fifedu.com") }.getOrNull().orEmpty()
+                seedFifCookies(header) { push(host, "web/" + encodeUrl(url)) }
+            })
         }
         key.startsWith("aiclass/play/") -> IosRoute("看录像") {
             RecordPlayScreen(resourceId = key.removePrefix("aiclass/play/"), onBack = {})

@@ -94,7 +94,7 @@ targets:
         # 10-26 深夜补一句：我在聊天里报的 105/106 一直没落到这一行（plist 从头到尾是 104），
         # 所以那两发的崩溃报告里看到的号是 104 —— 从现在起这一行跟着聊天的号一起抬，别再两套号。
         MARKETING_VERSION: "0.8.49"
-        CURRENT_PROJECT_VERSION: "112"
+        CURRENT_PROJECT_VERSION: "113"
     preBuildScripts:
       - name: BuildSharedFramework
         script: |
