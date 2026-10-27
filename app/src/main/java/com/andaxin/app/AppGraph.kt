@@ -318,6 +318,16 @@ class AppGraph(val context: Context) {
      */
     val tabJump = kotlinx.coroutines.flow.MutableStateFlow(-1)
 
+    /**
+     * 点进课件那一屏时要顺手递过去的原文件：`first` = minio 上那份 pptx/pdf 的直链，
+     * `second` = 校方那侧的"允许下载吗"标记（实样里是 "0"）。
+     *
+     * 为什么不塞导航路由：那条直链是**预签名**的，实测 401 个字符，里头带 `?X-Amz-…&signature=…`，
+     * 进路由要编解码两道，任何一道多解一次就废。列表那一发（C11）本来就带着它，点的时候递一手最省事；
+     * 进程被回收就没了，那一屏会退回"这次没拿到原文件直链"，逐页图照看不误。
+     */
+    val coursewareFile = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>(null)
+
     /** 真 GPS。beta 那份还接一路端内假 GPS（他自己写的那套），正式版这份 mock 是 null。 */
     val gps: GpsFeed by lazy { GpsFeed(context, debug?.mock) }
 
