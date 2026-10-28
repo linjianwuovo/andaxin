@@ -61,6 +61,12 @@ App 里本来就能看到的那些接口。
   和 shell/ShelfBar.kt 那四层叠法是自己写的，具体每一处对应参考实现的哪个想法，
   TODO: 公开前逐条补一句，别只写"参考"。
 
+  0.8.76 起底栏那几个几何数（轨道 64dp / 内缩 4dp / 面板 56dp / 一格 = (总宽-8dp)/格数 /
+  按下 1 + 16dp÷格宽 / lens 24dp）取自 AndroidLiquidGlass 的示例文件
+  app/src/commonMain/kotlin/com/kyant/backdrop/catalog/components/LiquidBottomTabs.kt。
+  来路：拆机内酷安 16.6.4 的 dex，认出它内嵌的就是这个库（字段名
+  LiquidGlassTabBarSpec(containerHeight=…) / barWidthPx / opticalProfile），再去读它的源码。
+
   tycoding/grok-ball — MIT (c) tycoding — https://github.com/tycoding/grok-ball
     首页名字右边那枚会看人的小球（core/design/Mascot.kt）是**照它抄的**，不是自己画的：
     身体轮廓 96 点、默认表情那对眼环各 48 点，逐点取自它 `EB_RINGS` 的数据层；

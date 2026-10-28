@@ -141,35 +141,44 @@ import kotlin.math.sign
 
 private const val BAR_HEIGHT = 64f
 /*
- * 水珠 54dp、轨道 64dp —— 珠高÷轨高 = 0.84。
+ * 0.8.76 起这几个数是**照酷安那套的源码抄的**，不再是拿截图量的估计值：
+ * 它内嵌的是 Kyant0/AndroidLiquidGlass（Apache-2.0），dex 里能看到字段名
+ * `LiquidGlassTabBarSpec(containerHeight=…)`、`barWidthPx`、`opticalProfile`，
+ * 数在 `app/src/commonMain/kotlin/com/kyant/backdrop/catalog/components/LiquidBottomTabs.kt`：
+ * 外层 `.height(64f.dp).padding(4f.dp)`、里面那颗面板 `.height(56f.dp)`、
+ * 一格宽 = `(总宽 - 8dp) / 格数`、按下整格 `scale = 1 + 16dp / 格宽`（75dp 那一格就是 1.21）、
+ * 折射 `lens(24dp, 24dp)`、模糊 `blur(8dp)`、拖拽时面板跟手 `4dp × 方向 × EaseOut(|f|)`。
  *
- * 这组数是 10-22 验收 agent 对着酷安截图判出来的：人家那颗是**待在轨道里的胶囊**（比值 ~0.85），
- * 上一版 72dp + 抬 6dp 是个溢出栏子的正圆（比值 1.14），它的判词是"不是小，是偏大且形状不对，
- * 溢出破坏了'槽中水珠'那个语言"。所以这版收进轨道里、取消抬升。
- * 按住鼓 1.19 倍 = 64dp，正好齐平轨道，不再顶出去。
+ * 对上号的：轨道 64、内缩 4、格宽式子、面板橡皮筋 4dp —— 这四个我们本来就是同一个数。
+ * 改了的四项：面板 54→56；按下倍数 1.32~1.70→1.15~1.27（它那个 1.21 落在中间）；
+ * 横向不再单独收窄（它是整格等比，0.855 那档撤了）；折射位移上限 34dp→24dp（照它的 lens 24）。
+ * 模糊/色散没照它改：它 `blur(8dp)` 是画在面板上的一层高斯，我们这层是 haze 重采屏幕，
+ * 两套不是一个东西，硬搬数没有意义。
  */
-private const val PILL_HEIGHT = 54f
+private const val PILL_HEIGHT = 56f
 /*
  * 抬升 0 —— 这里曾经填过 3f，是个错判。
  * 10-22 我拿"珠心比轨道中心低 10px"当依据抬了 3dp，那个 10px 是把水珠**下沿那道内阴影**
  * 当成珠子边界量出来的；换成按胶囊弧心算（在左帽那根竖线上取上下突变的中点）之后实测
  * 轨道中心 2975、珠心 2961 —— 本来就居中，是我抬出来的 14px。
- * 容器 contentAlignment 已经把 54dp 的珠子在 64dp 轨道里上下各留 5dp，别再手动挪。
+ * 容器 contentAlignment 已经把 56dp 的珠子在 64dp 轨道里上下各留 4dp，别再手动挪。
  */
 private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
 /**
- * 按住鼓多少。10-22 深夜他给了那张酷安按下的截图当规格：
- * 轨道 190px、那颗珠子 240px 高 —— **高/轨 = 1.26**，宽 340px（对一格 75dp 是 1.29 倍）。
- * 照这个数落到我们 64dp 的轨道上：默认档要鼓到 81dp 高、96dp 宽，上下各顶出轨道 ~9dp。
- * 54dp 的底子 → 纵向倍数 1.51，横向另乘 [PILL_ASPECT_X] 收到 1.29。
- * 「鼓到齐平轨道就不再大」是上一版的判读，那张图推翻它了：人家就是要溢出去一颗。
+ * 按住鼓多少 —— 0.8.76 照它改：`scale = 1 + 16dp / 格宽`，一格 75dp 就是 1.21 倍。
+ * 我们这一档还是走"改尺寸"而不是 graphicsLayer 缩放（缩放会把珠子变成放大镜，10-22 定过），
+ * 倍数区间照它的数收：默认档 1.19（拉满滑杆 1.27），不再是原来那个 1.32~1.70。
  */
-private const val PILL_BULGE_MIN = 1.32f
-private const val PILL_BULGE_SPAN = 0.38f
-/** 横向只鼓纵向的 0.855 倍：珠子是竖着顶出轨道的，不是整颗等比放大 */
-private const val PILL_ASPECT_X = 0.855f
+private const val PILL_BULGE_MIN = 1.15f
+private const val PILL_BULGE_SPAN = 0.12f
+/**
+ * 它是**整格等比**放大，没有横纵两个倍数 —— 所以这一档从 0.855 改回 1f。
+ * （0.855 是 10-22 拿"竖着顶出去一颗"那张截图量的，那张图的倍数本身比它的源码大一截，
+ * 现在倍数照源码收了，横向就没必要再单独压。）
+ */
+private const val PILL_ASPECT_X = 1f
 
 /** 上缘那条细亮弧的亮度。验收 agent 判上一版「只有一片弥散白雾、没有亮边线」，
  * 所以这次亮度给足、宽度收到 2dp —— 是一条弧，不是一片雾 */
@@ -295,7 +304,8 @@ fun ShelfBar(
     // 默认档要一眼看得出不是一颗"磨圆角的气泡"：带厚给到 6..24dp、位移给到 0..34dp。
     // 再厚就会退回放大镜那个毛病（带两边顶到中心），24dp 带 + 中心 30dp 不动是实测的边界。
     val lensBandPx = with(density) { (6.dp + 18.dp * spec.refraction).toPx() }
-    val lensAmountPx = with(density) { (34.dp * spec.distortion).toPx() }
+    // 位移上限 34→24：它 `lens(24dp, 24dp)`，抄它的数（带厚那档本来就是 6..24，对得上）
+    val lensAmountPx = with(density) { (24.dp * spec.distortion).toPx() }
     /*
      * 液态玻璃要 API 33 —— miuix-blur 那个包自己就是这么声明的（清单里用 overrideLibrary
      * 放行了合并，所以闸门必须写在这儿）。33 以下 `liquidGlass` 为假，折射那几行根本不会执行，
