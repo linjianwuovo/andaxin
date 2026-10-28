@@ -161,14 +161,15 @@ private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
 /**
- * 按住鼓多少 —— **退回 10-22 深夜你给的那张图定的数**（纵向 1.32~1.70，横向再乘 0.855）。
- * 0.8.76 / 0.8.77 那两版（照库里的等比 1.21、以及"横着摊 1.6 倍槽宽"）都回滚了，
- * 原因写在上面 [PILL_HEIGHT] 那段：珠子一宽过一格，盖在它上面的标签副本就对不上位。
+ * 按住**不再把珠子撑大**（0.8.79 起）。他 11:51 那句「超出 tab 的部分不需要模糊」：
+ * 撑出去那一圈既没有干净的取样范围（黑边/黄边都是从这儿来的），也没必要 ——
+ * 珠子本身就是那颗胶囊，按下去要的是"它变成玻璃"，不是"它长大"。
+ * 所以倍数一律 1，只有玻璃效果（折射/色散）按按下进度开，见下面 effects 里那道 press 闸。
+ * 10-22 那组 1.32~1.70 的数留在历史里，别再请回来。
  */
-private const val PILL_BULGE_MIN = 1.32f
-private const val PILL_BULGE_SPAN = 0.38f
-/** 横向只鼓纵向的 0.855 倍：珠子是竖着顶出轨道的，不是整颗等比放大 */
-private const val PILL_ASPECT_X = 0.855f
+private const val PILL_BULGE_MIN = 1.0f
+private const val PILL_BULGE_SPAN = 0.0f
+private const val PILL_ASPECT_X = 1.0f
 
 /** 上缘那条细亮弧的亮度。验收 agent 判上一版「只有一片弥散白雾、没有亮边线」，
  * 所以这次亮度给足、宽度收到 2dp —— 是一条弧，不是一片雾 */
@@ -275,10 +276,16 @@ fun ShelfBar(
     // 静止那颗的边光就一直是纯白的。酷安静止那颗边上本来就带一点冷/暖，
     // 这一档只管**描边**的颜色，不动折射 —— 静止仍然没有透镜效果。
     val chromaOn = spec.dispersion > 0.3f
+    /*
+     * 边光：0.8.79 起**两端都是白的**，不再做"上冷下暖"那一档。
+     * 他 11:51 那张屏一句「上下的黄色是什么鬼」—— 暖端那格是 0xFFFFEEDC，
+     * 珠子一撑出栏杆，上缘一条暖色、下缘一个黄点，看着像脏了一圈。色散本来该只出现在
+     * 折射带里（shader 那边在管），描边再带一层暖色是重复，删掉。
+     */
     val pillRim: Brush = Brush.verticalGradient(
-        0f to (if (chromaOn) Color(0xFFD6ECFF) else Color.White).copy(alpha = rimTop),
+        0f to Color.White.copy(alpha = rimTop),
         0.55f to Color.White.copy(alpha = rimTop * 0.28f),
-        1f to (if (chromaOn) Color(0xFFFFEEDC) else Color.White).copy(alpha = rimTop * 0.50f),
+        1f to Color.White.copy(alpha = rimTop * 0.50f),
     )
     // 按住鼓到的倍数：引擎那两根不同阻尼弹簧的终点，静止 1f → 按下 pillBulge
     val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
