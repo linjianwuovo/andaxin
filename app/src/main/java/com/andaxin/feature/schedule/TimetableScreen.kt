@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +50,7 @@ import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Type
 import com.andaxin.core.schedule.Periods
+import com.andaxin.core.schedule.TimetableIcs
 import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.TimetableSlot
 import com.andaxin.shell.Chip
@@ -175,6 +177,45 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
                 LaunchedEffect(state.weeks, state.now) {
                     val i = state.weeks.indexOf(state.now)
                     if (i > 0) weekList.scrollToItem(i)
+                }
+            }
+
+            /*
+             * 导出这一周的课表（他 10-28 那句「能不能给个导出课程表的功能」）。
+             * 只导这一周：校方那条接口是按周给表的，每条课里没有"1-16周"这种范围，编一个就是假数据，
+             * 所以文件名带周次，想整学期就每周各导一份（这句也写在提示里，不装全）。
+             * 落 cache/export/ 再交给系统分享面板 —— 不申请任何存储权限，存哪儿、发给谁他自己定。
+             */
+            if (state.slots.any { it.startPeriod >= 1 }) {
+                val ctx = LocalContext.current
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text(
+                        text = "导出这份课表（.ics）",
+                        fontSize = Type.meta,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .pressClick(shrink = false) {
+                                runCatching {
+                                    val dir = java.io.File(ctx.cacheDir, "export").apply { mkdirs() }
+                                    val f = java.io.File(dir, TimetableIcs.fileName(shownWeek, state.weekOffset))
+                                    f.writeText(TimetableIcs.build(state.slots, state.weekOffset, shownWeek))
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                        ctx, ctx.packageName + ".fileprovider", f,
+                                    )
+                                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/calendar"
+                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                        putExtra(android.content.Intent.EXTRA_SUBJECT, f.name)
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    ctx.startActivity(
+                                        android.content.Intent.createChooser(send, "导出课表")
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }
+                            }
+                            .padding(vertical = Gap.sm),
+                    )
                 }
             }
 
