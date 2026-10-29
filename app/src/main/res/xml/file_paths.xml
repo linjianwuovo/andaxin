@@ -2,4 +2,6 @@
 <paths>
     <!-- 签到照片只落在 cache/checkin/，不往用户可见目录写 -->
     <cache-path name="checkin" path="checkin/" />
+    <!-- 导出课表那份 .ics 落在 cache/export/，经分享面板交给他存（不申请存储权限） -->
+    <cache-path name="export" path="export/" />
 </paths>
