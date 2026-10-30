@@ -152,6 +152,12 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         com.andaxin.feature.brief.BriefEnv.saveUrl = { name, url ->
             downloadThenShare(name, url)
         }
+        // 「把这一周的课直接写进系统日历」：只有 iOS 有这一档（EventKit），见 IosCalendar.kt。
+        // 安卓那边要 WRITE_CALENDAR 运行时权限 + CalendarContract，是另一件事，所以没插 ——
+        // 不插那一行就不画，不摆哑键。
+        com.andaxin.feature.brief.BriefEnv.addToCalendar = { events, onResult ->
+            addEventsToCalendar(events, onResult)
+        }
         com.andaxin.feature.brief.BriefEnv.openOutside = { url ->
             val target = platform.Foundation.NSURL.URLWithString(url)
             target != null && platform.UIKit.UIApplication.sharedApplication.openURL(target)

@@ -102,4 +102,14 @@ object BriefEnv {
      * 回 true = 这一单接下了（iOS 是"开始下载"，落盘那一刻才弹面板）。
      */
     var saveUrl: ((name: String, url: String) -> Boolean)? = null
+
+    /**
+     * 「把这一周的课直接写进系统日历」。回不了布尔 —— 权限是异步弹的、写几条也要时间，
+     * 所以交一个回调出去：`(ok, 一句人话)`。
+     *
+     * iOS 有 EventKit（写进用户自己那份日历，比"存个 .ics 再挑日历"少两步）；
+     * 安卓这一端暂时不插（那边要 `WRITE_CALENDAR` 运行时权限 + CalendarContract，
+     * 是另一件事），不插那一行就不画 —— 不摆按了没反应的键。导出 `.ics` 那条两端都在。
+     */
+    var addToCalendar: ((events: List<com.andaxin.core.schedule.CalendarEvent>, onResult: (Boolean, String) -> Unit) -> Unit)? = null
 }

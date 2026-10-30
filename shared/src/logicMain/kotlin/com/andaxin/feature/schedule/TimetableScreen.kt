@@ -222,6 +222,28 @@ fun TimetableScreen(deps: TimetableDeps, modifier: Modifier = Modifier) {
                 exportNote?.let {
                     Text(it, fontSize = Type.micro, color = ink.faint)
                 }
+                /*
+                 * 「导入到日程」：只有宿主插了 `addToCalendar` 才画（现在只有 iOS —— EventKit
+                 * 一次授权之后点一下就进用户自己的日历；安卓要 WRITE_CALENDAR 运行时权限，
+                 * 是另一件事）。没有这条缝的那一端，这一行整个不出现，也不拿导出那条冒充。
+                 */
+                val calendarSeam = BriefEnv.addToCalendar
+                if (calendarSeam != null) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Text(
+                            text = "导入到日程",
+                            fontSize = Type.meta,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .pressClick(shrink = false) {
+                                    calendarSeam(
+                                        TimetableIcs.events(state.slots, state.weekOffset, shownWeek),
+                                    ) { _, msg -> exportNote = msg }
+                                }
+                                .padding(vertical = Gap.sm),
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(Gap.md))

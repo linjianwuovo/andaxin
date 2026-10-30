@@ -7,6 +7,8 @@ import com.andaxin.data.capture.SchoolPeriods
 import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.toInstant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
@@ -26,6 +28,16 @@ import kotlinx.datetime.toLocalDateTime
  * 晨跑/早自习（`startPeriod < 1`）不导：它没有钟点，`SchoolPeriods` 里没有它的时间，
  * 编一个 08:30 出来就是早期那个"凭空多一门课"的老毛病。
  */
+/** 一条要写进系统日历的课。跟 `.ics` 那份同一个口径（见 [TimetableIcs.events]）。 */
+data class CalendarEvent(
+    val uid: String,
+    val title: String,
+    val location: String,
+    val notes: String,
+    val startMillis: Long,
+    val endMillis: Long,
+)
+
 object TimetableIcs {
 
     /** [weekNumber] 只进文件名和事件前缀（第几周），[weekOffset] 是相对本周的周偏移。 */
@@ -61,6 +73,38 @@ object TimetableIcs {
         line("END:VCALENDAR")
         return sb.toString()
     }
+
+    /**
+     * 同一周的课，排成可以直接写进系统日历的一条条事件。
+     *
+     * 为什么不复用 [build] 那串 `.ics`：iOS 那边有 EventKit，直接写进用户自己的日历比
+     * "存一个文件再让他挑日历"少两步；安卓那边暂时没接（`BriefEnv.addToCalendar` 没人插），
+     * 界面上那一行就不画。口径跟 `.ics` 那份一字不差：晨跑/早自习不导、只导这一周。
+     */
+    fun events(slots: List<TimetableSlot>, weekOffset: Int, weekNumber: Int): List<CalendarEvent> {
+        val monday = mondayOf(weekOffset)
+        return slots.filter { it.startPeriod >= 1 }.mapNotNull { s ->
+            val lastPeriod = s.startPeriod + s.periodCount.coerceAtLeast(1) - 1
+            val start = SchoolPeriods.startMinute(s.startPeriod) ?: return@mapNotNull null
+            val end = SchoolPeriods.endMinute(lastPeriod) ?: return@mapNotNull null
+            val day = monday.plus(s.day - 1, DateTimeUnit.DAY)
+            val span = if (lastPeriod > s.startPeriod) "第 ${s.startPeriod}-$lastPeriod 节" else "第 ${s.startPeriod} 节"
+            CalendarEvent(
+                uid = "andaxin-$weekNumber-${s.day}-${s.startPeriod}",
+                title = s.course.ifBlank { "一节课" },
+                location = s.room,
+                notes = "安大信课表 · 第${weekNumber}周 · $span",
+                startMillis = epochMillis(day, start),
+                endMillis = epochMillis(day, end),
+            )
+        }
+    }
+
+    /** 本地时间 → 毫秒时间戳（按本机时区解释，跟 `.ics` 里那条浮动时间同一个意思）。 */
+    private fun epochMillis(day: LocalDate, minuteOfDay: Int): Long =
+        LocalDateTime(day.year, day.monthNumber, day.dayOfMonth, minuteOfDay / 60, minuteOfDay % 60)
+            .toInstant(TimeZone.currentSystemDefault())
+            .toEpochMilliseconds()
 
     /** 文件名：`课表-第9周.ics`。周次拿不到（0）就退回按偏移叫"本周/下周"。 */
     fun fileName(weekNumber: Int, weekOffset: Int): String = when {
