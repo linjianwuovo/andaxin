@@ -43,6 +43,12 @@ interface BriefGraph {
      * 硬塞进 `ListSource` 会把它们各自的形状抹平。
      */
     val dormBoard: com.andaxin.data.capture.CaptureDormBoard
+
+    /**
+     * 列表那一发带来的「原文件直链 + 校方那个 isDownload 标记」，从列表点进课件预览时递一手。
+     * 直链是 `resourceUrl`（minio 预签名，实测 401 字符），不进路由串 —— 太长且带签名。
+     */
+    val coursewareFile: kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>
     val card: com.andaxin.data.capture.CampusCardClient
     val fif: com.andaxin.data.capture.FifSession
     val fifApi: com.andaxin.data.capture.FifApi

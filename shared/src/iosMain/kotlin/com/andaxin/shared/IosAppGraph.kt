@@ -144,6 +144,14 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         // 「关于 → 爱发电」那一行交系统浏览器（安卓那侧是 Intent(ACTION_VIEW)，见 AndroidPhotoHost）。
         // `openURL(_:)` 回 false = 这台机没可交的浏览器，共享层那句会退回应用内 WebView，
         // 不会按了什么都不发生。绑定形状是 dump-metadata 出来的：成员函数、收 NSURL、回 Boolean。
+        // 「把这份文件交给系统」：tmp + UIActivityViewController（见 IosShare.kt）
+        com.andaxin.feature.brief.BriefEnv.shareFile = { name, mime, bytes ->
+            shareFileNative(name, mime, bytes)
+        }
+        // 「把这个直链交给系统下载」：iOS 没有 DownloadManager，自己拉回字节再弹分享面板
+        com.andaxin.feature.brief.BriefEnv.saveUrl = { name, url ->
+            downloadThenShare(name, url)
+        }
         com.andaxin.feature.brief.BriefEnv.openOutside = { url ->
             val target = platform.Foundation.NSURL.URLWithString(url)
             target != null && platform.UIKit.UIApplication.sharedApplication.openURL(target)
@@ -285,6 +293,10 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     // 「通知设置」那一屏要这两样：那份首选项 + 课程表口（timetableFeed 就是安卓 graph.timetable 同一台）
     override val timetable: com.andaxin.data.TimetableFeed get() = timetableFeed
     override val dormBoard: CaptureDormBoard = CaptureDormBoard(school, session)
+
+    /** 课件原文件直链那一手（见 BriefGraph 那条注释）。 */
+    override val coursewareFile =
+        kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>(null)
 
     val dashboardFeed: DashboardFeed by lazy {
         DashboardSource(

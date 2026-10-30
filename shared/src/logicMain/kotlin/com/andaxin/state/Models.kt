@@ -65,7 +65,7 @@ class HomeModel(
         val cached = runCatching { timetable.cachedWeek() }.getOrDefault(emptyList())
         if (cached.isNotEmpty()) {
             _state.value = _state.value.copy(
-                today = cached.filter { it.day == Periods.today() && it.startPeriod >= 1 },
+                today = cached.filter { it.day == com.andaxin.core.concurrency.todayDayOfWeek() && it.startPeriod >= 1 },
                 todayKnown = true,
             )
         }

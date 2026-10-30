@@ -327,6 +327,8 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                                     val rid = item.extra["resourceId"].orEmpty()
                                     val cid = item.extra["coursewareId"].orEmpty()
                                     val tcid = course?.teachClassId.orEmpty()
+                                    // 把"原文件直链 + 校方那个 isDownload 标记"递给预览那一屏
+                                    // （直链是 minio 预签名，太长且带签名，不进路由串）
                                     graph.coursewareFile.value =
                                         (item.extra["url"].orEmpty() to item.extra["isDownload"].orEmpty())
                                     open(

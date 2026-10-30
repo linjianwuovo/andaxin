@@ -70,6 +70,46 @@ object AndroidPhotoHost {
         // 「关于 → 爱发电」那一行交系统浏览器：那页要登录、付款要跳微信/支付宝，
         // 塞进我们自己的 WebView 就是让人付不了款。发不出去（没装浏览器/被 ROM 拦）回 false，
         // 共享层那一句会退回应用内 WebView —— 按了什么都不发生是最坏的一种坏。
+        // 「把这份文件交给系统」：落 cache/export 再弹分享面板（课表 .ics、课件下载都走它）。
+        // 是 Intent.ACTION_SEND 不是 ACTION_VIEW —— 他要的是"存文件/发微信/导日历"都能选。
+        com.andaxin.feature.brief.BriefEnv.shareFile = { name, mime, bytes ->
+            runCatching {
+                val dir = java.io.File(context.cacheDir, "export").apply { mkdirs() }
+                val f = java.io.File(dir, name)
+                f.writeBytes(bytes)
+                val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", f)
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = mime
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, name)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(
+                    android.content.Intent.createChooser(send, "导出")
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }.isSuccess
+        }
+        // 「把这个直链交给系统下载」：课件的原文件走 DownloadManager，
+        // 进度/完成提示都在系统通知里，我们不自己造一套（跟检测更新那条口同一条）。
+        com.andaxin.feature.brief.BriefEnv.saveUrl = { name, url ->
+            runCatching {
+                val dm = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE)
+                    as android.app.DownloadManager
+                val safe = name.replace('/', '_').ifBlank { "andaxin-file" }
+                dm.enqueue(
+                    android.app.DownloadManager.Request(android.net.Uri.parse(url))
+                        .setTitle(safe)
+                        .setDescription("安大信 · 下载")
+                        .setNotificationVisibility(
+                            android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED,
+                        )
+                        .setDestinationInExternalPublicDir(
+                            android.os.Environment.DIRECTORY_DOWNLOADS, safe,
+                        ),
+                )
+            }.isSuccess
+        }
         com.andaxin.feature.brief.BriefEnv.openOutside = { url ->
             runCatching {
                 context.startActivity(

@@ -85,4 +85,21 @@ object BriefEnv {
      * 塞进我们自己的 WebView 就是让人付不了款。
      */
     var openOutside: ((url: String) -> Boolean)? = null
+
+    /**
+     * 「把这份文件交给系统」：写个临时文件 + 弹系统分享面板。回 true = 真交出去了。
+     *
+     * 安卓 = `cache/export` + FileProvider + `Intent.ACTION_SEND`（见 AndroidPhotoHost），
+     * iOS = tmp + `UIActivityViewController`（见 IosShare）—— 两边都不申请存储权限，
+     * 存哪儿、发给谁由用户自己定。现在两处用它：课表导出 `.ics`、课件「下载原文件」。
+     */
+    var shareFile: ((name: String, mime: String, bytes: ByteArray) -> Boolean)? = null
+
+    /**
+     * 「把这个直链交给系统下载」—— 课件的原文件是校方 minio 的预签名直链（401 字符），
+     * 我们不自己造下载器：安卓走 `DownloadManager`（进度、完成提示都在系统通知里），
+     * iOS 没有对应物 → 自己 NSURLSession 拉回字节再弹分享面板（存到「文件」/发微信都行）。
+     * 回 true = 这一单接下了（iOS 是"开始下载"，落盘那一刻才弹面板）。
+     */
+    var saveUrl: ((name: String, url: String) -> Boolean)? = null
 }

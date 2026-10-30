@@ -10,6 +10,7 @@ import com.andaxin.data.TimetableFeed
 import com.andaxin.data.TimetableSlot
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.datetime.plus
 
 /**
  * 三路数据源的开关：登录了就只走校方，没登录才走占位。
@@ -43,7 +44,7 @@ class TimetableSource(
      */
     override fun cachedWeek(): List<TimetableSlot> {
         val text = readSnap() ?: return emptyList()
-        val o = runCatching { org.json.JSONObject(text) }.getOrNull() ?: return emptyList()
+        val o = runCatching { com.andaxin.core.json.JSONObject(text) }.getOrNull() ?: return emptyList()
         if (o.optString("monday") != mondayKey()) return emptyList()
         val arr = o.optJSONArray("slots") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
@@ -62,25 +63,29 @@ class TimetableSource(
 
     private fun writeWeek(slots: List<TimetableSlot>) {
         runCatching {
-            val arr = org.json.JSONArray()
+            val arr = com.andaxin.core.json.JSONArray()
             slots.forEach { s ->
                 arr.put(
-                    org.json.JSONObject()
+                    com.andaxin.core.json.JSONObject()
                         .put("id", s.courseId).put("course", s.course).put("teacher", s.teacher)
                         .put("room", s.room).put("day", s.day)
                         .put("start", s.startPeriod).put("count", s.periodCount),
                 )
             }
-            writeSnap(org.json.JSONObject().put("monday", mondayKey()).put("slots", arr).toString())
+            writeSnap(com.andaxin.core.json.JSONObject().put("monday", mondayKey()).put("slots", arr).toString())
         }
     }
 
     private companion object {
         /** 这一周周一的日期串 —— 快照的"是哪一周"。 */
-        fun mondayKey(): String =
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(
-                com.andaxin.core.schedule.Periods.weekMonday().time,
-            )
+        fun mondayKey(): String {
+            // 原来这里走 java.text.SimpleDateFormat + java.util.Calendar（`Periods.weekMonday()`），
+            // 共享层没有 java.*：今天往回退 (今天星期几 - 1) 天就是这一周的周一，
+            // 口径跟 `Periods.weekMonday()` 一致（周一起算，周日退 6 天）。
+            val today = com.andaxin.core.concurrency.todayLocalDate()
+            val back = com.andaxin.core.concurrency.todayDayOfWeek() - 1
+            return today.plus(-back, kotlinx.datetime.DateTimeUnit.DAY).toString()
+        }
     }
 }
 
@@ -294,15 +299,19 @@ fun whyOf(t: Throwable?): String? {
  * Sources 的"下一节"用 endMinute；界面上课提醒那套还走 app 侧的 Periods（有闹钟能力）。
  */
 object SchoolPeriods {
-    // 官方课表那十节（StartTime 列），"HH:mm" 串
+    /*
+     * 那十对时间是**他 10-21 早上发的那张官方课表**逐行抄的（跟 app 侧 `core/schedule/Periods.kt`
+     * 现在是同一张表）。这一份以前抄的是另一套数（08:00 起、每节 45 分钟推出来的），
+     * 也就是 10-21 被他一句「哪来的 11 节 12 节」钉掉的那套自己拍的 —— 现在对齐。
+     * 第 7 节官方给的是 15:55–16:35（40 分钟），所以"每节都 45 分钟"这个假设也不成立。
+     */
     private val START_AT = listOf(
-        "08:00", "08:55", "10:00", "10:55", "11:50",
-        "14:00", "14:55", "16:00", "16:55", "18:30",
+        "08:30", "09:20", "10:25", "11:15", "14:00",
+        "14:50", "15:55", "16:45", "19:00", "19:55",
     )
-    // 官方课表那十节（EndTime 列）
     private val END_AT = listOf(
-        "08:45", "09:40", "10:45", "11:40", "12:35",
-        "14:45", "15:40", "16:45", "17:40", "20:10",
+        "09:15", "10:05", "11:10", "12:00", "14:45",
+        "15:35", "16:35", "17:30", "19:45", "20:40",
     )
 
     private fun minutes(hhmm: String): Int {
@@ -310,7 +319,11 @@ object SchoolPeriods {
         return h.toInt() * 60 + m.toInt()
     }
 
+    private val START_MINUTES = START_AT.map(::minutes)
     private val END_MINUTES = END_AT.map(::minutes)
+
+    /** 第 n 节（1 起）的开始分钟数。越界回 null。 */
+    fun startMinute(n: Int): Int? = START_MINUTES.getOrNull(n - 1)
 
     /** 第 n 节（1 起）的结束分钟数。越界回 null。 */
     fun endMinute(n: Int): Int? = END_MINUTES.getOrNull(n - 1)

@@ -358,7 +358,7 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
      * 进路由要编解码两道，任何一道多解一次就废。列表那一发（C11）本来就带着它，点的时候递一手最省事；
      * 进程被回收就没了，那一屏会退回"这次没拿到原文件直链"，逐页图照看不误。
      */
-    val coursewareFile = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>(null)
+    override val coursewareFile = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>(null)
 
     /** 真 GPS。beta 那份还接一路端内假 GPS（他自己写的那套），正式版这份 mock 是 null。 */
     override val gps: GpsFeed by lazy { GpsFeed(context, debug?.mock) }

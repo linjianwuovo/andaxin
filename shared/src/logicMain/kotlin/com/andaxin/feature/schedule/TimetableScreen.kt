@@ -47,6 +47,8 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Type
 import com.andaxin.core.schedule.LessonPeriods
+import com.andaxin.core.schedule.TimetableIcs
+import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.core.schedule.shortRoom
 import com.andaxin.data.TimetableSlot
 import com.andaxin.shell.Chip
@@ -135,6 +137,8 @@ fun TimetableScreen(deps: TimetableDeps, modifier: Modifier = Modifier) {
     val today = remember(minute) { todayDayOfWeek() }
     val periodNow = remember(minute) { LessonPeriods.periodNow() }
     var showDayMode by remember { mutableStateOf(false) }
+    /** 导出那一下的结果：交给系统面板了没有，要写在屏上（不假装成功）。 */
+    var exportNote by remember { mutableStateOf<String?>(null) }
 
     // 这一屏也支持下拉：整周没拿到时，下面会给一条「重试」，但用户更习惯直接拽一下
     Refreshable({ deps.model.refresh() }, modifier.fillMaxSize()) {
@@ -184,6 +188,39 @@ fun TimetableScreen(deps: TimetableDeps, modifier: Modifier = Modifier) {
                 LaunchedEffect(state.weeks, state.now) {
                     val i = state.weeks.indexOf(state.now)
                     if (i > 0) weekList.scrollToItem(i)
+                }
+            }
+
+            /*
+             * 导出这一周的课表（他 10-28 那句「能不能给个导出课程表的功能」）。
+             * 只导这一周：校方那条接口是按周给表的，每条课里没有"1-16周"这种范围，编一个就是假数据，
+             * 所以文件名带周次，想整学期就每周各导一份（这句也写在提示里，不装全）。
+             * 落文件 + 弹系统分享面板那一半在宿主那根缝里（安卓 = cache/export + FileProvider + ACTION_SEND，
+             * iOS = tmp + UIActivityViewController）—— 不申请任何存储权限，存哪儿、发给谁他自己定。
+             */
+            if (state.slots.any { it.startPeriod >= 1 }) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Text(
+                        text = "导出这份课表（.ics）",
+                        fontSize = Type.meta,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .pressClick(shrink = false) {
+                                val name = TimetableIcs.fileName(shownWeek, state.weekOffset)
+                                val body = TimetableIcs.build(state.slots, state.weekOffset, shownWeek)
+                                val sent = BriefEnv.shareFile
+                                    ?.invoke(name, "text/calendar", body.encodeToByteArray()) == true
+                                exportNote = if (sent) {
+                                    "已交给系统分享面板：$name（想整学期就每周各导一份）"
+                                } else {
+                                    "这一端还不能导出：没有可用的分享通道"
+                                }
+                            }
+                            .padding(vertical = Gap.sm),
+                    )
+                }
+                exportNote?.let {
+                    Text(it, fontSize = Type.micro, color = ink.faint)
                 }
             }
 
