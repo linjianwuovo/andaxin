@@ -104,6 +104,9 @@ class FifApi(private val fif: FifSession) {
                     // 换页图那一条就会静默回空（10-21 10:46 就是这么"没拿到页面图"的）。
                     "coursewareId" to firstOf(o, "courseWareId", "coursewareId"),
                     "url" to o.optString("resourceUrl"),
+                    // 校方那侧的"允许不允许下载"标记（实样里见过 0）。它不决定我们拿不拿得到直链——
+                    // `resourceUrl` 就在这条响应里 —— 只决定界面上要不要把这句话说明白。
+                    "isDownload" to o.optString("isDownload"),
                 ),
             )
         }
@@ -765,7 +768,7 @@ class FifApi(private val fif: FifSession) {
      * ① 官方 H5 那个签到码组件（`lxtmp/sign_js.txt`、`sign_flow.txt`）把提交压成一条
      *   `aiktSignIn.checkQrcodeHandler({signId, userName, signCode})` —— **三个键里 `signId` 是带的**。
      *   我们这一发以前只送 `userName` + `signCode`，`signId` 空着就发出去，撞回来的是
-     *   `code:1000 服务器异常`；当时把这句记成"这条口要的字段不止 JS 里那三个"，
+     *   `code:1000 服务器异常`；我当时把这句记成"这条口要的字段不止 JS 里那三个"，
      *   其实缺的那一个就明摆在 H5 那行调用里。10-26 早上对质扫码签到时才翻出来。
      * ③ `signId` 从哪来：旧项目 10-13 抓到的官方两跳 ——
      *   `courseRecord/getWorkingCourseRecordByStudentId`（`studentId`）→ 正在上的那一堂，
@@ -819,11 +822,7 @@ class FifApi(private val fif: FifSession) {
     }
 
     /** 表单 POST，回根节点。非 2xx 直接把 HTTP 码抛出去，不吞成"空数据"。 */
-    private suspend fun postRaw(
-        url: String,
-        form: List<Pair<String, String>>,
-        auth: String?,
-    ): JSONObject {
+    private suspend fun postRaw(url: String, form: List<Pair<String, String>>, auth: String?): JSONObject {
         val body = fif.postForm(url, form, auth)
         return runCatching { JSONObject(body) }.getOrElse {
             throw Exception("这一发回的不是 JSON（${body.take(40)}）")

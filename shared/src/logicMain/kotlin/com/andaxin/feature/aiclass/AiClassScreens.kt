@@ -312,8 +312,9 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                 // 其余栏的条目没有下一步，给它们挂个不会响的 clickable 比不挂更坏（点了没反应看着像坏了）
                 val live = tab == TAB_LIVE
                 val section = tab == TAB_CHAPTER && item.extra["leaf"] == "true"
-                // 课件/其他资源：点进去看页 —— 一条 PPT 在官方那边是"一页一图"，
-                // 拿 resourceUrl 直接下载 pptx 在手机上打不开，所以走 viewCoursewareTeacher 的页图。
+                // 课件/其他资源：点进去看页 —— 一条 PPT 在官方那边是"一页一图"（`viewCoursewareTeacher`）。
+                // 原文件那条直链（列表这一发就带着）顺手递一手，进去才有"下载原文件"那颗按钮 ——
+                // 10-27 他一句「为什么不提供 ppt 下载按钮」，当时我只做了页图那条，把下载整条漏了。
                 val paper = (tab == TAB_COURSEWARE || tab == TAB_OTHER) &&
                     !item.extra["resourceId"].isNullOrBlank()
                 Sheet(
@@ -326,6 +327,8 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                                     val rid = item.extra["resourceId"].orEmpty()
                                     val cid = item.extra["coursewareId"].orEmpty()
                                     val tcid = course?.teachClassId.orEmpty()
+                                    graph.coursewareFile.value =
+                                        (item.extra["url"].orEmpty() to item.extra["isDownload"].orEmpty())
                                     open(
                                         "aiclass/paper/$rid/$cid/$tcid?title=" +
                                             formUrlEncode(item.title)

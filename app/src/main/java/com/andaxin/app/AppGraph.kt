@@ -160,7 +160,16 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
      * 还欠的是本周跑量、报修、校园卡、AI 课堂、劳动教育、节假日离返校。
      */
     override val timetable: TimetableFeed by lazy {
-        TimetableSource(CaptureTimetable(school), LocalTimetable(), session)
+        TimetableSource(
+            CaptureTimetable(school),
+            LocalTimetable(),
+            session,
+            // 本周课表落一份给冷启动垫屏：大退再开不该先空三秒（他 10-27 那句「先加载缓存然后刷新」）。
+            // main 上那版递的是 Context（app 侧的 Snap 直接吃 Context），共享层这只 Snap 吃 AppFiles，
+            // 所以传 `files` —— 同一个文件、同一个 `snap_week.json` 口径。
+            readSnap = { com.andaxin.core.store.Snap.read(files, "week") },
+            writeSnap = { com.andaxin.core.store.Snap.write(files, "week", it) },
+        )
     }
 
     val messages: MessageFeed by lazy {
@@ -331,8 +340,25 @@ class AppGraph(val context: Context) : com.andaxin.feature.brief.BriefGraph {
     /** 录播看到第几分（服务端那两条进度上报实测被拒，所以本机存，见 core/media/PlayProgress）。 */
     val playProgress by lazy { com.andaxin.core.media.PlayProgress(context.filesDir) }
 
-    /** 消息轮询：应用活着的时候每五分钟拉一次 */
-    val poller: Poller by lazy { Poller(messages, engineScope) }
+    /** 消息轮询：应用活着的时候每五分钟拉一次，有新消息顺手报一条通知（core/notify/MessageNotify） */
+    val poller: Poller by lazy { Poller(messages, context, store, engineScope) }
+
+    /**
+     * 点通知要求落到第几格（`Shelf` 的序号），-1 = 没人要求跳。
+     * 走这一份而不是 intent 参数：App 已经开着的时候点通知不会再走 onCreate，
+     * 那条 intent 得在 onNewIntent 里落进来，两边都往这儿写一次就行。
+     */
+    val tabJump = kotlinx.coroutines.flow.MutableStateFlow(-1)
+
+    /**
+     * 点进课件那一屏时要顺手递过去的原文件：`first` = minio 上那份 pptx/pdf 的直链，
+     * `second` = 校方那侧的"允许下载吗"标记（实样里是 "0"）。
+     *
+     * 为什么不塞导航路由：那条直链是**预签名**的，实测 401 个字符，里头带 `?X-Amz-…&signature=…`，
+     * 进路由要编解码两道，任何一道多解一次就废。列表那一发（C11）本来就带着它，点的时候递一手最省事；
+     * 进程被回收就没了，那一屏会退回"这次没拿到原文件直链"，逐页图照看不误。
+     */
+    val coursewareFile = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, String>?>(null)
 
     /** 真 GPS。beta 那份还接一路端内假 GPS（他自己写的那套），正式版这份 mock 是 null。 */
     override val gps: GpsFeed by lazy { GpsFeed(context, debug?.mock) }

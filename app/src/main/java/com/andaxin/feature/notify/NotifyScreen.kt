@@ -58,7 +58,8 @@ fun NotifyScreen(onBack: () -> Unit) {
 
 /**
  * 上课提醒那一行。四句话得说明白，少一句都会让人误解它，但**不摆在大路上**：
- * ① 节次时间是我们自己排的那张表，校方没有一条接口给过；
+ * ① 节次时间照的是校方那张作息表（10 节，一行行抄进 `Periods`），校方没有一条**接口**给过
+ *    "第几节几点"，所以这张表得手抄着跟；
  * ② 它用系统闹钟那条路，状态栏会亮一个闹钟图标；
  * ③ 重启之后能不能自己排回去，看的是 ROM 的"自启动"，那个开关我们碰不到；
  * ④ 从提前量那一分钟起，同一条通知每分钟刷一次"还有 N 分钟"，到点换成"现在上课"，全程不出声。
@@ -84,7 +85,10 @@ private fun ClassReminderRow() {
         val p = graph.store.snapshot()
         on = com.andaxin.core.schedule.ClassReminder.isOn(p, graph.store)
         lead = com.andaxin.core.schedule.ClassReminder.leadOf(p, graph.store)
-        status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable)
+        status = com.andaxin.core.schedule.ClassReminder.reschedule(graph.context, graph.store, graph.timetable) +
+            // 进这一屏也补一发：他可能就是"三分钟后上课"才想起来看的，那一节已经被排程跳过了
+            com.andaxin.core.schedule.ClassReminder.catchUpNow(graph.context, graph.store, graph.timetable)
+                .let { if (it == null) "" else " · $it" }
     }
 
     fun write(nv: Boolean, nLead: Int) {
@@ -97,7 +101,10 @@ private fun ClassReminderRow() {
             // fromUser = 他亲手拨的：正在跑的倒计时链一起撤掉，别让他按了关还看见"还有 12 分钟"
             status = com.andaxin.core.schedule.ClassReminder.reschedule(
                 graph.context, graph.store, graph.timetable, fromUser = true,
-            )
+            ) +
+                // 拨到"开"时如果已经在某一节的提前窗口里，当场补一发，别干等到下一节
+                com.andaxin.core.schedule.ClassReminder.catchUpNow(graph.context, graph.store, graph.timetable)
+                    .let { if (it == null) "" else " · $it" }
         }
         if (nv && !androidx.core.app.NotificationManagerCompat.from(graph.context).areNotificationsEnabled()) {
             needPermission = true
@@ -113,7 +120,13 @@ private fun ClassReminderRow() {
             Text("上课提醒", fontSize = Type.title, fontWeight = FontWeight.Medium, color = ink.strong)
             Spacer(Modifier.height(1.dp))
             Text(
-                text = if (on) "开 · 课前 $lead 分钟起，通知每分钟刷一次倒计时（不响）" else "没开",
+                text = if (on) {
+                    // 胶囊那一档只有系统真有这套 API 时才提（Android 16 起），老机器上不说空话
+                    val pill = if (LiveUpdates.supported()) "，状态栏那颗胶囊跟着走" else ""
+                    // 0.8.69 起这一档是前台服务挂的常驻通知（他明确要的就是这条），
+                    // 所以副标题必须写明"那几分钟划不掉"，不能让他自己去发现
+                    "开 · 课前 $lead 分钟起每分钟刷一次倒计时（不响，那 $lead 分钟里划不掉）$pill"
+                } else "没开",
                 fontSize = Type.meta,
                 color = if (needPermission) MaterialTheme.colorScheme.error else ink.muted,
             )
@@ -144,7 +157,19 @@ private fun ClassReminderRow() {
         Spacer(Modifier.height(Gap.xs))
         Text(status, fontSize = Type.micro, color = ink.faint)
     }
+    /*
+     * 上一发倒计时到底走了哪条 —— 这一句是 10-27 早上加进来的。
+     * "有没有胶囊"这件事由三道闸决定（系统有没有这套 API、运行时权限、ROM 按应用那一档），
+     * 设备不在手边时我不该猜；这一句是那三问之后的结论，原样摆出来，他念给我就行。
+     */
+    com.andaxin.core.schedule.ClassReminder.lastLiveWhy?.let {
+        Spacer(Modifier.height(Gap.xxs))
+        Text(it, fontSize = Type.micro, color = ink.faint, lineHeight = Type.metaLine)
+    }
 }
+
+/** 两道闸各打一个勾：界面上"已允许"那两个字以前会把"权限给了、系统那档没开"也盖成绿灯。 */
+private fun tick(ok: Boolean): String = if (ok) "✓" else "✗"
 
 /**
  * 实况更新（状态栏那颗胶囊）这两行。三条坑为什么这么问，见 `core/notification/LiveUpdates.kt`。
@@ -152,42 +177,57 @@ private fun ClassReminderRow() {
 @Composable
 private fun LiveUpdateRows() {
     val ctx = LocalContext.current
+    val ink = LocalInk.current
     // 每次进屏、每次点完都重新问一遍系统：ROM 那个开关是用户随时能在设置里拨的，
     // 缓存下来就成了"我明明开了它还说不行"
     var askTick by remember { mutableIntStateOf(0) }
     val canPost = askTick.let { LiveUpdates.canPost(ctx) }
+    // 上一发没上胶囊时那句"卡在哪"的原文，由发通知那一侧留下（ClassReminder.lastLiveWhy），
+    // 这里把它当副标题用；已经能发了就换成三道闸的现问现答。
+    var jumped by remember { mutableStateOf(true) }
     val askPromoted = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
     ) {
         askTick++
         // 系统要是没弹这一发（权限本来就给了、或者这个 ROM 根本没那套弹层），就地把他送到
         // 应用的通知设置页 —— 点了没反应比点了报错更难查
-        if (!LiveUpdates.canPost(ctx)) LiveUpdates.openNotificationSettings(ctx)
+        if (!LiveUpdates.canPost(ctx)) jumped = LiveUpdates.openPromotedSettings(ctx)
     }
 
     RowLine(
         title = "实况更新权限",
-        // 这一行右边还要摆状态那两个字，副标题写长了会被裁成"…"，所以压到一句
-        sub = "不给也能用，只是不上状态栏那颗胶囊。",
+        // 两道闸分开摆（0.8.67 那版塌成一句"已允许"）：`canPost` 是"权限或系统任一为真"，
+        // 于是"权限给了、系统那档关着"也会显示已允许 —— 那是假绿灯，他 10-27 就是被这句绕过的。
+        sub = if (LiveUpdates.supported())
+            "API ${LiveUpdates.apiLevel()} · ${if (canPost) "能发：倒计时那几档会同时上状态栏那颗胶囊。"
+                else "不给也能用，只是不上状态栏那颗胶囊。"}"
+        else "这台没有这套能力，倒计时只走通知栏。",
         right = when {
-            !LiveUpdates.supported() -> "这台没有"
-            canPost -> "已允许"
-            else -> "没允许"
+            !LiveUpdates.supported() -> "API ${LiveUpdates.apiLevel()}"
+            else -> "权限${tick(LiveUpdates.granted(ctx))} 系统${tick(LiveUpdates.systemAllows(ctx))}"
         },
         onClick = {
-            if (LiveUpdates.supported() && !canPost) {
-                askPromoted.launch(android.Manifest.permission.POST_PROMOTED_NOTIFICATIONS)
-            } else {
-                LiveUpdates.openNotificationSettings(ctx)
+            when {
+                !LiveUpdates.supported() -> jumped = LiveUpdates.openPromotedSettings(ctx)
+                // 系统那一档关着：跳官方那条提升设置页，弹权限框没用
+                !LiveUpdates.systemAllows(ctx) -> jumped = LiveUpdates.openPromotedSettings(ctx)
+                else -> askPromoted.launch(android.Manifest.permission.POST_PROMOTED_NOTIFICATIONS)
             }
         },
     )
     Hairline()
     RowLine(
         title = "系统里的实况开关",
-        sub = "总开关、允许哪些应用上岛，都在那一页。",
+        // 官方给的是专门那一条 intent（API 36 起）；ColorOS 17 的流体云那一档不在通用通知页里，
+        // 所以先试专门那条，拉不起来才退回通知页、再退到应用信息页。三条全空就明说没打开。
+        sub = if (jumped) "总开关、允许哪些应用上岛，都在那一页。"
+            else "那几页这台机器都没应，去系统设置里搜「流体云」。",
         right = "›",
-        onClick = { LiveUpdates.openNotificationSettings(ctx) },
+        onClick = { jumped = LiveUpdates.openPromotedSettings(ctx) },
     )
+    if (!canPost && LiveUpdates.supported()) {
+        Spacer(Modifier.height(Gap.xs))
+        Text(LiveUpdates.whyNot(ctx), fontSize = Type.micro, color = ink.faint, lineHeight = Type.metaLine)
+    }
 }
 

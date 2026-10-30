@@ -13,6 +13,8 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,7 +41,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.andaxin.shell.Chip
 import com.andaxin.shell.pressClick
+import kotlin.math.roundToInt
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
@@ -55,10 +59,11 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * 扫码签到。
+ * 扫码签到：只负责"看见码、把码里的内容念出来"。
  *
- * 只负责"看见码、把码里的内容念出来"。真正的签到动作要等 AI 课堂那套接口接上，
- * 现在扫完只会把码显示给你看，不会替你签 —— 签到是写操作。
+ * 扫到 http 那条就直接把码交给 `QrSignScreen` 去开（官方那条签到本身就是网页带着会话完成的），
+ * 不再让人多点一次 —— 上课那几分钟经不起多按一次。
+ * 底下那一格始终显示码的原文，出问题时那就是唯一的凭据（那一串里带 token，只在这台机子上看得见）。
  */
 @Composable
 fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
@@ -99,8 +104,8 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
             when {
                 granted -> CameraPreview(onCode = { raw ->
                     code = raw
-                    // 签到码扫出来是个网页链接 —— 官方就是拿带会话的 WebView 打开它完成签到。
-                    // 第一次识别到就跳过去，别让人再点一下（上课那几分钟经不起多点一次）。
+                    // 码里那条链接交给签到那一屏去发（带着会话自己发一次，读 302 的落点）。
+                    // 第一次识别到就跳过去，别让人再点一下 —— 上课那几分钟经不起多按一次。
                     if (raw.startsWith("http", ignoreCase = true)) onSignUrl(raw)
                 })
                 denied -> Text("没给相机权限", fontSize = Type.body, color = Color.White)
@@ -136,6 +141,11 @@ private fun CameraPreview(onCode: (String) -> Unit) {
     val lifecycle = LocalLifecycleOwner.current
     val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
     val executor = remember { Executors.newSingleThreadExecutor() }
+    // 绑上相机之后才有：变焦要往它身上设
+    var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    // 当前缩放比。捏合的时候由监听器写，按丸子的时候由下面那排写
+    var zoom by remember { mutableStateOf(1f) }
+    var baseZoom by remember { mutableStateOf(1f) }
     /*
      * 扫码器**不能在 remember {} 里造**。10-20 01:42 米11 上就是这么炸的：
      * ML Kit 的 `getClient()` 一旦初始化不了，异常是抛在组合阶段的，整条主线程直接 FATAL，
@@ -144,6 +154,35 @@ private fun CameraPreview(onCode: (String) -> Unit) {
      */
     var scanner by remember { mutableStateOf<BarcodeScanner?>(null) }
     var trouble by remember { mutableStateOf<String?>(null) }
+
+    val scale = remember {
+        android.view.ScaleGestureDetector(context, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScaleBegin(detector: android.view.ScaleGestureDetector): Boolean {
+                // 起手时读一次相机现在的值：上一发捏到哪儿、这次就从哪儿接着捏，
+                // 自己记一份会跟相机不同步（切后台再回来它自己会复位）
+                baseZoom = camera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f
+                return true
+            }
+
+            override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                val cam = camera ?: return false
+                val st = cam.cameraInfo.zoomState.value ?: return false
+                val to = (baseZoom * detector.scaleFactor).coerceIn(st.minZoomRatio, st.maxZoomRatio)
+                cam.cameraControl.setZoomRatio(to)
+                zoom = to
+                return true
+            }
+        })
+    }
+
+    /** 设一档缩放；相机还没绑上就什么都不做（那一排丸子此时也不该出现）。 */
+    fun setZoom(z: Float) {
+        val cam = camera ?: return
+        val st = cam.cameraInfo.zoomState.value ?: return
+        val to = z.coerceIn(st.minZoomRatio, st.maxZoomRatio)
+        cam.cameraControl.setZoomRatio(to)
+        zoom = to
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -194,12 +233,41 @@ private fun CameraPreview(onCode: (String) -> Unit) {
             }
         runCatching {
             provider.unbindAll()
-            provider.bindToLifecycle(lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            camera = provider.bindToLifecycle(
+                lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis,
+            )
         }.onFailure { trouble = "相机打不开：${it.message ?: it.javaClass.simpleName}" }
     }
 
     Box(Modifier.fillMaxSize()) {
-        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        AndroidView(
+            factory = {
+                previewView.apply {
+                    // 捏合要落在预览这一层上。PreviewView 自己不吃触摸，
+                    // 所以这里返回 true 把这一路事件收走不影响别的
+                    isClickable = true
+                    setOnTouchListener { _, ev -> scale.onTouchEvent(ev) }
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        // 只有这台相机的变焦范围真大于 1 才摆这一排 —— 定焦前置机上摆一排按不动的丸子更糟
+        val maxZoom = camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
+        if (maxZoom > 1.2f) {
+            Row(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = Gap.md),
+                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+            ) {
+                val steps = (listOf(1f, 2f, 4f) + maxZoom).distinct().filter { it <= maxZoom }
+                steps.forEach { z ->
+                    val on = kotlin.math.abs(zoom - z) < 0.06f
+                    Chip(
+                        text = if (z == maxZoom && z > 4f) "最大" else "${z.roundToInt()}×",
+                        picked = on,
+                    ) { setZoom(z) }
+                }
+            }
+        }
         trouble?.let {
             Text(
                 text = it,

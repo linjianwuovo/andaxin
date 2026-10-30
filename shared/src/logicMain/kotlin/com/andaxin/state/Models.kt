@@ -54,6 +54,21 @@ class HomeModel(
     init {
         // 冷启动先用上一次的数字垫屏：六条并行接口回来之前，屏幕不再是一片空白
         _state.value = _state.value.copy(data = feed.cached())
+        /*
+         * 顶卡那一块以前只能等课表那一发回来（3~8 秒），所以每次大退重开都写着
+         * "课表还在拉，稍等一下" —— 他 10-27 那句「明明课程表信息都在本地又存档，
+         * 为什么不可以先加载缓存然后刷新」。本周那份现在本机存着（`snap_week.json`，
+         * 认周一，跨周自动作废），直接先摆：`todayKnown=true` 让顶卡走"下一节"或"今天没课"
+         * 那两条，网络回来整块换。同一周内换到别的日子也不会摆错（按今天筛）；
+         * 学校临时调课那几十秒会旧一下 —— 那一行本来就写着"更新中…"。
+         */
+        val cached = runCatching { timetable.cachedWeek() }.getOrDefault(emptyList())
+        if (cached.isNotEmpty()) {
+            _state.value = _state.value.copy(
+                today = cached.filter { it.day == Periods.today() && it.startPeriod >= 1 },
+                todayKnown = true,
+            )
+        }
         reload()
     }
 
@@ -115,6 +130,13 @@ class TimetableModel(private val feed: TimetableFeed, private val store: Store) 
     private var palette: Map<String, Int> = emptyMap()
 
     init {
+        // 课程表这一屏也一样：先把本机那份本周摆上（认周一，跨周自动作废），
+        // 再等这一发回来整块换 —— 大退重开不该先空着网格（他 0.8.73 那句
+        // 「大退重开为什么不能再从缓存先加载」）。
+        // 色号这一步故意不在这里做：`palette` 还没从本机读回来，先编号会把老课的色打乱。
+        runCatching { feed.cachedWeek() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
+            _state.value = _state.value.copy(slots = it)
+        }
         scope.launch {
             val w = runCatching { feed.weeks() }.getOrNull()
             if (w != null && w.weeks.isNotEmpty()) {

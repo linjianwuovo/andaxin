@@ -155,7 +155,18 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
     private val localMessages = LocalMessages()
     private val localNotices = LocalNotices()
 
-    val timetableFeed: TimetableFeed = TimetableSource(CaptureTimetable(school), localTimetable, session)
+    // 本周课表落一份给冷启动垫屏（main 上 e3115c7 那发）：先摆上一份，网络回来再整块换。
+    // 这里现造一份 IosFiles 而不是用下面那个 `files` 属性 —— 那条在这个位置之后才初始化，
+    // 拿它会撞上"变量必须先初始化"（同 init 里那句注释说的同一个坑）。IosFiles 是无状态的。
+    val timetableFeed: TimetableFeed = TimetableSource(
+        CaptureTimetable(school), localTimetable, session,
+        readSnap = {
+            com.andaxin.core.store.Snap.read(com.andaxin.core.store.IosFiles(documentsPath), "week")
+        },
+        writeSnap = { text ->
+            com.andaxin.core.store.Snap.write(com.andaxin.core.store.IosFiles(documentsPath), "week", text)
+        },
+    )
     val messageFeed: MessageFeed = MessageSource(CaptureMessages(school, session), localMessages, session)
     val noticeFeed: NoticeFeed = NoticeSource(CaptureNotices(school), localNotices, session)
 

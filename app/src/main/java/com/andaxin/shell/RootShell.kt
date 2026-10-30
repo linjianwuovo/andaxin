@@ -241,6 +241,22 @@ fun RootShell() {
         .collectAsStateWithLifecycle(initialValue = Appearance())
     val nav = rememberNavController()
 
+    /*
+     * 点通知要求落到某一格（10-25 他"消息tab里的通知也要通知"那条的落点）。
+     * 这一层只管一件事：先把二级页退回底栏那一屏 —— 人从通知栏点进来，结果停在课件页里面、
+     * 底下那排格子看不见，那不算"落到消息那一格"。格子本身由 ShelfHost 滚过去。
+     */
+    val jump by graph.tabJump.collectAsStateWithLifecycle()
+    LaunchedEffect(jump) {
+        if (jump < 0) return@LaunchedEffect
+        while (nav.currentDestination?.route != null &&
+            nav.currentDestination?.route != Route.SHELF &&
+            nav.popBackStack()
+        ) {
+            // 一直退到底栏那一屏；popBackStack 回 false 时循环自己停
+        }
+    }
+
     // 底栏和整屏共用同一份 Appearance：明暗在最外层（MainActivity）决定
     NavHost(
         navController = nav,
@@ -424,12 +440,25 @@ private fun Gate(appearance: Appearance, open: (String) -> Unit) {
      * ② 校园卡要 hub → redirect → authorize 三跳换会话；
      * ③ 课表/首页各走各的，这里不碰。
      * 全都 fire-and-forget，失败不弹任何东西 —— 用户没点那一屏之前，这些失败不归他管。
+     *
+     * 第四条是 10-27 早上他一句「打开应用没有流体云而且我马上有课」加进来的：上课提醒以前
+     * 只在进「通知」那一屏和闹钟链自己接续时排，打开 App 一支都不排 —— 覆盖安装完、闹钟被 ROM
+     * 掐了、或者压根没进过设置屏，这一节就直接"什么都没有"。现在打开 App 先补排程、
+     * 再给已经进了提前窗口的那一节补一发倒计时。每个会话只做一遍，课表那两发后面没缓存。
      */
-    LaunchedEffect(session.loggedIn) {
+    LaunchedEffect(session.loggedIn, session.generation) {
         if (session.loggedIn) {
             launch { runCatching { graph.fif.ensure() } }
             launch { runCatching { graph.aiCourses.courses() } }
             launch { runCatching { graph.card.warm() } }
+            launch {
+                val why = runCatching {
+                    com.andaxin.core.schedule.ClassReminder.onAppOpen(
+                        graph.context, graph.store, graph.timetable, session.generation,
+                    )
+                }.getOrNull()
+                if (!why.isNullOrBlank()) android.util.Log.i("LxClass", why)
+            }
         }
     }
 
@@ -473,6 +502,16 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val iconsOn = Shelf.entries.map { it.iconOnRes }
     // 五格里只有「消息」那一格有未读概念（公告那份数据里没有已读未读），顺序对齐 Shelf
     val unreadMsgs by com.andaxin.core.store.Unread.messages.collectAsStateWithLifecycle()
+
+    // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
+    val graph = LocalAppGraph.current
+    val jump by graph.tabJump.collectAsStateWithLifecycle()
+    LaunchedEffect(jump) {
+        if (jump < 0) return@LaunchedEffect
+        pager.scrollToPage(jump.coerceIn(0, Shelf.entries.size - 1))
+        // 落完就把这个请求作废，不然每次重组回到这一屏都会再跳一次
+        graph.tabJump.value = -1
+    }
 
     Box(Modifier.fillMaxSize()) {
         HorizontalPager(

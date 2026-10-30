@@ -29,9 +29,11 @@ import kotlinx.coroutines.launch
  *
  * 五件事决定它长这样：
  *
- * ① **节次表是我们自己拍的**。抓到的接口里没有一条给"第几节几点上课"（见 `Periods` 顶上那段），
- *    所以这条通知说的时间不是校方给的。设置那一行把这句话写明白了，不藏。
- *    真按那张表提醒，误差在"学校改作息没通知"这种时候才会咬人。
+ * ① **那张节次表是照校方作息表一行行抄的，不是我们自己排的**（10 节：第 1 节 08:30–09:15、
+ *    第 7 节 15:55–16:35 那种，来源见 `Periods` 顶上那段）。校方那边没有一条**接口**给
+ *    "第几节几点上课"，所以这张表只能手抄着跟 —— 误差只在"学校改了作息没公告"这种时候才咬人。
+ *    （0.8.74 之前这条写成"是我们自己排的"，他 10-27 一句「节次是我们自己安排的是什么鬼」
+ *    把它钉回来了：那是早期这张表真是我拍的时候留下的话，表换了，话没换。）
  * ② **一次只挂一颗闹钟**：只排"下一节"，响了之后由接收者再排下一颗。
  *    把一整天八颗都排下去的话，状态栏那个闹钟图标会一直挂着，而且课表一改就得整批重排。
  * ③ 先排**精确闹钟**（`setAlarmClock`），系统不给权限就退化成 `setAndAllowWhileIdle`，
@@ -86,6 +88,8 @@ object ClassReminder {
     internal const val EXTRA_PERIOD = "period"
     /** 真正的上课时刻（墙钟毫秒）。倒计时每次都拿它现算，不靠"我醒了几次"。 */
     internal const val EXTRA_START_MS = "startMs"
+    /** 这一节是提前几分钟起排的。实况那颗胶囊要画进度条，得知道整条窗口有多长。 */
+    internal const val EXTRA_LEAD = "lead"
 
     fun isOn(p: androidx.datastore.preferences.core.Preferences, s: Store): Boolean =
         s.peekString(p, KEY_ON) == "1"
@@ -104,7 +108,7 @@ object ClassReminder {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "上课提醒", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "从课前那个提前量起，每分钟把这条通知的倒计时刷一遍，直到上课。不响。" +
-                    "节次时间是我们自己排的表，不是校方给的。"
+                    "节次时间照的是校方那张作息表（10 节），接口里没有这一项，学校改了得我们跟着改。"
                 setSound(null, null)
                 enableVibration(false)
                 vibrationEffect = null
@@ -130,6 +134,25 @@ object ClassReminder {
         timetable: TimetableFeed,
         now: Calendar = Calendar.getInstance(),
         fromUser: Boolean = false,
+    ): String = armNext(context, store, slotsFor(timetable), now, fromUser)
+
+    /**
+     * 排程要的那两片课表（本周 + 下周）。抽出来只有一个原因：`week()` 后面没有缓存，
+     * 每调一次就是两发真请求 —— 打开 App 那一趟要连着用两份，不能各要一遍。
+     */
+    private suspend fun slotsFor(timetable: TimetableFeed): List<Pair<Int, TimetableSlot>> =
+        listOf(0, 1).flatMap { off ->
+            timetable.week(off).getOrElse { emptyList() }
+                .filter { it.startPeriod >= 1 }
+                .map { off to it }
+        }
+
+    private suspend fun armNext(
+        context: Context,
+        store: Store,
+        slots: List<Pair<Int, TimetableSlot>>,
+        now: Calendar,
+        fromUser: Boolean,
     ): String {
         val alarm = context.getSystemService(AlarmManager::class.java)
         val p = store.snapshot()
@@ -137,6 +160,8 @@ object ClassReminder {
             alarm.cancel(pendingIntent(context, WINDOW_CODE, ACTION, "", "", "", 0, 0L))
             // 开关不在"开"，滴答链没有继续的理由
             cancelTick(context)
+            // 前台服务也一起收：他拨到"关"还留着一条划不掉的常驻通知是说不过去的
+            ClassLiveService.stop(context)
             if (fromUser) context.getSystemService(NotificationManager::class.java).run {
                 cancel(NOTE_ID); cancel(STARTED_ID)
             }
@@ -146,13 +171,8 @@ object ClassReminder {
         // 连排两周：只排本周的话，周五晚上最后一颗闹钟响完就再也接不上了 ——
         // 那时候"本周剩下的课"是空的，于是取消闹钟，然后一直等到下周一有人打开 App 才恢复。
         // 那几天里上课是不会提醒的，而"我明明开了它怎么不响"是最难查的一种坏。
-        // `startPeriod = 0` 是校方那条"阳光晨跑"活动占位，不是课 —— 别给它排闹钟。
+        // `startPeriod = 0` 是校方那条"阳光晨跑"活动占位，不是课 —— 别给它排闹钟（在 `slotsFor` 里已滤掉）。
         // 这一条 10-21 下午跟他那句"为什么课表里多了阳光晨跑"一起查出来的。
-        val slots = listOf(0, 1).flatMap { off ->
-            timetable.week(off).getOrElse { emptyList() }
-                .filter { it.startPeriod >= 1 }
-                .map { off to it }
-        }
         if (slots.isEmpty()) {
             return "课表没拉到，暂时排不上提醒（登录掉了先去登一次）。"
         }
@@ -179,12 +199,89 @@ object ClassReminder {
         val course = next.slot.course.ifBlank { "一节课" }
         val pi = pendingIntent(
             context, WINDOW_CODE, ACTION,
-            course, next.slot.room, at, next.slot.startPeriod, next.startMs,
+            course, next.slot.room, at, next.slot.startPeriod, next.startMs, lead,
         )
         ensureChannel(context)
         return "已排：%s · %s（提前 %d 分钟起，每分钟刷一次倒计时）%s".format(
             course, at, lead, arm(context, alarm, next.triggerAt, pi),
         )
+    }
+
+    /**
+     * 打开 App 那一刻把上课提醒这条路整个接回来：先排往后那颗窗口闹钟，再给"已经在窗口里"的那一节补一发。
+     *
+     * 【他 10-27 早上：「打开应用没有流体云而且我马上有课」】排程以前只有两个入口 ——
+     * 进「通知」那一屏、以及闹钟链自己接续，**打开 App 什么都不排**。于是这三种情况都是"没有提醒"：
+     * ① 刚覆盖安装（上一版排下去那颗带的 PendingIntent 换过包就不一定还认）；
+     * ② ROM 省电策略把那颗闹钟掐了或压晚了（任务 #120 量的就是这条）；
+     * ③ 他从没进过「通知」那一屏。
+     * 更要命的是 `armNext` 只排"提前量那一分钟还没到"的课：他打开 App 时离上课只剩三分钟，
+     * 这一节已经被 `at <= now` 跳过了 —— 那连普通通知都没有，更不用说状态栏那颗胶囊。
+     *
+     * 所以补两下：排程照旧走（往后那颗一定挂上），然后自己看一眼有没有哪一节**正在窗口里**，
+     * 有就照闹钟本来要做的那一发打一遍 —— `tick` 会刷倒计时、也会把下一分钟那颗滴答排上，
+     * 号（NOTE_ID / TICK_CODE）都是固定的，链本来在跑也不会多出第二条。
+     * 一个会话只做一遍（`generation` 变了才再做），因为课表那两发后面没缓存，别每次回前台都敲门。
+     */
+    suspend fun onAppOpen(
+        context: Context,
+        store: Store,
+        timetable: TimetableFeed,
+        generation: Long,
+    ): String? {
+        if (openPass == generation) return null
+        openPass = generation
+        val slots = runCatching { slotsFor(timetable) }.getOrElse { return null }
+        val why = armNext(context, store, slots, Calendar.getInstance(), fromUser = false)
+        val caught = catchUp(context, store, slots)
+        return if (caught == null) why else "$why · $caught"
+    }
+
+    /** 进程活着的时候，"打开 App 补一次"每个会话只做一遍。 */
+    private var openPass: Long? = null
+
+    /** 上一发倒计时走的是胶囊还是普通通知、为什么。给「通知」那一屏直接读，不落盘。 */
+    @Volatile
+    var lastLiveWhy: String? = null
+        private set
+
+    /** 这一节的倒计时有没有真的被前台服务挂住（`ClassLiveService` 写）。 */
+    @Volatile
+    var liveHeld: Boolean = false
+
+    /**
+     * 「通知」那一屏也用一次：他把开关拨到"开"的那一刻离上课只剩三分钟的话，
+     * `armNext` 会把这一节整个跳过（提前量那一分钟已经过了），那一屏就会显示"已排：下一节…"
+     * 而眼下这一节什么都不发。补一发，屏上那句和状态栏那颗就对得上了。
+     */
+    suspend fun catchUpNow(context: Context, store: Store, timetable: TimetableFeed): String? =
+        catchUp(context, store, slotsFor(timetable))
+
+    /** 有一节正处在提前窗口里就补发那一发倒计时，回它剩几分钟；不在窗口里回 null。 */
+    private suspend fun catchUp(
+        context: Context,
+        store: Store,
+        slots: List<Pair<Int, TimetableSlot>>,
+    ): String? {
+        val p = store.snapshot()
+        if (!isOn(p, store)) return null
+        val lead = leadOf(p, store)
+        val now = Calendar.getInstance()
+        val hit = slots.mapNotNull { (off, slot) ->
+            val begin = Periods.slotStart(slot.day, slot.startPeriod, now, off) ?: return@mapNotNull null
+            val startMs = begin.timeInMillis
+            val left = minutesLeft(startMs, now.timeInMillis)
+            // 只补"还没上课、且已经进了提前量"的那一节；正在上的那一节不补（那是"现在上课"那一档）
+            if (left <= 0 || left > lead) null else slot to startMs
+        }.minByOrNull { minutesLeft(it.second, now.timeInMillis) } ?: return null
+        ensureChannel(context)
+        val (slot, startMs) = hit
+        val left = minutesLeft(startMs, now.timeInMillis)
+        tick(
+            context, slot.course.ifBlank { "一节课" }, slot.room, slot.startPeriod,
+            timeFmt().format(Date(startMs)), startMs, lead,
+        )
+        return "离上课还有 $left 分钟，这一发的倒计时补上了"
     }
 
     /** 排好待武装的那一节：触发时刻、是哪节课、真正上课的墙钟毫秒。
@@ -230,6 +327,7 @@ object ClassReminder {
         at: String,
         period: Int,
         startMs: Long,
+        lead: Int = 0,
     ): PendingIntent {
         val i = Intent(context, ReminderReceiver::class.java).setAction(action)
             .putExtra(EXTRA_COURSE, course)
@@ -237,6 +335,7 @@ object ClassReminder {
             .putExtra(EXTRA_AT, at)
             .putExtra(EXTRA_PERIOD, period)
             .putExtra(EXTRA_START_MS, startMs)
+            .putExtra(EXTRA_LEAD, lead)
         // 排闹钟那颗：requestCode 用触发时间戳的低 31 位 —— 每节课一颗，改课表重排时旧的自己就废了。
         // 滴答那颗：固定用 TICK_CODE（见 tickIntent），同一节课的链永远只有一颗待发。
         return PendingIntent.getBroadcast(
@@ -247,8 +346,8 @@ object ClassReminder {
 
     /** 下一分钟那颗滴答。请求号固定，所以取消时不用手里有这几节课的参数也能造出同一颗。 */
     private fun tickIntent(
-        context: Context, course: String, room: String, at: String, period: Int, startMs: Long,
-    ): PendingIntent = pendingIntent(context, TICK_CODE, ACTION_TICK, course, room, at, period, startMs)
+        context: Context, course: String, room: String, at: String, period: Int, startMs: Long, lead: Int,
+    ): PendingIntent = pendingIntent(context, TICK_CODE, ACTION_TICK, course, room, at, period, startMs, lead)
 
     private fun cancelTick(context: Context) {
         val alarm = context.getSystemService(AlarmManager::class.java)
@@ -274,8 +373,9 @@ object ClassReminder {
         return 0L
     }
 
-    /** 还剩几分钟，向上取整：61 秒报"2 分钟"而不是"1 分钟"—— 倒计时不许少报。 */
-    private fun minutesLeft(startMs: Long, now: Long = System.currentTimeMillis()): Int {
+    /** 还剩几分钟，向上取整：61 秒报"2 分钟"而不是"1 分钟"—— 倒计时不许少报。
+     *  `internal` 是给 `ClassLiveService` 用的：它挂上去那一发也要按同一个数算进度。 */
+    internal fun minutesLeft(startMs: Long, now: Long = System.currentTimeMillis()): Int {
         if (startMs <= 0L) return 0
         val left = startMs - now
         if (left <= 0L) return 0
@@ -297,7 +397,9 @@ object ClassReminder {
      *
      * 某一分钟被 Doze 压晚了也不会把数算歪：N 每次都从 `startMs` 现减，不是"上次数 + 1"。
      */
-    fun tick(context: Context, course: String, room: String, period: Int, at: String, startMs: Long): Boolean {
+    fun tick(
+        context: Context, course: String, room: String, period: Int, at: String, startMs: Long, lead: Int,
+    ): Boolean {
         ensureChannel(context)
         val nm = context.getSystemService(NotificationManager::class.java)
         val left = minutesLeft(startMs)
@@ -305,9 +407,19 @@ object ClassReminder {
         // 两条并成一条；那个旧号见到就顺手清掉，不然从那一版覆盖安装上来的人，
         // 通知栏里会一直挂着一条没人管的"现在上课"。
         nm.cancel(STARTED_ID)
-        nm.notify(NOTE_ID, build(context, course, room, period, at, left))
-        if (left <= 0) return false
-        val pi = tickIntent(context, course, room, at, period, startMs)
+        /*
+         * 还在倒计时就把这一发挂到前台服务上（他 10-27：「那 30 分钟里多一条划不掉的常驻通知，
+         * 我要的就是这样」）。每分钟都递一次是故意的：同一组参数、同一个号，服务里就是再
+         * `startForeground` 一次更新；ROM 中途把服务端走，下一分钟这一发又把它捞回来。
+         * 数到 0 就不再递，并且当场 stop —— 那一条是划得掉的"现在上课"，不许继续挂着。
+         */
+        if (left > 0) ClassLiveService.start(context, course, room, period, at, startMs, lead)
+        nm.notify(NOTE_ID, build(context, course, room, period, at, left, lead))
+        if (left <= 0) {
+            ClassLiveService.stop(context)
+            return false
+        }
+        val pi = tickIntent(context, course, room, at, period, startMs, lead)
         val now = System.currentTimeMillis()
         // 排在"这个数该翻牌的那一刻"再晚 1.5 秒：早一步会把同一个数再报一遍；
         // 晚一步只是这一分钟多等一会儿，文字还是现算的，不会越走越偏。
@@ -330,13 +442,14 @@ object ClassReminder {
         }.getOrDefault(false)
     }
 
-    private fun build(
+    internal fun build(
         context: Context,
         course: String,
         room: String,
         period: Int,
         at: String,
         left: Int,
+        lead: Int,
     ): Notification {
         val open = PendingIntent.getActivity(
             context, NOTE_ID,
@@ -349,13 +462,11 @@ object ClassReminder {
             at,
             room.takeIf { it.isNotBlank() },
         ).filterNotNull().joinToString(" · ")
-        return NotificationCompat.Builder(context, CHANNEL_ID)
+        val b = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tab_schedule)
             .setContentTitle(course.ifBlank { if (left > 0) "快上课了" else "上课了" })
             .setContentText(body)
-            .setSubText("上课提醒 · 节次时间是我们自己排的")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$course\n$body"))
-            .setAutoCancel(true)
+            .setSubText("上课提醒 · 节次时间照校方作息表")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             // 一条都不响（10-25 他"不要响"）。两道一起上：建渠道时就把声音清了，
@@ -367,7 +478,77 @@ object ClassReminder {
             // 一条活到上课就作废的通知，角上挂个"几分钟前"只会让人误读它是什么时候发的
             .setShowWhen(false)
             .setContentIntent(open)
-            .build()
+
+        /*
+         * 实况那颗胶囊（Android 16 的 Live Updates，ColorOS 叫流体云、HyperOS 叫实时动态）。
+         * 只挂在**还在倒计时**那几档上：数到 0 换成"现在上课"那一刻就退回普通通知 ——
+         * 提升通知是 ongoing 的、划不掉，一节课两小时挂在状态栏不许人划，那是赖着不走不是提醒。
+         *
+         * 三条硬条件少一条系统就不提升：`setOngoing` + `setRequestPromotedOngoing` + `ProgressStyle`。
+         * 进度按"这一条窗口走完了多少"算，所以要知道提前量 lead；0.8.59 之前排下去的那颗里没有
+         * lead（读回 0），那就走 else 那一档 —— 少一根进度条，"还有 N 分钟"那句照旧。
+         * `ProgressStyle` 是 36 才有的类，闸门在 `LiveUpdates.canPost` 里（不到 36 直接回 false），
+         * 所以老机器上这一句压根不会被构造 —— 那是这台机器上撞过的 `NoSuchMethodError`，
+         * Error 不是 Exception，接不住就把 App 炸在通知栏里。
+         */
+        val promoted = left > 0 && lead > 0 &&
+            com.andaxin.core.notification.LiveUpdates.canPost(context)
+        /*
+         * 上一发到底走了哪条、为什么，留在进程里给「通知」那一屏显示。
+         * 他 10-27 一句「我这是 ColorOS 17」 —— 设备不在我手边时，我不该再猜是哪一道闸卡的：
+         * 是"还在现在上课那一档"、"这颗闹钟没有提前量"、"权限没给"，还是 ROM 那一档关着，
+         * 这一句会自己说清（`LiveUpdates.whyNot` 把两道闸分开问一遍）。
+         */
+        lastLiveWhy = when {
+            left <= 0 -> "上一发是「现在上课」那一档 —— 这一档本来就不上胶囊（划得掉的那种）"
+            lead <= 0 -> "上一发没上胶囊：那颗闹钟是 0.8.59 之前排下去的，里没有提前量，进度画不出来"
+            promoted -> "上一发走了胶囊（API ${com.andaxin.core.notification.LiveUpdates.apiLevel()}）" +
+                // 服务是异步起来的，第一分钟这一句可能还是上一分钟的数，从第二分钟起才准
+                if (liveHeld) "，前台服务挂住了" else "，前台服务还没挂上（走的是普通通知那条路）"
+            else -> "上一发没上胶囊：${com.andaxin.core.notification.LiveUpdates.whyNot(context)}"
+        }
+        android.util.Log.i("LxClass", lastLiveWhy.orEmpty())
+        if (promoted) {
+            b.setOngoing(true)
+                .setRequestPromotedOngoing(true)
+                .setShortCriticalText(capsuleText(left, room))
+                .setStyle(
+                    NotificationCompat.ProgressStyle()
+                        .setProgress(((lead - left) * 100 / lead).coerceIn(0, 100)),
+                )
+        } else {
+            b.setStyle(NotificationCompat.BigTextStyle().bigText("$course\n$body"))
+                .setAutoCancel(true)
+        }
+        return b.build()
+    }
+
+    /**
+     * 状态栏那颗珠子上写的那一句。
+     *
+     * 他 10-27 10:04 那张屏：珠子出来了，写的只有"21 分" —— 一句「有了但小岛不显示教室」；
+     * 10:23 那三张接着说「不要博文，显示教室加时间不更好看」。所以这一句定成
+     * **房号 + 分钟**："A2E501·2分"，楼栋名（"博文"）不要 —— 珠子那点位子窄，
+     * 楼栋名一进去房号就被 ROM 挤掉，反而两头都看不清。
+     *
+     * 平台上那颗 chip 只有一个文本位（SDK 源码 `Notification.getCompactContent()` 那段有序列表，
+     * 第一档就是 `shortCriticalText`，没有第二个槽），完整那串在展开那一层：
+     * 课名 + "还有 N 分钟 · 第 3 节 · 10-27 10:25 · 博文楼（A2）E501"，一个字没少。
+     */
+    private fun capsuleText(left: Int, room: String): String {
+        val r = capsuleRoom(room)
+        return if (r.isBlank()) "${left}分" else "$r·${left}分"
+    }
+
+    /** 「博文楼（A2）E501」→「A2E501」：只留区号 + 房号。括号两种写法都认（校方那边给过全角的）。 */
+    private fun capsuleRoom(room: String): String {
+        val text = room.trim()
+        val open = listOf('（', '(').map { text.indexOf(it) }.filter { it > 0 }.minOrNull() ?: -1
+        val close = listOf('）', ')').map { text.indexOf(it) }.firstOrNull { it > open } ?: -1
+        if (open <= 0 || close <= open) return shortRoom(text).replace(" ", "")
+        val zone = text.substring(open + 1, close)
+        val code = text.substring(close + 1).trim()
+        return (zone + code).replace(" ", "")
     }
 
     /** 撤干净：窗口那颗 + 正在跑的滴答链。调用方得自己再发一次 reschedule 才会重新排。 */
@@ -415,7 +596,10 @@ class ReminderReceiver : BroadcastReceiver() {
         // 那就照通知上那句"MM-dd HH:mm"倒推 —— 认不出来就当已经上课，别把整条链卡死。
         val startMs = intent.getLongExtra(ClassReminder.EXTRA_START_MS, 0L)
             .takeIf { it > 0L } ?: ClassReminder.parseAt(at)
-        val chainGoesOn = ClassReminder.tick(context, course, room, period, at, startMs)
+        // 覆盖安装之前排下去的那颗里没有 lead（0.8.59 才加的），读到 0 就是不画进度条，
+        // 倒计时那句"还有 N 分钟"照旧 —— 少一根条不算少一件事。
+        val lead = intent.getIntExtra(ClassReminder.EXTRA_LEAD, 0)
+        val chainGoesOn = ClassReminder.tick(context, course, room, period, at, startMs, lead)
         /*
          * 什么时候去接下一节的窗口：
          * · 这一节课的窗口刚响（ACTION）—— 立刻接，不等倒计时数完。不然这二十分钟里

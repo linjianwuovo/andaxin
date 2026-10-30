@@ -24,9 +24,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -36,11 +41,6 @@ import androidx.compose.ui.unit.sp
 import com.andaxin.core.concurrency.clockText
 import com.andaxin.core.concurrency.currentHour
 import com.andaxin.core.concurrency.nowMillis
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import com.andaxin.core.design.MascotBall
 import kotlinx.coroutines.launch
 import com.andaxin.core.design.Gap
@@ -175,7 +175,9 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
     var todoCounts by remember { mutableStateOf<List<String>?>(null) }
     var todoWhy by remember { mutableStateOf<String?>(null) }
     var todoTry by remember { mutableStateOf(0) }
-    LaunchedEffect(session.generation, todoTry) {
+    // 抽成一个可等的函数：下拉那一把手和按首页那颗球都要"等这四发真的回来"，
+    // 只把 todoTry+1 交给 LaunchedEffect 是等不到的 —— 球的"思考中"会提前停。
+    val loadTodo: suspend () -> Unit = {
         todoCounts = null
         todoWhy = null
         val got: List<Result<List<com.andaxin.data.brief.BriefRow>>> = coroutineScope {
@@ -185,6 +187,7 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
         todoCounts = got.map { r -> r.getOrNull()?.size?.toString() ?: "—" }
         todoWhy = got.firstNotNullOfOrNull { it.exceptionOrNull()?.message }
     }
+    LaunchedEffect(session.generation, todoTry) { loadTodo() }
 
     val d = state.data
     /*
@@ -254,6 +257,7 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
             val collapse by remember { derivedStateOf { (scroll.value / 60f).coerceIn(0f, 1f) } }
             val titleSize = Type.display * (1f - collapse * 0.36f)
             /*
+             * 名字右边那枚会看人的小球（他 10-26 深夜：「我想做进软件里放名字右边」）。
              * 视线取的是"手指在这一行上的位置"：Initial 那一道过一遍、什么都不消费，
              * 所以滚动照旧归外层那个下拉刷新容器管，球只是顺便看一眼你的手指。
              * 松手回零向量 —— 那是"没人碰它"，球自己慢慢飘、每几秒眨一下（见 core/design/Mascot.kt）。
@@ -330,7 +334,10 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
                  */
                 MascotBall(
                     gaze = gaze,
-                    thinking = busy,
+                    // 两个来源都算"在取数"：`busy` 是这一整趟（含待办四发和首页清单），
+                    // `state.refreshing` 还盖着冷启动/进屏那一次自动刷新 ——
+                    // 他要的是"加载的时候它在转圈思考"，那冷启动那几秒也该转（main 上 dd4b5a4）。
+                    thinking = busy || state.refreshing,
                     onTap = { if (!busy) scope.launch { reload() } },
                     size = (titleSize.value * 2.1f).dp,
                 )

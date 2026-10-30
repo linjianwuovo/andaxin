@@ -24,6 +24,8 @@
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- 上课倒计时那 30 分钟的前台服务用的类型（specialUse），见下面 <service> 那段注释 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- 扫码签到才用相机；不是必须，没相机也能用这个应用 -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -49,6 +51,18 @@
       不用 usesCleartextTraffic="true"：那会把整个 App 的明文都放开，包括带 token 的那批接口。
       注意这一份只管"允不允许"，OkHttp 那边还得**有**明文能力（见 core/net/Http.kt 那段）。
     -->
+    <!--
+      关于页「爱发电」那一行要交给系统浏览器。Android 11 起包可见性受限：
+      不声明这一条，`startActivity(ACTION_VIEW, https…)` 在有些 ROM 上解析不到浏览器，
+      表现成"按了没反应"。声明了才看得见谁接 https。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".AndaXinApp"
         android:allowBackup="false"
@@ -74,6 +88,9 @@
           五枚都在那一排里可选，出厂立着的是「蓝底青杠」那条。
           （10-25 删掉了「临时标记」那枚方框和琥珀那一枚 —— 方框是骨架期的占位，
             它连带 `<application android:icon>` 一起换成了蓝底那套。）
+          以后这一排**只加不删**：要下架一枚，只从 LauncherIcons.ALL 里拿掉，这条 alias 留着写
+          enabled="false"。组件开关跨覆盖安装保留，删掉一条就是把选中过它的那批人的桌面入口
+          删成 0 条（0.8.40 那一次的实际后果；见同一文件头第 ③ 条）。
         -->
         <activity-alias
             android:name=".LauncherBlue"
@@ -129,6 +146,21 @@
             android:name=".core.run.RunService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!--
+          上课倒计时那 30 分钟挂的那条常驻通知（他 10-27 明确要这一条）。
+          类型走 specialUse：它既不是定位也不是通话，"把一条倒计时钉成划不掉的常驻通知"
+          在平台那 11 种类型里本来没有对应物，硬套一个（比如 fitness）才是撒谎。
+          property 那条是官方要求写的用途说明，不是给系统看的开关，缺了它也能跑。
+        -->
+        <service
+            android:name=".core.schedule.ClassLiveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="class-countdown" />
+        </service>
 
         <!-- 查寝签到拍照：相机把图写到 cache/checkin/，经 FileProvider 授权给它写 -->
         <provider

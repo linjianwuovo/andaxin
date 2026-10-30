@@ -141,12 +141,13 @@ import kotlin.math.sign
 
 private const val BAR_HEIGHT = 64f
 /*
- * 水珠 54dp、轨道 64dp —— 珠高÷轨高 = 0.84。
+ * 退回 10-22 他验收过的那组数；0.8.76 / 0.8.77 两版照酷安改的都作废。
  *
- * 这组数是 10-22 验收 agent 对着酷安截图判出来的：人家那颗是**待在轨道里的胶囊**（比值 ~0.85），
- * 上一版 72dp + 抬 6dp 是个溢出栏子的正圆（比值 1.14），它的判词是"不是小，是偏大且形状不对，
- * 溢出破坏了'槽中水珠'那个语言"。所以这版收进轨道里、取消抬升。
- * 按住鼓 1.19 倍 = 64dp，正好齐平轨道，不再顶出去。
+ * 那两版的错：0.8.76 把库里"整格等比 1.21"当规格，按住三个方向一起长；0.8.77 又改成
+ * 纵向封顶、横向 1.6 倍槽宽 —— 结果盖在珠子上面那份标签副本是按"一格"排的，
+ * 珠子比一格宽出去以后它就对不上位：首页那两个字被叠出重影、下沿还被栏子切掉。
+ * 结论写在这儿：那颗珠子能长多大是**跟上面那层标签副本绑死**的，不是随便给个数就行。
+ * 真要照酷安那种"横着摊到 1.4 格"，得连标签副本一起改成按珠子的框排 —— 那是另一件事。
  */
 private const val PILL_HEIGHT = 54f
 /*
@@ -160,16 +161,15 @@ private const val INSET = 4f
 private const val PANEL_RUBBER_BAND = 4f
 
 /**
- * 按住鼓多少。10-22 深夜他给了那张酷安按下的截图当规格：
- * 轨道 190px、那颗珠子 240px 高 —— **高/轨 = 1.26**，宽 340px（对一格 75dp 是 1.29 倍）。
- * 照这个数落到我们 64dp 的轨道上：默认档要鼓到 81dp 高、96dp 宽，上下各顶出轨道 ~9dp。
- * 54dp 的底子 → 纵向倍数 1.51，横向另乘 [PILL_ASPECT_X] 收到 1.29。
- * 「鼓到齐平轨道就不再大」是上一版的判读，那张图推翻它了：人家就是要溢出去一颗。
+ * 按住**不再把珠子撑大**（0.8.79 起）。他 11:51 那句「超出 tab 的部分不需要模糊」：
+ * 撑出去那一圈既没有干净的取样范围（黑边/黄边都是从这儿来的），也没必要 ——
+ * 珠子本身就是那颗胶囊，按下去要的是"它变成玻璃"，不是"它长大"。
+ * 所以倍数一律 1，只有玻璃效果（折射/色散）按按下进度开，见下面 effects 里那道 press 闸。
+ * 10-22 那组 1.32~1.70 的数留在历史里，别再请回来。
  */
-private const val PILL_BULGE_MIN = 1.32f
-private const val PILL_BULGE_SPAN = 0.38f
-/** 横向只鼓纵向的 0.855 倍：珠子是竖着顶出轨道的，不是整颗等比放大 */
-private const val PILL_ASPECT_X = 0.855f
+private const val PILL_BULGE_MIN = 1.0f
+private const val PILL_BULGE_SPAN = 0.0f
+private const val PILL_ASPECT_X = 1.0f
 
 /** 上缘那条细亮弧的亮度。验收 agent 判上一版「只有一片弥散白雾、没有亮边线」，
  * 所以这次亮度给足、宽度收到 2dp —— 是一条弧，不是一片雾 */
@@ -276,10 +276,16 @@ fun ShelfBar(
     // 静止那颗的边光就一直是纯白的。酷安静止那颗边上本来就带一点冷/暖，
     // 这一档只管**描边**的颜色，不动折射 —— 静止仍然没有透镜效果。
     val chromaOn = spec.dispersion > 0.3f
+    /*
+     * 边光：0.8.79 起**两端都是白的**，不再做"上冷下暖"那一档。
+     * 他 11:51 那张屏一句「上下的黄色是什么鬼」—— 暖端那格是 0xFFFFEEDC，
+     * 珠子一撑出栏杆，上缘一条暖色、下缘一个黄点，看着像脏了一圈。色散本来该只出现在
+     * 折射带里（shader 那边在管），描边再带一层暖色是重复，删掉。
+     */
     val pillRim: Brush = Brush.verticalGradient(
-        0f to (if (chromaOn) Color(0xFFD6ECFF) else Color.White).copy(alpha = rimTop),
+        0f to Color.White.copy(alpha = rimTop),
         0.55f to Color.White.copy(alpha = rimTop * 0.28f),
-        1f to (if (chromaOn) Color(0xFFFFEEDC) else Color.White).copy(alpha = rimTop * 0.50f),
+        1f to Color.White.copy(alpha = rimTop * 0.50f),
     )
     // 按住鼓到的倍数：引擎那两根不同阻尼弹簧的终点，静止 1f → 按下 pillBulge
     val pillBulge = PILL_BULGE_MIN + PILL_BULGE_SPAN * spec.distortion
@@ -295,6 +301,7 @@ fun ShelfBar(
     // 默认档要一眼看得出不是一颗"磨圆角的气泡"：带厚给到 6..24dp、位移给到 0..34dp。
     // 再厚就会退回放大镜那个毛病（带两边顶到中心），24dp 带 + 中心 30dp 不动是实测的边界。
     val lensBandPx = with(density) { (6.dp + 18.dp * spec.refraction).toPx() }
+    // 34 那档是 10-22 实测的边界（带两边顶到中心就成放大镜）；0.8.76 抄它 lens(24dp) 收到 24，一并退回
     val lensAmountPx = with(density) { (34.dp * spec.distortion).toPx() }
     /*
      * 液态玻璃要 API 33 —— miuix-blur 那个包自己就是这么声明的（清单里用 overrideLibrary

@@ -36,23 +36,61 @@ object LiveUpdates {
         context.checkSelfPermission(Manifest.permission.POST_PROMOTED_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
 
+    /** 这一台报的 API level —— 界面上把它写出来，"这台没有"就不再是一句没法核对的话。 */
+    fun apiLevel(): Int = Build.VERSION.SDK_INT
+
     /** 现在到底能不能发提升通知：权限和系统那句都问，任一为真就算能。 */
-    fun canPost(context: Context): Boolean {
-        if (!supported()) return false
-        if (granted(context)) return true
-        return runCatching {
-            context.getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
-        }.getOrDefault(false)
+    fun canPost(context: Context): Boolean = supported() &&
+        (granted(context) || systemAllows(context))
+
+    /** 系统那句 `canPostPromotedNotifications()` 答没答允（ROM 按应用那一档读的就是它）。 */
+    fun systemAllows(context: Context): Boolean = runCatching {
+        context.getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
+    }.getOrDefault(false)
+
+    /** 能不能发不成时到底卡在哪一环，回一句人话（界面上直接摆出来，不用再靠猜）。 */
+    fun whyNot(context: Context): String = when {
+        !supported() -> "这台系统的 API ${apiLevel()}，没有这套能力（要 API 36 起）"
+        !granted(context) && !systemAllows(context) ->
+            "运行时权限没给，系统那边也没答允：这两条都得点头"
+        !granted(context) -> "运行时权限没给（系统那边已经允了）"
+        !systemAllows(context) -> "权限给了，但系统/ROM 的「实况更新」这一档还关着"
+        else -> "看起来是能发的"
     }
 
     /**
-     * 跳到本应用的通知设置页。那一页上才有各 ROM 自己的总开关和"这条允不允许上岛"，
-     * 我们从应用里拨不动 —— 所以权限给了还是没胶囊时，唯一能把话说清楚的动作就是把他送到那儿。
+     * 系统里那一页"这个应用能不能上岛"。
+     *
+     * 官方那条 intent 是 `android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS`
+     * （`Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`，API 36 起，要带 EXTRA_APP_PACKAGE）——
+     * 这条是从本机 SDK 的 `android.provider.Settings` 源码里抄的字面值，不是我猜的：
+     * 上一版我按名字拼了一条 `MANAGE_APP_PROMOTED_NOTIFICATIONS`，那条根本不存在，
+     * 走的是 ActivityNotFoundException → 退回通用通知页，等于白改。
+     * ColorOS 的流体云那一档也不一定挂在通用通知页里，所以官方那条必须真对得上。
+     * 官方文档自己写着"匹配不到 Activity 是可能的，自己兜住"，所以三条一路试：
+     * 专门那条 → 本应用通知页 → 应用信息页；全拉不起来回 false，界面上就明说没打开。
      */
-    fun openNotificationSettings(context: Context) {
-        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+    fun openPromotedSettings(context: Context): Boolean {
+        val tries = buildList {
+            if (Build.VERSION.SDK_INT >= 36) {
+                add(
+                    Intent("android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS")
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                )
+            }
+            add(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+            )
+            add(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(android.net.Uri.fromParts("package", context.packageName, null)),
+            )
+        }
+        for (i in tries) {
+            val ok = runCatching { context.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+            if (ok) return true
+        }
+        return false
     }
 }
