@@ -20,7 +20,8 @@ android {
 
     defaultConfig {
         applicationId = "com.andaxin"
-        minSdk = 26
+        // ios 分支外观底座=Glasmio：其 AAR 声明 minSdk 33，manifest 合并实测顶死 26
+        minSdk = 33
         targetSdk = 35
         versionCode = 122
         versionName = "0.8.80"
@@ -132,6 +133,12 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     implementation(libs.mlkit.barcode)
+
+    // ios 分支：外观底座换成 Glasmio（iOS 27 液态玻璃复刻）；下面 Miuix 三件套本分支逐步下掉
+    implementation(libs.glasmio.core)
+    implementation(libs.glasmio.glass)
+    implementation(libs.glasmio.ui)
+    implementation(libs.glasmio.scaffold)
 
     // 外观：他定的那套玻璃，留着
     implementation(libs.miuix.ui)

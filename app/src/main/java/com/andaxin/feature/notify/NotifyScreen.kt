@@ -36,8 +36,7 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Switch
-import top.yukonga.miuix.kmp.basic.SwitchDefaults
+import io.github.neoruaa.glasmio.ui.GlasmioSwitch
 
 /*
  * 通知这一屏：凡是"要不要响、响在哪、系统让不让响"的设置都归在这儿。
@@ -131,15 +130,9 @@ private fun ClassReminderRow() {
                 color = if (needPermission) MaterialTheme.colorScheme.error else ink.muted,
             )
         }
-        Switch(
-            checked = on,
-            onCheckedChange = { write(it, lead) },
-            // Miuix 的"关"那一档默认拿 secondary（我们这儿是青绿）当轨道色 —— 白钮停在左边、
-            // 轨道却是饱和的青绿，看着像开着。他 10-20 深夜定过一条：关闭态给灰底。
-            colors = SwitchDefaults.switchColors(
-                uncheckedTrackColor = ink.offFill,
-            ),
-        )
+        // ios 分支：这颗开关换成 Glasmio 的（iOS 原生绿 0x34C759/0x30D158 由库自己管,
+        // 不再需要压 Miuix 那档青绿轨道色的补丁——那条老注释说的病根在换件之后不存在了）。
+        GlasmioSwitch(checked = on, onCheckedChange = { write(it, lead) })
     }
     if (on) {
         Row(

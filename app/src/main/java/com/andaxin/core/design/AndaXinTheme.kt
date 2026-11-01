@@ -16,6 +16,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.andaxin.core.settings.DayNight
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.core.GlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
+import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
@@ -173,11 +177,23 @@ fun AndaXinTheme(
                     // 已经换成 Miuix 零件的地方吃下面这份，还没换的吃上面那份。
                     // 底子是 Miuix 自带的 HyperOS 色板（浅色 primary=0xFF3482FF），
                     // 只把纸色/墨色/卡片/分隔线这几档换成我们自己的，免得一屏两副面孔。
-                    MiuixTheme(
-                        colors = miuixColors(dark, accent),
-                        textStyles = MiSansMiuixTextStyles,
-                        content = content,
-                    )
+                    // ios 分支地基：Glasmio 主题 + backdrop 宿主兜底,包在 Miuix 外层。
+                    // 色板/字号仍走我们装机验收过的那两张表（glasmioTypography 假设 SF 字体,我们不带苹果字体）。
+                    // backdrop 先给 emptyBackdrop —— 玻璃控件没有 Local 宿主会 error();逐屏真采样(GlasmioScaffold/BackdropHost)是后续步骤。
+                    GlasmioTheme(
+                        isDark = dark,
+                        colorScheme = scheme,
+                        typography = AdxTypography.withMiSans(),
+                        colors = adxGlassColors(dark, accent),
+                    ) {
+                        GlasmioBackdropProvider(backdrop = emptyBackdrop()) {
+                        MiuixTheme(
+                            colors = miuixColors(dark, accent),
+                            textStyles = MiSansMiuixTextStyles,
+                            content = content,
+                        )
+                        }
+                    }
                 }
             },
         )
@@ -240,3 +256,20 @@ private fun miuixColors(dark: Boolean, accent: Color?) = run {
         )
     }
 }
+
+
+/** 我们验收过的 Palette 映射到 Glasmio 的 iOS 语义色板（键对键;没对上的留 Glasmio 自己的值）。 */
+private fun adxGlassColors(dark: Boolean, accent: Color?) = GlassColors(
+    isDark = dark,
+    accent = accent ?: if (dark) Palette.NightBlue else Palette.Blue,
+    content = if (dark) Palette.NightInk else Palette.Ink,
+    secondaryContent = if (dark) Palette.NightInkMuted else Palette.InkMuted,
+    tertiaryContent = if (dark) Palette.NightInkGhost else Palette.InkGhost,
+    container = if (dark) Palette.NightCard else Palette.Card,
+    prominentContainer = (accent ?: if (dark) Palette.NightBlue else Palette.Blue).copy(alpha = if (dark) 0.76f else 0.84f),
+    subtleStroke = if (dark) Color(0x2BFFFFFF) else Color.White.copy(alpha = 0.64f),
+    groupedBackground = if (dark) Palette.NightPaper else Palette.Paper,
+    elevatedBackground = if (dark) Palette.NightCream else Palette.Cream,
+    separator = if (dark) Palette.NightHairline else Palette.Hairline,
+    destructive = if (dark) Palette.NightRose else Palette.Rose,
+)

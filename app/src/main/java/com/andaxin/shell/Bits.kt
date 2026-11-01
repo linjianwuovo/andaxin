@@ -58,16 +58,11 @@ import com.andaxin.core.design.Type
 import com.andaxin.data.brief.Flag
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardColors
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Text
+import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.ui.GlasmioCard
+import io.github.neoruaa.glasmio.ui.GlasmioSectionTitle
 
 /*
  * 全仓共用的那一层排版零件。
@@ -207,26 +202,22 @@ fun Refreshable(
 @Composable
 fun Sheet(
     modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.surface,
+    @Suppress("UNUSED_PARAMETER") tint: Color = MaterialTheme.colorScheme.surface,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val ink = LocalInk.current
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        cornerRadius = Radius.Card,
-        insideMargin = PaddingValues(Rhythm.cardPad),
-        colors = CardColors(color = tint, contentColor = ink.strong),
-        content = content,
-    )
+    // ios 分支：分组卡换成 Glasmio 的玻璃卡。tint 参数保留在签名里（二十几个调用点不改），
+    // 但不再涂死颜色 —— iOS 那张卡的底是采样出来的玻璃,不是填色。
+    GlasmioCard(modifier = modifier.fillMaxWidth(), onClick = null) {
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(Rhythm.cardPad), content = content)
+    }
 }
 
 /** 分组小标题：Miuix 的 `SmallTitle`，上下留白按区块节奏给。 */
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    SmallTitle(
-        text = text,
-        modifier = modifier.padding(top = Rhythm.sectionGap, bottom = Gap.xs),
-        textColor = LocalInk.current.muted,
+    GlasmioSectionTitle(
+        title = text,
+        modifier = modifier.padding(top = Rhythm.sectionGap),
     )
 }
 
@@ -403,30 +394,28 @@ fun StatBlock(label: String, value: String, modifier: Modifier = Modifier) {
 @Composable
 fun Labeled(label: String, value: String, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
-    BasicComponent(
-        modifier = modifier.fillMaxWidth(),
-        title = label,
-        titleColor = BasicComponentDefaults.titleColor(
+    Row(
+        modifier.fillMaxWidth().padding(vertical = Gap.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            fontSize = Type.body,
             color = ink.muted,
-            disabledColor = ink.faint,
-        ),
-        insideMargin = PaddingValues(horizontal = 0.dp, vertical = Gap.xs),
-        endActions = {
-            Text(
-                text = value,
-                fontSize = Type.body,
-                lineHeight = Type.bodyLine,
-                color = ink.strong,
-                textAlign = TextAlign.End,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .widthIn(max = 210.dp)
-                    .fillMaxHeight()
-                    .wrapContentHeight(),
-            )
-        },
-    )
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(Gap.sm))
+        Text(
+            text = value,
+            fontSize = Type.body,
+            lineHeight = Type.bodyLine,
+            color = ink.strong,
+            textAlign = TextAlign.End,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 210.dp),
+        )
+    }
 }
 
 @Composable
@@ -548,10 +537,10 @@ fun LoadWhy(why: String?, modifier: Modifier = Modifier, wide: Boolean = true) {
         if (needsLogin) {
             Spacer(Modifier.height(if (wide) Gap.lg else Gap.sm))
             if (wide) {
-                MiuixButton(
+                GlasmioButton(
                     onClick = { scope.launch { graph.session.leaveBrowsing() } },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    sampleBackdrop = false,
                 ) {
                     Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
                 }
