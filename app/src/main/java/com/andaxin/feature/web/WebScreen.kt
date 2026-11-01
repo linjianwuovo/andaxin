@@ -1,5 +1,10 @@
 package com.andaxin.feature.web
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.statusBarsPadding
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.scaffold.GlasmioScaffold
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.webkit.WebResourceRequest
@@ -34,8 +39,6 @@ import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
 import com.andaxin.shell.Sheet
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 
 /*
  * 应用内的一个网页容器。
@@ -78,23 +81,26 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
 
     BackHandler(enabled = canGoBack) { webView?.goBack() }
 
-    Scaffold(
+    GlasmioScaffold(
         topBar = {
-            SmallTopAppBar(
-                title = pageTitle.ifBlank { title.ifBlank { url.take(28) } },
-                navigationIcon = {
-                    Text(
-                        "‹ 返回",
-                        fontSize = Type.body,
-                        color = ink.muted,
-                        modifier = Modifier
-                            .pressClick { if (canGoBack) webView?.goBack() else onBack() }
-                            .padding(horizontal = Gap.md, vertical = Gap.sm),
-                    )
-                },
-            )
+            // ios 分支：同 ScaffoldPage 那一条 —— Miuix 头栏换手搭行(「‹ 返回」的说法没改)
+            Row(
+                Modifier.fillMaxWidth().statusBarsPadding().height(52.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "‹ 返回",
+                    fontSize = Type.body,
+                    color = ink.muted,
+                    modifier = Modifier
+                        .pressClick { if (canGoBack) webView?.goBack() else onBack() }
+                        .padding(horizontal = Gap.md, vertical = Gap.sm),
+                )
+                Spacer(Modifier.width(Gap.sm))
+                Text(pageTitle.ifBlank { title.ifBlank { url.take(28) } }, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+            }
         },
-        containerColor = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.background,
+        containerColor = LocalGlassColors.current.groupedBackground,
     ) { bars ->
         Column(
             Modifier

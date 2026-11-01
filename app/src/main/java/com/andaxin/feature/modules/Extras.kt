@@ -1,5 +1,7 @@
 package com.andaxin.feature.modules
 
+import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -50,9 +52,6 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 
 /**
  * 更多功能那一格：只是入口，不取任何数据。
@@ -315,20 +314,18 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
 
     ScaffoldPage(title = "登录", onBack = onBack) {
         Column(verticalArrangement = Arrangement.spacedBy(Gap.md)) {
-            MiuixTextField(
+            GlasmioTextField(
                 value = account,
                 onValueChange = { account = it },
-                label = "校园账号",
-                useLabelAsPlaceholder = true,
-                singleLine = true,
+                placeholder = "校园账号",
+                // Miuix 那对 label/floating 槽在 Glasmio 收成一个 placeholder:上一行已转过去
                 modifier = Modifier.fillMaxWidth(),
             )
-            MiuixTextField(
+            GlasmioTextField(
                 value = secret,
                 onValueChange = { secret = it },
-                label = "口令",
-                useLabelAsPlaceholder = true,
-                singleLine = true,
+                placeholder = "口令",
+                // Miuix 那对 label/floating 槽在 Glasmio 收成一个 placeholder:上一行已转过去
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
@@ -368,7 +365,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(Gap.lg))
-        MiuixButton(
+        GlasmioButton(
             onClick = {
                 busy = true
                 note = null
@@ -407,7 +404,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             },
             enabled = !busy && account.isNotBlank() && secret.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColorsPrimary(),
+            sampleBackdrop = false,   // ios 分支：整屏 backdrop 未铺,先纯色导航材质
         ) {
             Text(
                 text = if (busy) "正在登录…" else "登录",

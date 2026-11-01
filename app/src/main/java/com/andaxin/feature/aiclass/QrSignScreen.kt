@@ -1,5 +1,6 @@
 package com.andaxin.feature.aiclass
 
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,8 +22,6 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Type
 import com.andaxin.feature.brief.ScaffoldPage
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 
 /*
  * 扫码签到：把码里那条链接带着 AI 课堂的会话**自己发一次**，读那一发的 302 落点。
@@ -115,10 +114,10 @@ fun QrSignScreen(url: String, onBack: () -> Unit) {
                 lineHeight = Type.metaLine,
             )
             Spacer(Modifier.height(Gap.lg))
-            MiuixButton(
+            GlasmioButton(
                 onClick = { tryNo++ },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColorsPrimary(),
+                sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
             ) {
                 Text("再发一次", fontSize = Type.title, fontWeight = FontWeight.Medium)
             }

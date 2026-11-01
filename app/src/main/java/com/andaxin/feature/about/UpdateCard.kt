@@ -1,5 +1,6 @@
 package com.andaxin.feature.about
 
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
@@ -37,8 +38,6 @@ import com.andaxin.shell.SectionTitle
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.pressClick
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 
 /*
  * 安大信自己的检测更新那一格。
@@ -101,9 +100,9 @@ internal fun UpdateCard(open: (String) -> Unit) {
         Spacer(Modifier.height(Gap.md))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
             if (latest != null && newer) {
-                MiuixButton(
+                GlasmioButton(
                     onClick = {
-                        val r = latest ?: return@MiuixButton
+                        val r = latest ?: return@GlasmioButton
                         runCatching {
                             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                             val file = r.apkUrl.substringAfterLast('/')
@@ -124,7 +123,7 @@ internal fun UpdateCard(open: (String) -> Unit) {
                             }
                     },
                     modifier = Modifier.weight(1f, fill = false),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
                 ) {
                     Text("下载 ${latest!!.version}", fontSize = Type.body, fontWeight = FontWeight.Medium)
                 }

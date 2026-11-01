@@ -1,5 +1,6 @@
 package com.andaxin.feature.aiclass
 
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
@@ -27,8 +28,6 @@ import com.andaxin.data.capture.AiItem
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.Sheet
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 
 /**
  * 课件预览：一条 PPT / PDF 在官方那边是**一页一张图**（`viewCoursewareTeacher` 的 `pages[]`），
@@ -100,7 +99,7 @@ fun CoursewareScreen(
                         lineHeight = Type.metaLine,
                     )
                 } else {
-                    MiuixButton(
+                    GlasmioButton(
                         onClick = {
                             runCatching {
                                 val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
@@ -122,7 +121,7 @@ fun CoursewareScreen(
                                 }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColorsPrimary(),
+                        sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
                     ) {
                         Text("下载原文件", fontSize = Type.body, fontWeight = FontWeight.Medium)
                     }

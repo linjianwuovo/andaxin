@@ -7,8 +7,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import com.andaxin.R
-import top.yukonga.miuix.kmp.theme.TextStyles
-import top.yukonga.miuix.kmp.theme.defaultTextStyles
 
 /**
  * 全站字体：MiSans（小米，免费商用）。
@@ -56,28 +54,3 @@ fun Typography.withMiSans(): Typography = Typography(
     labelMedium = labelMedium.copy(fontFamily = MiSans),
     labelSmall = labelSmall.copy(fontFamily = MiSans),
 )
-
-/**
- * Miuix 那一套正文/标题也用同一份。
- *
- * 我们两套主题并着走（见 `AndaXinTheme`）：Miuix 的 `Text` 读它自己的 `TextStyles`，
- * 不换这一边的话，「我的」那种用 Miuix 零件的屏会和别的屏两种字形。
- */
-val MiSansMiuixTextStyles: TextStyles = defaultTextStyles().let { s ->
-    s.copy(
-        main = s.main.copy(fontFamily = MiSans),
-        paragraph = s.paragraph.copy(fontFamily = MiSans),
-        body1 = s.body1.copy(fontFamily = MiSans),
-        body2 = s.body2.copy(fontFamily = MiSans),
-        button = s.button.copy(fontFamily = MiSans),
-        footnote1 = s.footnote1.copy(fontFamily = MiSans),
-        footnote2 = s.footnote2.copy(fontFamily = MiSans),
-        headline1 = s.headline1.copy(fontFamily = MiSans),
-        headline2 = s.headline2.copy(fontFamily = MiSans),
-        subtitle = s.subtitle.copy(fontFamily = MiSans),
-        title1 = s.title1.copy(fontFamily = MiSans),
-        title2 = s.title2.copy(fontFamily = MiSans),
-        title3 = s.title3.copy(fontFamily = MiSans),
-        title4 = s.title4.copy(fontFamily = MiSans),
-    )
-}

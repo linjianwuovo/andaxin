@@ -20,9 +20,6 @@ import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.core.GlassColors
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
 import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 private val LightInk = InkSet(
     strong = Palette.Ink,
@@ -173,13 +170,10 @@ fun AndaXinTheme(
                 androidx.compose.runtime.CompositionLocalProvider(
                     androidx.compose.material3.LocalTextStyle provides base.copy(fontFamily = MiSans),
                 ) {
-                    // Miuix 那套组件只认 MiuixTheme 的颜色，不认 MaterialTheme。两套并着走：
-                    // 已经换成 Miuix 零件的地方吃下面这份，还没换的吃上面那份。
-                    // 底子是 Miuix 自带的 HyperOS 色板（浅色 primary=0xFF3482FF），
-                    // 只把纸色/墨色/卡片/分隔线这几档换成我们自己的，免得一屏两副面孔。
-                    // ios 分支地基：Glasmio 主题 + backdrop 宿主兜底,包在 Miuix 外层。
-                    // 色板/字号仍走我们装机验收过的那两张表（glasmioTypography 假设 SF 字体,我们不带苹果字体）。
-                    // backdrop 先给 emptyBackdrop —— 玻璃控件没有 Local 宿主会 error();逐屏真采样(GlasmioScaffold/BackdropHost)是后续步骤。
+                    // ios 分支：根上摘掉 MiuixTheme（旧栈清零,Miuix 零件全换完后的收尾）。
+                    // 主题吃 Glasmio 的 iOS 语义色板,色值仍来自装机验收过的 Palette；
+                    // 字号仍走 AdxTypography.withMiSans（glasmioTypography 假设 SF 字体,我们不带苹果字体）。
+                    // backdrop 目前是根上的 emptyBackdrop 兜底 —— 逐屏真采样在后续步骤。
                     GlasmioTheme(
                         isDark = dark,
                         colorScheme = scheme,
@@ -187,11 +181,7 @@ fun AndaXinTheme(
                         colors = adxGlassColors(dark, accent),
                     ) {
                         GlasmioBackdropProvider(backdrop = emptyBackdrop()) {
-                        MiuixTheme(
-                            colors = miuixColors(dark, accent),
-                            textStyles = MiSansMiuixTextStyles,
-                            content = content,
-                        )
+                            content()
                         }
                     }
                 }
@@ -200,62 +190,6 @@ fun AndaXinTheme(
     }
 }
 
-/**
- * 把我们的 `Palette` 接到 Miuix 的色板上。
- *
- * 只覆盖对得上的那几档，剩下（`primaryVariant`、`surfaceContainerHigh`、滑块那几档、
- * `windowDimming` 之类）留 Miuix 自己的值 —— 它那些是按 HyperOS 的对比度算过的，
- * 我们没理由重算一遍还更容易算错。
- */
-@Composable
-private fun miuixColors(dark: Boolean, accent: Color?) = run {
-    val ink = if (dark) DarkInk else LightInk
-    val paper = if (dark) Palette.NightPaper else Palette.Paper
-    val card = if (dark) Palette.NightCard else Palette.Card
-    val sand = if (dark) Palette.NightSand else Palette.Sand
-    val sandDeep = if (dark) Palette.NightSandDeep else Palette.SandDeep
-    val blue = accent ?: if (dark) Palette.NightBlue else Palette.Blue
-    val rose = if (dark) Palette.NightRose else Palette.Rose
-    if (dark) {
-        darkColorScheme(
-            primary = blue,
-            onPrimary = if (accent == null) Palette.NightPaper else Color.White,
-            secondary = if (accent == null) Palette.NightTeal else accent,
-            error = rose,
-            onError = Color.White,
-            background = paper,
-            onBackground = ink.strong,
-            onBackgroundVariant = ink.muted,
-            surface = card,
-            onSurface = ink.strong,
-            surfaceVariant = sand,
-            onSurfaceSecondary = ink.muted,
-            onSurfaceVariantSummary = ink.muted,
-            onSurfaceVariantActions = blue,
-            outline = sandDeep,
-            dividerLine = ink.hairline,
-        )
-    } else {
-        lightColorScheme(
-            primary = blue,
-            onPrimary = Color.White,
-            secondary = if (accent == null) Palette.Teal else accent,
-            error = rose,
-            onError = Color.White,
-            background = paper,
-            onBackground = ink.strong,
-            onBackgroundVariant = ink.muted,
-            surface = card,
-            onSurface = ink.strong,
-            surfaceVariant = sand,
-            onSurfaceSecondary = ink.muted,
-            onSurfaceVariantSummary = ink.muted,
-            onSurfaceVariantActions = blue,
-            outline = sandDeep,
-            dividerLine = ink.hairline,
-        )
-    }
-}
 
 
 /** 我们验收过的 Palette 映射到 Glasmio 的 iOS 语义色板（键对键;没对上的留 Glasmio 自己的值）。 */

@@ -140,11 +140,7 @@ dependencies {
     implementation(libs.glasmio.ui)
     implementation(libs.glasmio.scaffold)
 
-    // 外观：他定的那套玻璃，留着
-    implementation(libs.miuix.ui)
-    implementation(libs.miuix.icons)
-    implementation(libs.haze)
-    implementation(libs.haze.materials)
-    implementation(libs.kyant.shapes)
-    implementation(libs.miuix.blur)
+    // ios 分支：旧栈三件套（Miuix/haze/kyant）全铺完就摘了 —— 零件层/ScaffoldPage/底栏
+    // 都改到 Glasmio 件之后，这些引用一个都不剩（grep top.yukonga|dev.chrisbanes|com.kyant 为空）。
+    // main 上「留着」那条口径只对 main 有效,本分支他 11-01 明确改口。
 }

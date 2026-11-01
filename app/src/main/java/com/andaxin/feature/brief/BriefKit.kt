@@ -1,5 +1,11 @@
 package com.andaxin.feature.brief
 
+import androidx.compose.foundation.layout.statusBarsPadding
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.scaffold.GlasmioScaffold
+import androidx.compose.ui.text.input.ImeAction
+import io.github.neoruaa.glasmio.ui.GlasmioTextField
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -86,12 +92,6 @@ import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,14 +99,8 @@ import kotlinx.coroutines.launch
 
 /* ───────────────────────── 状态 ───────────────────────── */
 
-/** 按下去就是真发的那一档：底色给错误色，字给白。 */
-@Composable
-private fun dangerColors() = ButtonDefaults.buttonColors(
-    color = MaterialTheme.colorScheme.error,
-    disabledColor = MaterialTheme.colorScheme.error.copy(alpha = 0.4f),
-    contentColor = androidx.compose.ui.graphics.Color.White,
-    disabledContentColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
-)
+// ios 分支：dangerColors() 那套 Miuix 配色随 ButtonDefaults 退场 —— 危险那一档改走 GlasmioButton(destructive=true),
+// 红底白字由库的 iOS destructive 语义色管（adxGlassColors 已把玫红映射进去）。
 
 @Immutable
 internal data class ListUi(val rows: List<BriefRow> = emptyList(), val error: String? = null, val loading: Boolean = true)
@@ -336,10 +330,10 @@ fun BriefDetailPage(
                         Text(g.label, fontSize = Type.meta, color = ink.muted)
                         Spacer(Modifier.height(Gap.xs))
                         if (g.freeText) {
-                            MiuixTextField(
+                            GlasmioTextField(
                                 value = answers[g.key].orEmpty(),
                                 onValueChange = { answers[g.key] = it },
-                                label = g.options.firstOrNull().orEmpty(),
+                                placeholder = g.options.firstOrNull().orEmpty(),
                             )
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(Gap.xs)) {
@@ -354,7 +348,7 @@ fun BriefDetailPage(
                         Text(it, fontSize = Type.micro, color = ink.faint, lineHeight = Type.metaLine)
                     }
                 }
-                MiuixButton(
+                GlasmioButton(
                     onClick = {
                         if (armed) {
                             // 该选的没选齐 —— 在这儿说清楚缺哪一句，**一发都不往外发**
@@ -363,7 +357,7 @@ fun BriefDetailPage(
                                 ?.map { it.label }
                             if (!miss.isNullOrEmpty()) {
                                 promptWhy = "还没选：" + miss.joinToString("、")
-                                return@MiuixButton
+                                return@GlasmioButton
                             }
                             promptWhy = null
                             armedKey = null
@@ -375,7 +369,7 @@ fun BriefDetailPage(
                     },
                     enabled = !state.acting,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = if (armed || a.danger) dangerColors() else ButtonDefaults.buttonColorsPrimary(),
+                    destructive = armed || a.danger,   // 危险那一档:红底白字由 Glasmio 的 destructive 语义管
                 ) {
                     Text(
                         text = when {
@@ -452,10 +446,10 @@ fun BriefFormPage(
                 lineHeight = Type.metaLine,
             )
             Spacer(Modifier.height(Gap.lg))
-            MiuixButton(
+            GlasmioButton(
                 onClick = { scope.launch { graph.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColorsPrimary(),
+                sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
             ) {
                 Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
             }
@@ -485,7 +479,7 @@ fun BriefFormPage(
                 Text(it, fontSize = Type.meta, color = ink.faint, lineHeight = Type.metaLine)
                 Spacer(Modifier.height(Gap.md))
             }
-            MiuixButton(
+            GlasmioButton(
                 onClick = {
                     if (armed) {
                         armed = false
@@ -496,7 +490,7 @@ fun BriefFormPage(
                 },
                 enabled = !state.sending,
                 modifier = Modifier.fillMaxWidth(),
-                colors = if (armed) dangerColors() else ButtonDefaults.buttonColorsPrimary(),
+                destructive = armed,   // 再按一次真发:同上一条,走 destructive 语义
             ) {
                 Text(
                     text = when {
@@ -609,12 +603,12 @@ private fun FieldRow(
         is Field.Text -> Column {
             Text(field.label, fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.xs))
-            MiuixTextField(
+            GlasmioTextField(
                 value = get(field.key),
                 onValueChange = { put(field.key, it) },
                 // Miuix 这个输入框没有 placeholder 槽，提示语走 `label`
-                label = field.hint,
-                singleLine = true,
+                placeholder = field.hint,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             )
         }
         // 只读的一条：说明文字、以及本机渲染不出来的控件。不给输入框 —— 摆个空框
@@ -829,7 +823,7 @@ private fun PickDialog(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
-                .background(MiuixTheme.colorScheme.surface)
+                .background(LocalInk.current.offFill)
                 .padding(top = Gap.md, bottom = Gap.xs),
         ) {
             Text(
@@ -954,21 +948,25 @@ fun ScaffoldPage(
     onRefresh: (suspend () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    Scaffold(
+    GlasmioScaffold(
         topBar = {
-            SmallTopAppBar(
-                title = title,
-                navigationIcon = {
-                    Text(
-                        "‹ 返回",
-                        fontSize = Type.body,
-                        color = LocalInk.current.muted,
-                        modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
-                    )
-                },
-            )
+            // ios 分支：Miuix 的 SmallTopAppBar 换成手搭的一条 —— 状态栏留白 + 「‹ 返回」+ 标题,
+            // 版式照旧(那三个字是本仓一直的返回说法),颜色全吃 Glasmio 色板。
+            Row(
+                Modifier.fillMaxWidth().statusBarsPadding().height(52.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "‹ 返回",
+                    fontSize = Type.body,
+                    color = LocalInk.current.muted,
+                    modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
+                )
+                Spacer(Modifier.width(Gap.sm))
+                Text(title, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+            }
         },
-        containerColor = topBarBackdrop(),
+        containerColor = LocalGlassColors.current.groupedBackground,
     ) { bars ->
         Refreshable(onRefresh, Modifier.fillMaxSize()) {
             Column(
@@ -986,8 +984,6 @@ fun ScaffoldPage(
     }
 }
 
-@Composable
-private fun topBarBackdrop() = MiuixTheme.colorScheme.background
 
 /**
  * 这一组现在要不要出现：`onlyWhen = (组key -> 必须选中的那一条)`。

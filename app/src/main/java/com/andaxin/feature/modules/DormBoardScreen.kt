@@ -1,5 +1,6 @@
 package com.andaxin.feature.modules
 
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,8 +47,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -120,10 +119,10 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 lineHeight = Type.metaLine,
             )
             Spacer(Modifier.height(Gap.lg))
-            MiuixButton(
+            GlasmioButton(
                 onClick = { scope.launch { graph.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColorsPrimary(),
+                sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
             ) {
                 Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
             }

@@ -1,5 +1,6 @@
 package com.andaxin.feature.modules
 
+import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,7 +30,6 @@ import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
-import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import com.andaxin.core.design.Type
 import com.andaxin.shell.RowLine
 
@@ -90,12 +90,11 @@ fun GroupScreen(onBack: () -> Unit) {
         }
 
         if (people.isNotEmpty()) {
-            MiuixTextField(
+            GlasmioTextField(
                 value = query,
                 onValueChange = { query = it },
-                label = "按姓名或学号在本机筛一下",
-                useLabelAsPlaceholder = true,
-                singleLine = true,
+                placeholder = "按姓名或学号在本机筛一下",
+                // Miuix 那对 label/floating 槽在 Glasmio 收成一个 placeholder:上一行已转过去
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier.fillMaxWidth(),
             )

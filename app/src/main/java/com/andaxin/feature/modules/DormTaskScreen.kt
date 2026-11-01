@@ -1,5 +1,6 @@
 package com.andaxin.feature.modules
 
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import android.Manifest
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
@@ -56,8 +57,6 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 
 /**
  * 一场查寝/晚点名的详情与签到。
@@ -257,10 +256,10 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
             } else {
                 Text(why ?: "签到详情没拉到", fontSize = Type.body, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(Gap.md))
-                MiuixButton(
+                GlasmioButton(
                     onClick = { scope.launch { load() } },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
                 ) { Text("重试", fontSize = Type.title, fontWeight = FontWeight.Medium) }
             }
             Spacer(Modifier.height(Gap.xxl))
@@ -408,10 +407,10 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(Gap.md))
-                MiuixButton(
+                GlasmioButton(
                     onClick = { snap() },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
                 ) {
                     Text(
                         if (bmp == null) "拍一张" else "重拍一张",
@@ -475,11 +474,11 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
 
         Spacer(Modifier.height(Gap.lg))
         val canSubmit = !submitting && fix != null && (!d.needPhoto || photo != null)
-        MiuixButton(
+        GlasmioButton(
             onClick = { submit() },
             enabled = canSubmit,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColorsPrimary(),
+            sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
         ) {
             Text(
                 text = if (submitting) "正在提交…" else "提交签到",

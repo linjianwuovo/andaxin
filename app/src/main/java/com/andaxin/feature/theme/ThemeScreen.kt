@@ -1,5 +1,6 @@
 package com.andaxin.feature.theme
 
+import io.github.neoruaa.glasmio.ui.GlasmioSlider
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import top.yukonga.miuix.kmp.basic.Slider as MiuixSlider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -382,7 +382,7 @@ private fun SliderRow(label: String, value: Float, onDone: () -> Unit, onChange:
             Text(label, fontSize = Type.body, color = ink.body)
             Text("%.2f".format(local), fontSize = Type.meta, color = ink.faint)
         }
-        MiuixSlider(
+        GlasmioSlider(
             value = local,
             onValueChange = { local = it; onChange(it) },
             // 松手才落盘：拖的过程中每帧写一次磁盘会把 IO 打满

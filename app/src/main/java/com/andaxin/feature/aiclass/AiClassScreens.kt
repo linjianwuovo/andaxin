@@ -1,5 +1,7 @@
 package com.andaxin.feature.aiclass
 
+import io.github.neoruaa.glasmio.ui.GlasmioTextField
+import io.github.neoruaa.glasmio.ui.GlasmioButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -18,8 +20,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Button as MiuixButton
-import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -468,20 +468,19 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
             Text("签到码", fontSize = Type.title, color = ink.strong)
             Spacer(Modifier.height(Gap.xs))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                MiuixTextField(
+                GlasmioTextField(
                     value = code,
                     onValueChange = { raw ->
                         code = raw.filter { it.isDigit() }.take(6)
                         codeMsg = null
                     },
-                    label = "老师报的 6 位数字",
-                    useLabelAsPlaceholder = true,
-                    singleLine = true,
+                    placeholder = "老师报的 6 位数字",
+                    // Miuix 那对 label/floating 槽在 Glasmio 收成一个 placeholder:上一行已转过去
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(Gap.sm))
-                MiuixButton(
+                GlasmioButton(
                     onClick = {
                         codeBusy = true
                         codeMsg = null
