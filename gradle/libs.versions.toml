@@ -15,6 +15,8 @@ coil = "3.0.4"
 miuix = "0.9.4"
 haze = "1.6.6"
 kyant-shapes = "1.2.0"
+# spike 分支试验：iOS 液态玻璃复刻框架（Apache-2.0，自带 backdrop，minSdk 33）
+glasmio = "0.1.1"
 camerax = "1.5.0-alpha06"
 mlkit-barcode = "17.3.0"
 
@@ -46,6 +48,10 @@ haze-materials = { group = "dev.chrisbanes.haze", name = "haze-materials", versi
 kyant-shapes = { group = "io.github.kyant0", name = "shapes", version.ref = "kyant-shapes" }
 # Miuix 官方那套液态玻璃底座：SukiSU-Ultra 的玻璃底栏用的就是它（同版本号，不用额外对齐）
 miuix-blur = { group = "top.yukonga.miuix.kmp", name = "miuix-blur-android", version.ref = "miuix" }
+
+# Glasmio：只引最高层的两个模块（UI 与 scaffold 会传递带出 core/glass）
+glasmio-ui = { group = "io.github.neoruaa.glasmio", name = "glasmio-ui", version.ref = "glasmio" }
+glasmio-scaffold = { group = "io.github.neoruaa.glasmio", name = "glasmio-scaffold", version.ref = "glasmio" }
 
 # 扫码签到：CameraX 出帧 + ML Kit 识码，不接任何厂商扫码 SDK
 camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }

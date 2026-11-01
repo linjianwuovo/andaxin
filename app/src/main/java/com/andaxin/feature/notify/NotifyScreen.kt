@@ -53,6 +53,9 @@ fun NotifyScreen(onBack: () -> Unit) {
         Sheet { ClassReminderRow() }
         Spacer(Modifier.height(Gap.lg))
         Sheet { LiveUpdateRows() }
+        // spike/glasmio：试验那一格，只在 spike 分支存在；main 合入前删
+        Spacer(Modifier.height(Gap.lg))
+        Sheet { GlassSpikeRow() }
     }
 }
 

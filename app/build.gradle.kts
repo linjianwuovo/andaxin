@@ -20,7 +20,9 @@ android {
 
     defaultConfig {
         applicationId = "com.andaxin"
-        minSdk = 26
+        // spike/glasmio 试验位：Glasmio 的 AAR 声明 minSdk 33，manifest 合并直接顶死 26。
+        // 这条分支先抬到 33 把接入编通；main 是否跟（会砍掉 Android 8-12 机型）是他的产品决定，不在这个 spike 里替。
+        minSdk = 33
         targetSdk = 35
         versionCode = 122
         versionName = "0.8.80"
@@ -139,5 +141,9 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.haze.materials)
     implementation(libs.kyant.shapes)
+
+    // spike/glasmio：接入试验 —— iOS 27 液态玻璃复刻框架（Apache-2.0），只试不改现有三件套
+    implementation(libs.glasmio.ui)
+    implementation(libs.glasmio.scaffold)
     implementation(libs.miuix.blur)
 }
