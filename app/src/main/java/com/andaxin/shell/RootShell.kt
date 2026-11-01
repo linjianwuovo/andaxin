@@ -76,8 +76,7 @@ import com.andaxin.feature.modules.RepairListScreen
 import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.web.WebScreen
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
+import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -474,7 +473,6 @@ private fun Gate(appearance: Appearance, open: (String) -> Unit) {
 private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val pager = rememberPagerState(initialPage = Shelf.Home.ordinal) { Shelf.entries.size }
     val scope = rememberCoroutineScope()
-    val haze = remember { HazeState() }
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
     val icons = Shelf.entries.map { it.iconRes }
     val iconsAccent = Shelf.entries.map { it.iconAccentRes }
@@ -492,7 +490,9 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
         graph.tabJump.value = -1
     }
 
-    Box(Modifier.fillMaxSize()) {
+    GlasmioBackdropHost(
+        modifier = Modifier.fillMaxSize(),
+        sampledContent = {
         HorizontalPager(
             state = pager,
             beyondViewportPageCount = 1,
@@ -506,7 +506,6 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                  * 现在整页铺到屏幕底，内容从栏底下滚过去，折射和模糊才有东西可吃；
                  * 各屏尾部那条 ShelfTail 负责让最后一条停在栏子上沿之上。
                  */
-                .hazeSource(haze),
         ) { index ->
             when (Shelf.entries[index]) {
                 Shelf.Home -> HomeScreen(open = open)
@@ -517,13 +516,15 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             }
         }
 
+        },
+        overlayContent = {
         ShelfBar(
             current = pager.currentPage,
+            slide = with(pager) { currentPage + currentPageOffsetFraction },
             pageCount = Shelf.entries.size,
             onSelect = { scope.launch { pager.animateScrollToPage(it) } },
             material = appearance.material,
             spec = appearance.spec(),
-            hazeState = haze,
             labels = labels,
             icons = icons,
             iconsAccent = iconsAccent,
@@ -531,5 +532,6 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             badges = listOf(0, 0, unreadMsgs, 0, 0),
             modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
         )
-    }
+        }
+    )
 }
