@@ -36,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import io.github.neoruaa.glasmio.glass.render.effects.blur
+import io.github.neoruaa.glasmio.glass.render.effects.lens
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
@@ -57,8 +58,6 @@ import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
 import io.github.neoruaa.glasmio.glass.DampedDragAnimation
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
-import io.github.neoruaa.glasmio.glass.NativeControlLensStyle
-import io.github.neoruaa.glasmio.glass.nativeControlLens
 import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCombinedBackdrop
@@ -74,11 +73,13 @@ import kotlin.math.abs
 
 /*
  * 底栏（ios 分支·水滴版）：水珠回来了 —— 引擎不自己养，直接吃 Glasmio 的
- * DampedDragAnimation + nativeControlLens(TabBarIndicator)，和库自家导航条同一配方。
+ * DampedDragAnimation；透镜走库公开的 lens()（native 内外光线内核、色散关）。
+ * 库那支 nativeControlLens(TabBarIndicator) 的 lensAberration.y = height/1.8 是常量，
+ * 按压强度压不掉它 —— 珠子左缘那圈彩色棱镜边就是它（11-03 实测 ΔRB −90..+139）。
  *
  *   ① 壳      GlassSurface(RegularSmall, frost 10, 折射归零) —— 静止的磨砂轨道
  *   ② 标签层   五格内容录进 tabsBackdrop —— 珠子的背板
- *   ③ 水珠    drawPlainBackdrop(页面+标签 合成层) + TabBarIndicator 透镜,
+ *   ③ 水珠    drawPlainBackdrop(页面+标签 合成层) + lens(24/28dp, chromatic 关),
  *             press 抬起(liftProgress)、scaleX/Y 走引擎的双阻尼弹簧;
  *             按住珠子横向拖 = 甩珠子换页(onDrag 换算格宽,onDragStopped 落格)
  *   ④ 亮副本   跟珠子同位移同形变,再画一遍选中那枚压在珠子上 ——
@@ -328,11 +329,15 @@ fun ShelfBar(
                             shape = { Capsule() },
                             effects = {
                                 if (refractive) {
-                                    nativeControlLens(
-                                        style = NativeControlLensStyle.TabBarIndicator,
-                                        liftProgress = liftSmooth.value,
-                                        isDark = ink.dark,
-                                        liftedContent = tabsBackdrop,
+                                    // 珠子：改用库里公开的通用透镜（同一套 native 内外光线内核），色散关掉。
+                                    // nativeControlLens 的 lensAberration.y = height/1.8 是常量，
+                                    // 按压强度压不掉彩边 —— 要不留彩色棱镜边,只能换这一支。
+                                    val lift = liftSmooth.value.coerceIn(0f, 1f)
+                                    lens(
+                                        refractionHeight = with(density) { 24.dp.toPx() } * lift,
+                                        refractionAmount = with(density) { 28.dp.toPx() } * lift,
+                                        depthEffect = true,
+                                        chromaticAberration = false,
                                     )
                                 }
                             },
