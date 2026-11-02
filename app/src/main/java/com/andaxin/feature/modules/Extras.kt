@@ -3,6 +3,8 @@ package com.andaxin.feature.modules
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioCard
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import androidx.compose.ui.graphics.Color
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -389,6 +391,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(Gap.lg))
+        val canLogin = !busy && account.isNotBlank() && secret.isNotBlank()
         GlasmioButton(
             onClick = {
                 busy = true
@@ -426,11 +429,13 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                     )
                 }
             },
-            enabled = !busy && account.isNotBlank() && secret.isNotBlank(),
+            enabled = canLogin,
+            navigationSurfaceColor = MaterialTheme.colorScheme.primary,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
                 text = if (busy) "正在登录…" else "登录",
+                color = if (canLogin) Color.White else LocalGlassColors.current.content,
                 fontSize = Type.title, fontWeight = FontWeight.Medium,
             )
         }
