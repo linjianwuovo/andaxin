@@ -1,5 +1,6 @@
 package com.andaxin.feature.web
 
+import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -81,6 +82,12 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
 
     BackHandler(enabled = canGoBack) { webView?.goBack() }
 
+    GlasmioBackdropHost(
+        modifier = Modifier.fillMaxSize(),
+        sampledContent = {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground))
+        },
+        overlayContent = {
     GlasmioScaffold(
         topBar = {
             // ios 分支：同 ScaffoldPage 那一条 —— Miuix 头栏换手搭行(「‹ 返回」的说法没改)
@@ -181,6 +188,8 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
             }
         }
     }
+        },
+    )
 }
 
 /** 只放行校内与校方那几个域；其余一律不给离开这个容器。 */

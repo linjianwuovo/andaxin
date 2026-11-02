@@ -122,7 +122,6 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             GlasmioButton(
                 onClick = { scope.launch { graph.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
-                sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
             ) {
                 Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
             }

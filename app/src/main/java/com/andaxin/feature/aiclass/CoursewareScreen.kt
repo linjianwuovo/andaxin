@@ -121,7 +121,6 @@ fun CoursewareScreen(
                                 }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
                     ) {
                         Text("下载原文件", fontSize = Type.body, fontWeight = FontWeight.Medium)
                     }

@@ -117,7 +117,6 @@ fun QrSignScreen(url: String, onBack: () -> Unit) {
             GlasmioButton(
                 onClick = { tryNo++ },
                 modifier = Modifier.fillMaxWidth(),
-                sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
             ) {
                 Text("再发一次", fontSize = Type.title, fontWeight = FontWeight.Medium)
             }

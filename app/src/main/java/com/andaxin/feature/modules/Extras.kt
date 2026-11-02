@@ -404,7 +404,6 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             },
             enabled = !busy && account.isNotBlank() && secret.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
-            sampleBackdrop = false,   // ios 分支：整屏 backdrop 未铺,先纯色导航材质
         ) {
             Text(
                 text = if (busy) "正在登录…" else "登录",

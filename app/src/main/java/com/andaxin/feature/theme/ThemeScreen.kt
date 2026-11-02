@@ -1,5 +1,7 @@
 package com.andaxin.feature.theme
 
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import io.github.neoruaa.glasmio.ui.GlasmioSlider
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -71,8 +73,17 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
     val commit: () -> Unit = { scope.launch { graph.appearance.save(draft) } }
 
+    // ios 分支：这一屏不走 ScaffoldPage（它有手搓的「‹ 返回」头），所以自己包一层
+    // backdrop 宿主。不包的话滑杆/开关的透镜采到根上的 emptyBackdrop —— 11-02 米11
+    // 实机：一按滑杆,拇指位扩出一颗黑块（玻璃没有东西可采就是黑的）。
+    GlasmioBackdropHost(
+        modifier = modifier.fillMaxSize(),
+        sampledContent = {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground))
+        },
+        overlayContent = {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Gap.screen),
@@ -236,6 +247,8 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.height(Gap.xxl))
     }
+        }
+    )
 }
 
 /**

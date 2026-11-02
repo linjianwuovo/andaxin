@@ -259,7 +259,6 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                 GlasmioButton(
                     onClick = { scope.launch { load() } },
                     modifier = Modifier.fillMaxWidth(),
-                    sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
                 ) { Text("重试", fontSize = Type.title, fontWeight = FontWeight.Medium) }
             }
             Spacer(Modifier.height(Gap.xxl))
@@ -410,7 +409,6 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                 GlasmioButton(
                     onClick = { snap() },
                     modifier = Modifier.fillMaxWidth(),
-                    sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
                 ) {
                     Text(
                         if (bmp == null) "拍一张" else "重拍一张",
@@ -478,7 +476,6 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
             onClick = { submit() },
             enabled = canSubmit,
             modifier = Modifier.fillMaxWidth(),
-            sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
         ) {
             Text(
                 text = if (submitting) "正在提交…" else "提交签到",

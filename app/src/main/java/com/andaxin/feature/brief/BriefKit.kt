@@ -1,5 +1,6 @@
 package com.andaxin.feature.brief
 
+import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import androidx.compose.foundation.layout.statusBarsPadding
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.scaffold.GlasmioScaffold
@@ -449,7 +450,6 @@ fun BriefFormPage(
             GlasmioButton(
                 onClick = { scope.launch { graph.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
-                sampleBackdrop = false,   // ios 分支：页面级 backdrop 还没铺到这一屏,先纯色导航材质(不采假背景)
             ) {
                 Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
             }
@@ -948,6 +948,15 @@ fun ScaffoldPage(
     onRefresh: (suspend () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
+    // ios 分支：这一屏自带 backdrop 宿主 —— 采样层是纸色底，控件全在 overlay 上。
+    // 根上那个 emptyBackdrop 只兜底：没包宿主的屏,玻璃控件采空层会画成黑块（11-02 米11
+    // 实机：主题屏滑杆一按,透镜位扩出一颗黑的）。滑杆/开关/按钮的透镜都吃这一层。
+    GlasmioBackdropHost(
+        modifier = Modifier.fillMaxSize(),
+        sampledContent = {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground))
+        },
+        overlayContent = {
     GlasmioScaffold(
         topBar = {
             // ios 分支：Miuix 的 SmallTopAppBar 换成手搭的一条 —— 状态栏留白 + 「‹ 返回」+ 标题,
@@ -982,6 +991,8 @@ fun ScaffoldPage(
             }
         }
     }
+        },
+    )
 }
 
 
