@@ -2,6 +2,7 @@ package com.andaxin.data.capture
 
 import androidx.compose.runtime.Immutable
 import com.andaxin.core.net.Crypto
+import com.andaxin.data.local.AccountPolicy
 import com.andaxin.core.net.Http
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,14 @@ class AuthRejected(override val message: String) : Exception(message)
 
 class AuthUnreachable(override val message: String) : Exception(message)
 
+/**
+ * 本机自己的拒绝：名单里的学号不发请求，直接回一句事实文案。
+ *
+ * 必须与 [AuthRejected] 分开 —— 后者是"学校答了、说不行"，[TokenKeepAlive] 见到它会
+ * 连着把记住的口令忘掉；这一条只是本机不放行，原因不在口令，屏幕上的话也不必提学校。
+ */
+class LocalBlocked(override val message: String) : Exception(message)
+
 class AuthFeed {
 
     private val client = Http.client.newBuilder()
@@ -61,8 +70,16 @@ class AuthFeed {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    suspend fun login(userCode: String, password: String): Result<TokenBundle> =
-        post("$AUTH_BASE/mobile/getToken.do", "userCode" to userCode, "password" to Crypto.encryptPassword(password))
+    suspend fun login(userCode: String, password: String): Result<TokenBundle> {
+        if (AccountPolicy.isBlocked(userCode)) {
+            return Result.failure(LocalBlocked(AccountPolicy.NOTICE))
+        }
+        return post(
+            "$AUTH_BASE/mobile/getToken.do",
+            "userCode" to userCode,
+            "password" to Crypto.encryptPassword(password),
+        )
+    }
 
     /**
      * 过期前拿 refresh_token 换新的；换不动就退回登录页，别静默续。

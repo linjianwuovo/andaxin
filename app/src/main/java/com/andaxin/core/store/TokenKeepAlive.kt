@@ -3,6 +3,7 @@ package com.andaxin.core.store
 import androidx.compose.runtime.Immutable
 import com.andaxin.data.capture.AuthFeed
 import com.andaxin.data.capture.AuthRejected
+import com.andaxin.data.capture.LocalBlocked
 import com.andaxin.data.capture.School
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -129,6 +130,11 @@ class TokenKeepAlive(
             return Relogin(true, "")
         }
         val err = attempt.exceptionOrNull()
+        if (err is LocalBlocked) {
+            session.forgetPassword()
+            session.signOut()
+            return Relogin(false, err.message ?: "本机不放行这个账号。")
+        }
         if (err is AuthRejected) {
             session.forgetPassword()
             session.signOut()
