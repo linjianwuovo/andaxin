@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
+import com.kyant.shapes.Capsule
 import com.andaxin.core.design.Type
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
@@ -95,25 +96,29 @@ fun ShelfBar(
     ) {
         val cellW = maxWidth / pageCount
         val slideC = slide.coerceIn(0f, (pageCount - 1).toFloat())
-        val frost = (6f + spec.blur.value * 24f).dp
+        // spec.blur 先不顶进材质配方（见下面 GlassSurface 的注释）
 
         GlassSurface(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(58.dp)
                 .align(Alignment.Center),
-            shape = Radius.pill,
+            shape = Capsule(),   // 库自家导航条也是这颗胶囊;RoundedCornerShape 的距离场对不上,两端会漏黑边
             enabled = !solid,
+            // 采的是 host 记下的那一层页面（LocalGlassBackdrop）—— 和旧版 haze 采 pager 同一条路。
+            backdrop = io.github.neoruaa.glasmio.glass.LocalGlassBackdrop.current,
             sampleBackdrop = !solid,
+            // 11-02 装机截图：显式 refraction 带 + frostRadius 顶掉了库配方,胶囊下沿出一条
+            // 黄绿色散散线（色散在边缘叠出来的）。这版交还给 material 自己的量法：
+            // RegularSmall 就是导航条那档（5pt 霜 + 实测几何）,滑杆对折射的影响走 appearance。
             material = if (solid) null else NavigationGlassMaterial.RegularSmall,
-            frostRadius = if (solid) null else frost,
-            refractionHeight = if (material == BarMaterial.Liquid) (8f + 24f * spec.refraction).dp else 0.dp,
-            refractionAmount = if (material == BarMaterial.Liquid) (8f + 24f * spec.refraction).dp else 0.dp,
+            frostRadius = if (solid) null else 10.dp,   // 静止态=纯磨砂轨道(旧设计口径:折射排在按住那道闸后面,我们这版先只做磨砂)
+            refractionHeight = 0.dp, refractionAmount = 0.dp,   // 折射归零:8dp 霜+默认折射把蓝图标/红角标拉成青紫条
             contentAlignment = Alignment.CenterStart,
         ) {
             if (solid) {
                 Box(Modifier.fillMaxWidth().fillMaxHeight()
-                    .background(ink.offFill.copy(alpha = if (ink.dark) 0.94f else 0.90f), Radius.pill))
+                    .background(ink.offFill.copy(alpha = if (ink.dark) 0.94f else 0.90f), Capsule()))
             }
             // ② 选中 pill：淡底胶囊,随 slide 滑
             Box(
@@ -124,11 +129,13 @@ fun ShelfBar(
                     .size(width = cellW - 6.dp, height = 50.dp)
                     .background(
                         if (solid) accent.copy(alpha = 0.16f)
-                        else ink.ghost.copy(alpha = if (ink.dark) 0.22f else 0.14f),
-                        Radius.pill,
+                        else if (ink.dark) Color.White.copy(alpha = 0.18f)
+                        else ink.ghost.copy(alpha = 0.30f),   // 轨道现在是近白的(霜10采的是浅色页面):浅色下选中透镜给 30% 灰,深色下给 18% 白
+                        Capsule(),
                     ),
             )
-            Row(Modifier.fillMaxWidth().fillMaxHeight()) {
+            // 上下留 5/7dp：图标+两行字约 46dp,顶满 58 会把「讲座」那种最后一行切在胶囊边上
+            Row(Modifier.fillMaxWidth().fillMaxHeight().padding(top = 5.dp, bottom = 7.dp)) {
                 for (i in 0 until pageCount) {
                     val fill = { (1f - abs(slideC - i)).coerceIn(0f, 1f) }
                     ShelfCell(
