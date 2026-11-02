@@ -26,6 +26,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import io.github.neoruaa.glasmio.core.LocalGlassColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -200,7 +201,9 @@ fun ShelfBar(
             backdrop = pageBackdrop,
             sampleBackdrop = !solid,
             material = null,
-            navigationSurfaceColor = if (solid) null else Color.White.copy(alpha = 0.77f),
+            // 77% 不透明是量酷安量出来的（栏 252 vs 页底 242）。颜色必须走色板 container：
+            // 浅色=白卡、深色=夜卡 —— 上一版硬编码 Color.White,深色模式下整条栏白得刺眼。
+            navigationSurfaceColor = if (solid) null else LocalGlassColors.current.container.copy(alpha = 0.77f),
             frostRadius = if (solid) null else 10.dp,
             refractionHeight = 0.dp,
             refractionAmount = 0.dp,
