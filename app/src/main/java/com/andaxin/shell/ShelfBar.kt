@@ -34,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import io.github.neoruaa.glasmio.glass.render.effects.blur
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
@@ -54,7 +56,6 @@ import com.andaxin.core.design.Type
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
 import io.github.neoruaa.glasmio.glass.DampedDragAnimation
-import io.github.neoruaa.glasmio.glass.GlassSurface
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.glass.NativeControlLensStyle
 import io.github.neoruaa.glasmio.glass.nativeControlLens
@@ -184,29 +185,29 @@ fun ShelfBar(
             }
         }
 
-        // ① 壳：玻璃胶囊。摘掉库导航材质那圈灰环（用户 11-02 指的"描边"）——
-        // 读源码定死：环 = innerShadows,条件是 resolvedStyle==Navigation && navigationMaterial,
-        // 而 resolvedStyle 恒为 Navigation（925 行那个 if 两个分支同一个值）,
-        // navigationMaterial = (material != null || emphasis==Prominent || navSurfaceColor == null) && ...
-        // 所以要环没：**material 给 null 且 navigationSurfaceColor 给非 null**（上一版
-        // 只加了 navigationSurfaceColor 却留着 material=RegularSmall,第一个条件就为真,环当然还在）。
-        GlassSurface(
+        // ① 壳：真玻璃胶囊。上一版为了摘库导航材质那圈灰环,把 GlassSurface 的
+        // navigationMaterial 整个关了（material=null + navigationSurfaceColor 非空）——
+        // 环是没了,但 frost 磨砂也跟着没了,再被 navigationSurfaceAlphaMultiplier=1.25
+        // 一乘,0.77 的白变成 0.96 —— 用户 11-02 一句"tab 为什么是实心的"点破：那就是一块
+        // 不透明板。这版不借 GlassSurface 了,直接 drawPlainBackdrop 自己搭：
+        // 采页面层 → blur 10dp 磨砂 → 盖一层色板 container 62% 的 tint → 剪成胶囊。
+        // 环本来就不会有（它是导航材质画的）,而磨砂、半透明、深浅色都是自己的。
+        // onDrawSurface 是 DrawScope 不是 composable,颜色必须在组合期读好再闭包进去
+        val shellTint = LocalGlassColors.current.container.copy(alpha = if (solid) 0.96f else 0.78f)
+        val blurPx = with(density) { 20.dp.toPx() }
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(58.dp)
                 .align(Alignment.Center)
-                .layerBackdrop(ownBarBackdrop),
-            shape = Capsule(),
-            enabled = !solid,
-            backdrop = pageBackdrop,
-            sampleBackdrop = !solid,
-            material = null,
-            // 77% 不透明是量酷安量出来的（栏 252 vs 页底 242）。颜色必须走色板 container：
-            // 浅色=白卡、深色=夜卡 —— 上一版硬编码 Color.White,深色模式下整条栏白得刺眼。
-            navigationSurfaceColor = if (solid) null else LocalGlassColors.current.container.copy(alpha = 0.77f),
-            frostRadius = if (solid) null else 10.dp,
-            refractionHeight = 0.dp,
-            refractionAmount = 0.dp,
+                .layerBackdrop(ownBarBackdrop)
+                .drawPlainBackdrop(
+                    backdrop = if (solid) emptyBackdrop() else pageBackdrop,
+                    shape = { Capsule() },
+                    effects = { if (!solid) blur(blurPx) },
+                    onDrawSurface = { drawRect(shellTint) },
+                )
+                .clip(Capsule()),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (solid) {
