@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -22,14 +23,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -39,35 +45,48 @@ import androidx.compose.ui.unit.dp
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
-import com.kyant.shapes.Capsule
 import com.andaxin.core.design.Type
 import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.GlassSpec
+import io.github.neoruaa.glasmio.glass.DampedDragAnimation
 import io.github.neoruaa.glasmio.glass.GlassSurface
+import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
+import io.github.neoruaa.glasmio.glass.NativeControlLensStyle
 import io.github.neoruaa.glasmio.glass.NavigationGlassMaterial
+import io.github.neoruaa.glasmio.glass.nativeControlLens
+import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCombinedBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import io.github.neoruaa.glasmio.glass.render.drawPlainBackdrop
+import com.kyant.shapes.Capsule
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import kotlin.math.roundToInt
 import kotlin.math.abs
 
 /*
- * 底栏（ios 分支版）：壳换成 Glasmio 的导航材质，内容还是我们自己的三层图标。
+ * 底栏（ios 分支·水滴版）：水珠回来了 —— 引擎不自己养，直接吃 Glasmio 的
+ * DampedDragAnimation + nativeControlLens(TabBarIndicator)，和库自家导航条同一配方。
  *
- * 11-01 他明确改口：这条分支的底栏重做成 Glasmio 的路子 —— 旧"栏体 haze + 独立水珠"
- * 两层结构整体退役（DampedDrag 引擎、pillBulge、聚光副本、那七条坑的注释一起退场,
- * 旧档案别再按回来）。新结构两层：
- *   ① 壳    GlassSurface(material=RegularSmall) 采整页 backdrop（ShelfHost 那层的
- *          GlasmioBackdropHost 供页面）。continuous 胶囊 + iOS 配方的折射/边缘光/内阴影。
- *          Solid 档 enabled=false,退回纯色胶囊 —— 老规矩"实心那档不给玻璃留参数"没变。
- *   ② 选中标 pill 用容器色淡填充,跟着 slide 滑。不叠第二层玻璃：一屏双折射在低内存机
- *          上的代价没量过,上机验（还没有）之前保守一层。
+ *   ① 壳      GlassSurface(RegularSmall, frost 10, 折射归零) —— 静止的磨砂轨道
+ *   ② 标签层   五格内容录进 tabsBackdrop —— 珠子的背板
+ *   ③ 水珠    drawPlainBackdrop(页面+标签 合成层) + TabBarIndicator 透镜,
+ *             press 抬起(liftProgress)、scaleX/Y 走引擎的双阻尼弹簧;
+ *             按住珠子横向拖 = 甩珠子换页(onDrag 换算格宽,onDragStopped 落格)
+ *   ④ 亮副本   跟珠子同位移同形变,再画一遍选中那枚压在珠子上 ——
+ *             不然选中那枚会被珠子里那片页面糊掉（老坑,和旧版同一个解法）
  *
- * 图标三层/角标/双份文字淡入淡出:版式一个字没动。
- * 判"手指在哪一格"的老坑第 3 条（floor 不是 roundToInt）在这里不适用了 —— 位置是
- * 调用方给的 slide,取整由 pager 自己负责。
- * 老坑第 4 条（玻璃栏里不留水波纹）保留:clickable 一律 indication=null。
+ * 老规矩没动：三层 vector 图标、99+ 角标、双份文字淡入淡出、点中才震、
+ * 玻璃里不留水波纹（indication=null）、珠子是栏体的兄弟节点不被壳剪。
+ * Solid 档珠子整个不画；Frosted 档珠子在但不抬起折射（只给一层清水底）。
+ * 静止时珠子 alpha=0 —— 「不触摸没效果」那句老验收标准原样成立。
  */
 @Composable
 fun ShelfBar(
     current: Int,
-    /** pager.currentPage + currentPageOffsetFraction：选中 pill 跟这个滑 */
     slide: Float,
     pageCount: Int,
     onSelect: (Int) -> Unit,
@@ -75,11 +94,8 @@ fun ShelfBar(
     spec: GlassSpec,
     labels: List<String>,
     icons: List<Int>,
-    /** 未选中那枚的"点睛"层（跟着强调色），和 [icons] 一一对位；没有就不叠 */
     iconsAccent: List<Int> = emptyList(),
-    /** 选中那一枚换成的实心图（整枚只上强调色） */
     iconsOn: List<Int> = emptyList(),
-    /** 每格右上角那颗未读角标；给 0 就不画。顺序跟 [labels] 对齐。 */
     badges: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
@@ -87,6 +103,16 @@ fun ShelfBar(
     val ink = LocalInk.current
     val accent = MaterialTheme.colorScheme.primary
     val solid = material == BarMaterial.Solid
+    val refractive = material == BarMaterial.Liquid   // 只有液态档抬起折射;毛玻璃档珠子是清水底
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+
+    val pageBackdrop = LocalGlassBackdrop.current
+    val tabsBackdrop = rememberLayerBackdrop()
+    val ownBarBackdrop = rememberLayerBackdrop()
+    // 珠子采 = 页面 + 栏自身磨砂层（和库自家 sourceBackdrop 同构）。
+    // 少了 ownBarBackdrop 这层,抬起的珠子直接看页面原始像素 —— 白卡黑字糊成一颗黑。
+    val sourceBackdrop = rememberCombinedBackdrop(pageBackdrop, ownBarBackdrop)
 
     BoxWithConstraints(
         modifier
@@ -95,56 +121,147 @@ fun ShelfBar(
             .padding(horizontal = 26.dp, vertical = Gap.sm),
     ) {
         val cellW = maxWidth / pageCount
-        val slideC = slide.coerceIn(0f, (pageCount - 1).toFloat())
-        // spec.blur 先不顶进材质配方（见下面 GlassSurface 的注释）
+        val pillW = cellW - 6.dp
+        val pillH = 50.dp
+        val stepPx = with(density) { cellW.toPx() }
+        val pillPx = with(density) { pillW.toPx() }
+        val pillRadiusPx = with(density) { (pillH / 2).toPx() }
+        // 珠子/透镜左缘位移：格中心 - 珠宽一半（start 侧留 3dp 内衬后按左缘定位）
+        val leftPx = { v: Float -> (stepPx * v.coerceIn(0f, (pageCount - 1).toFloat()) + stepPx / 2f - pillPx / 2f).coerceAtLeast(0f) }
 
+        // 引擎：库的 DampedDrag（velocity 驱动、双阻尼弹簧、release 先落珠再松形变）
+        val drag = remember(pageCount) {
+            DampedDragAnimation(
+                animationScope = scope,
+                initialValue = current.toFloat(),
+                valueRange = 0f..(pageCount - 1).toFloat(),
+                visibilityThreshold = 0.001f,
+                initialScale = 1f,
+                // 库那档 78/56=1.392 会把珠子顶出 58dp 的栏：鼓出去的部分采的是栏外
+                // 未磨砂的页面正文（首页那行黑字被拉成一道黑弧）。50dp 珠 * 1.14 = 57dp,
+                // 恰好留在栏内 —— 抬起还在,黑弧没了。
+                pressedScale = 1.14f,
+                onDragStarted = {},
+                onDrag = { _, dragAmount ->
+                    updateValue(
+                        (targetValue + dragAmount.x / stepPx).coerceIn(0f, (pageCount - 1).toFloat()),
+                    )
+                },
+                onDragStopped = {
+                    val target = targetValue.toInt().coerceIn(0, pageCount - 1)
+                    if (target != current) onSelect(target)
+                    animateToValue(target.toFloat())
+                },
+            )
+        }
+        // 外部翻页（pager 滑动、点通知跳格）把珠子带过去
+        LaunchedEffect(slide, current) {
+            val t = if (slide.isFinite()) slide else current.toFloat()
+            if (kotlin.math.abs(drag.targetValue - t) > 0.01f && !drag.isDraggingLike()) {
+                drag.animateToValue(t, animatePress = false)
+            }
+        }
+
+        // ① 壳：磨砂轨道
         GlassSurface(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(58.dp)
-                .align(Alignment.Center),
-            shape = Capsule(),   // 库自家导航条也是这颗胶囊;RoundedCornerShape 的距离场对不上,两端会漏黑边
+                .align(Alignment.Center)
+                .layerBackdrop(ownBarBackdrop),
+            shape = Capsule(),
             enabled = !solid,
-            // 采的是 host 记下的那一层页面（LocalGlassBackdrop）—— 和旧版 haze 采 pager 同一条路。
-            backdrop = io.github.neoruaa.glasmio.glass.LocalGlassBackdrop.current,
+            backdrop = pageBackdrop,
             sampleBackdrop = !solid,
-            // 11-02 装机截图：显式 refraction 带 + frostRadius 顶掉了库配方,胶囊下沿出一条
-            // 黄绿色散散线（色散在边缘叠出来的）。这版交还给 material 自己的量法：
-            // RegularSmall 就是导航条那档（5pt 霜 + 实测几何）,滑杆对折射的影响走 appearance。
             material = if (solid) null else NavigationGlassMaterial.RegularSmall,
-            frostRadius = if (solid) null else 10.dp,   // 静止态=纯磨砂轨道(旧设计口径:折射排在按住那道闸后面,我们这版先只做磨砂)
-            refractionHeight = 0.dp, refractionAmount = 0.dp,   // 折射归零:8dp 霜+默认折射把蓝图标/红角标拉成青紫条
+            frostRadius = if (solid) null else 10.dp,
+            refractionHeight = 0.dp,
+            refractionAmount = 0.dp,
             contentAlignment = Alignment.CenterStart,
         ) {
             if (solid) {
                 Box(Modifier.fillMaxWidth().fillMaxHeight()
                     .background(ink.offFill.copy(alpha = if (ink.dark) 0.94f else 0.90f), Capsule()))
+            } else {
+                // 静止的选中透镜：按住后珠子抬起接管,它退场（alpha=1-press）
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .graphicsLayer {
+                            translationX = leftPx(drag.value)
+                            // 液态：珠子抬起后接管,这颗灰透镜淡出让位。
+                            // 毛玻璃：珠子只是一层近白的底（白压白看不见）,透镜必须留着 ——
+                            // 否则按住时反馈整个消失（11-02 米11 实机看到的）。
+                            alpha = if (refractive) 1f - drag.pressProgress.coerceIn(0f, 1f) else 1f
+                        }
+                        .padding(start = 3.dp)
+                        .size(width = pillW, height = pillH)
+                        .background(ink.ghost.copy(alpha = if (ink.dark) 0.18f else 0.30f), Capsule()),
+                )
             }
-            // ② 选中 pill：淡底胶囊,随 slide 滑
-            Box(
+            // ② 标签层（录进 tabsBackdrop）
+            Row(
                 Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 3.dp)
-                    .offset(x = (cellW * slideC))
-                    .size(width = cellW - 6.dp, height = 50.dp)
-                    .background(
-                        if (solid) accent.copy(alpha = 0.16f)
-                        else if (ink.dark) Color.White.copy(alpha = 0.18f)
-                        else ink.ghost.copy(alpha = 0.30f),   // 轨道现在是近白的(霜10采的是浅色页面):浅色下选中透镜给 30% 灰,深色下给 18% 白
-                        Capsule(),
-                    ),
-            )
-            // 上下留 5/7dp：图标+两行字约 46dp,顶满 58 会把「讲座」那种最后一行切在胶囊边上
-            Row(Modifier.fillMaxWidth().fillMaxHeight().padding(top = 5.dp, bottom = 7.dp)) {
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .padding(top = 5.dp, bottom = 7.dp)
+                    .layerBackdrop(tabsBackdrop)
+                    // 按下即抬起：引擎自带的 drag.modifier 只在越过拖拽阈值后才 press,
+                    // 静止按住永远不抬 —— iOS 那颗是按下就抬。这里自己收手势,走 Initial
+                    // pass 且不消费,格子的 clickable 照常收到点击（震动/无障碍都在那边）。
+                    .pointerInput(stepPx, pageCount) {
+                        awaitEachGesture {
+                            // 这个 Compose 版本的 awaitFirstDown 没有 requireUnmodified 形参
+                            val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                            if (!down.pressed) return@awaitEachGesture
+                            drag.press()
+                            var last = down.position
+                            var totalDx = 0f
+                            // 触摸阈值：手指静止也会抖几个像素,不挡的话一按住就慢慢漂到
+                            // 隔壁格（11-02 米11 实测:零位移的 hold 把页翻到了课程表）。
+                            // 库自己用 inspectDragGestures 自带 slop,我这条手写路径得自己补。
+                            val slop = viewConfiguration.touchSlop
+                            var dragging = false
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val now = change.position
+                                var dx = now.x - last.x
+                                last = now
+                                totalDx += dx
+                                if (!dragging) {
+                                    if (abs(totalDx) <= slop) { dx = 0f } else { dragging = true }
+                                }
+                                if (dragging && dx != 0f) {
+                                    drag.updateValue(
+                                        (drag.targetValue + dx / stepPx)
+                                            .coerceIn(0f, (pageCount - 1).toFloat()),
+                                    )
+                                }
+                            }
+                            if (abs(totalDx) > slop * 2f) {
+                                val target = drag.targetValue.roundToInt().coerceIn(0, pageCount - 1)
+                                if (target != current) onSelect(target)
+                                drag.animateToValue(target.toFloat())
+                            }
+                            drag.release()
+                        }
+                    },
+            ) {
                 for (i in 0 until pageCount) {
-                    val fill = { (1f - abs(slideC - i)).coerceIn(0f, 1f) }
+                    val fill = { (1f - abs(drag.value - i)).coerceIn(0f, 1f) }
                     ShelfCell(
+                        modifier = Modifier.weight(1f),
                         label = labels.getOrElse(i) { "" },
                         iconRes = icons.getOrElse(i) { 0 },
                         inkStrong = ink.strong,
                         accent = accent,
                         fill = fill,
-                        onClick = { onSelect(i) },
+                        onClick = {
+                            onSelect(i)
+                            scope.launch { drag.animateToValue(i.toFloat(), animatePress = false) }
+                        },
                         iconAccentRes = iconsAccent.getOrElse(i) { 0 },
                         iconOnRes = iconsOn.getOrElse(i) { 0 },
                         badge = badges.getOrElse(i) { 0 },
@@ -152,12 +269,60 @@ fun ShelfBar(
                 }
             }
         }
+
+        if (!solid) {
+            // ③ 水珠：栏体的兄弟节点,不被壳剪;手势挂在珠子上（按住拖=甩珠）
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .align(Alignment.Center),
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 3.dp)
+                        .graphicsLayer {
+                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
+                            alpha = drag.pressProgress.coerceIn(0f, 1f)
+                            scaleX = if (drag.scaleX.isFinite()) drag.scaleX else 1f
+                            scaleY = if (drag.scaleY.isFinite()) drag.scaleY else 1f
+                        }
+                        .size(width = pillW, height = pillH)
+                        .drawPlainBackdrop(
+                            backdrop = if (refractive) sourceBackdrop else emptyBackdrop(),
+                            shape = { Capsule() },
+                            effects = {
+                                if (refractive) {
+                                    nativeControlLens(
+                                        style = NativeControlLensStyle.TabBarIndicator,
+                                        liftProgress = drag.pressProgress.coerceIn(0f, 1f),
+                                        isDark = ink.dark,
+                                        liftedContent = tabsBackdrop,
+                                    )
+                                }
+                            },
+                            onDrawSurface = {
+                                if (!refractive) {
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = if (ink.dark) 0.10f else 0.42f),
+                                        cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
+                                    )
+                                }
+                            },
+                        ),
+                )
+            }
+        }
     }
 }
 
-/** 一格：三层图标 + 角标 + 双份文字淡入淡出。版式与旧版一致,没动。 */
+/** 引擎没有公开"正在拖"的标志，用 pressProgress 挡一下外部回写（按着的时候别抢珠子）。 */
+private fun DampedDragAnimation.isDraggingLike(): Boolean = pressProgress > 0.02f
+
+/** 一格：三层图标 + 角标 + 双份文字淡入淡出。版式与验收过的旧版一致,没动。 */
 @Composable
-private fun RowScope.ShelfCell(
+private fun ShelfCell(
     label: String,
     iconRes: Int,
     inkStrong: Color,
@@ -167,24 +332,25 @@ private fun RowScope.ShelfCell(
     iconAccentRes: Int = 0,
     iconOnRes: Int = 0,
     badge: Int = 0,
+    interactive: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
     Column(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .weight(1f)
+        modifier = modifier
             .fillMaxHeight()
-            .clickable(
-                // 玻璃栏里绝不能有触摸水波纹（老坑第 4 条）：indication 那层约 10% 黑
-                // 叠在折射上就是"点哪哪发灰"。触感只在真的点中这一下响。
-                interactionSource = remember(label) { MutableInteractionSource() },
-                indication = null,
-                role = Role.Tab,
-                onClick = {
-                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                    onClick()
-                },
+            .then(
+                if (interactive) Modifier.clickable(
+                    interactionSource = remember(label) { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.Tab,
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        onClick()
+                    },
+                ) else Modifier,
             ),
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
@@ -225,7 +391,6 @@ private fun RowScope.ShelfCell(
                 }
             }
             if (badge > 0) {
-                // 数字角标：一位数是圆点,两位撑胶囊,三位收进"99+"（老规矩没动）
                 Text(
                     text = if (badge > 99) "99+" else "$badge",
                     fontSize = Type.tinier,
@@ -241,7 +406,6 @@ private fun RowScope.ShelfCell(
             }
         }
         Spacer(modifier = Modifier.height(3.dp))
-        // 两份文字叠着淡入淡出：字重不一样,直接改 fontWeight 会跳,淡过去就不跳
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = label,
