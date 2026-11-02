@@ -1,5 +1,8 @@
 package com.andaxin.feature.brief
 
+import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
+import io.github.neoruaa.glasmio.glass.GlassSurface
+import androidx.compose.material3.HorizontalDivider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import androidx.compose.foundation.layout.statusBarsPadding
 import io.github.neoruaa.glasmio.core.LocalGlassColors
@@ -948,49 +951,64 @@ fun ScaffoldPage(
     onRefresh: (suspend () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    // ios 分支：这一屏自带 backdrop 宿主 —— 采样层是纸色底，控件全在 overlay 上。
-    // 根上那个 emptyBackdrop 只兜底：没包宿主的屏,玻璃控件采空层会画成黑块（11-02 米11
-    // 实机：主题屏滑杆一按,透镜位扩出一颗黑的）。滑杆/开关/按钮的透镜都吃这一层。
+    // ios 分支：这一屏分两层 —— 采样层是**真页面内容**，顶栏是浮在内容上的玻璃条。
+    // 之前采样层是一块纯色纸：滑杆/开关不再采空变黑（11-02 那笔），但顶栏玻璃底下
+    // 永远是一片纯色,内容滚过去什么折射都没有。现在内容进采样层。
+    //
+    // 内容层里的玻璃件只有 GlasmioCard,而库自己的 Card 把 backdrop 参数标了
+    // @Suppress("UNUSED_PARAMETER") —— 它压根不采样,只是填色,所以不存在
+    // "玻璃采自己"的递归（库注释警告的是另一种接法）。
     GlasmioBackdropHost(
         modifier = Modifier.fillMaxSize(),
         sampledContent = {
-            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground))
+            Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground)) {
+                Refreshable(onRefresh, Modifier.fillMaxSize()) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            // 顶部让开状态栏 + 那条 52dp 的浮层顶栏;这份留白在滚动容器
+                            // 里面,所以静止时内容在栏下,滚起来会钻到栏底下被折射。
+                            .statusBarsPadding()
+                            .padding(top = 52.dp)
+                            .padding(horizontal = Gap.screen),
+                    ) {
+                        Spacer(Modifier.height(Gap.md))
+                        content()
+                        Spacer(Modifier.height(Gap.xxl))
+                    }
+                }
+            }
         },
         overlayContent = {
-    GlasmioScaffold(
-        topBar = {
-            // ios 分支：Miuix 的 SmallTopAppBar 换成手搭的一条 —— 状态栏留白 + 「‹ 返回」+ 标题,
-            // 版式照旧(那三个字是本仓一直的返回说法),颜色全吃 Glasmio 色板。
-            Row(
-                Modifier.fillMaxWidth().statusBarsPadding().height(52.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "‹ 返回",
-                    fontSize = Type.body,
-                    color = LocalInk.current.muted,
-                    modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
-                )
-                Spacer(Modifier.width(Gap.sm))
-                Text(title, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+            // 只占顶部那一条：写 fillMaxSize 会整层透明盖住全屏,把内容层的滚动和
+            // 点击全吃掉（米11 实测：滑不动,两帧截图字节完全相同）。
+            Column(Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
+                    backdrop = LocalGlassBackdrop.current,
+                    sampleBackdrop = true,
+                    frostRadius = 10.dp,
+                    refractionHeight = 0.dp,
+                    refractionAmount = 0.dp,
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().fillMaxHeight(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "‹ 返回",
+                            fontSize = Type.body,
+                            color = LocalInk.current.muted,
+                            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
+                        )
+                        Spacer(Modifier.width(Gap.sm))
+                        Text(title, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+                    }
+                }
+                HorizontalDivider(color = LocalGlassColors.current.separator)
             }
-        },
-        containerColor = LocalGlassColors.current.groupedBackground,
-    ) { bars ->
-        Refreshable(onRefresh, Modifier.fillMaxSize()) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(bars)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = Gap.screen),
-            ) {
-                Spacer(Modifier.height(Gap.md))
-                content()
-                Spacer(Modifier.height(Gap.xxl))
-            }
-        }
-    }
         },
     )
 }
