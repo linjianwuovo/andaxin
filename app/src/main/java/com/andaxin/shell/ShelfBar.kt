@@ -22,6 +22,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -52,7 +56,6 @@ import io.github.neoruaa.glasmio.glass.DampedDragAnimation
 import io.github.neoruaa.glasmio.glass.GlassSurface
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.glass.NativeControlLensStyle
-import io.github.neoruaa.glasmio.glass.NavigationGlassMaterial
 import io.github.neoruaa.glasmio.glass.nativeControlLens
 import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
@@ -105,6 +108,11 @@ fun ShelfBar(
     val solid = material == BarMaterial.Solid
     val refractive = material == BarMaterial.Liquid   // 只有液态档抬起折射;毛玻璃档珠子是清水底
     val scope = rememberCoroutineScope()
+    // pointerInput 的 key 里没有 current（加进去会在拖到一半时重建闭包、掐断手势）,
+    // 所以闭包直接读 current 会拿到**第一次组合时冻住的旧值**：从首页拖出去能换页
+    // （旧 0 ≠ 新 target）,从别处拖回首页就永远 target==旧current → 被当成没动、
+    // 不回调（用户 11-02 报的"划回首页界面不变"）。挂一个 rememberUpdatedState 取活值。
+    val currentRef = rememberUpdatedState(current)
     val density = LocalDensity.current
 
     val pageBackdrop = LocalGlassBackdrop.current
@@ -149,11 +157,24 @@ fun ShelfBar(
                 },
                 onDragStopped = {
                     val target = targetValue.toInt().coerceIn(0, pageCount - 1)
-                    if (target != current) onSelect(target)
+                    if (target != currentRef.value) onSelect(target)
                     animateToValue(target.toFloat())
                 },
             )
         }
+// 松手回缩太快的解法（用户 11-02 指）：引擎的 unlift 弹簧是 private
+    // （TabBarIndicator 档 spring(1f, 631.65f)）,从外面改不动。这里不动引擎,
+    // 而是在渲染层给 press 加一条非对称的慢跟：抬起瞬时跟,落下用 300ms 补间,
+    // 珠子的 alpha 和形变量都乘这条曲线 —— 回缩就有了余韵,抬起依然跟手。
+    var liftRaw by remember { mutableFloatStateOf(0f) }
+    val liftSmooth = remember { Animatable(0f) }
+    LaunchedEffect(drag.pressProgress > 0.5f) {
+        val up = drag.pressProgress > 0.5f
+        if (up) liftSmooth.snapTo(1f)
+        liftSmooth.animateTo(if (up) 1f else 0f, androidx.compose.animation.core.tween(if (up) 90 else 300))
+    }
+
+
         // 外部翻页（pager 滑动、点通知跳格）把珠子带过去
         LaunchedEffect(slide, current) {
             val t = if (slide.isFinite()) slide else current.toFloat()
@@ -162,7 +183,12 @@ fun ShelfBar(
             }
         }
 
-        // ① 壳：磨砂轨道
+        // ① 壳：玻璃胶囊。摘掉库导航材质那圈灰环（用户 11-02 指的"描边"）——
+        // 读源码定死：环 = innerShadows,条件是 resolvedStyle==Navigation && navigationMaterial,
+        // 而 resolvedStyle 恒为 Navigation（925 行那个 if 两个分支同一个值）,
+        // navigationMaterial = (material != null || emphasis==Prominent || navSurfaceColor == null) && ...
+        // 所以要环没：**material 给 null 且 navigationSurfaceColor 给非 null**（上一版
+        // 只加了 navigationSurfaceColor 却留着 material=RegularSmall,第一个条件就为真,环当然还在）。
         GlassSurface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -173,7 +199,8 @@ fun ShelfBar(
             enabled = !solid,
             backdrop = pageBackdrop,
             sampleBackdrop = !solid,
-            material = if (solid) null else NavigationGlassMaterial.RegularSmall,
+            material = null,
+            navigationSurfaceColor = if (solid) null else Color.White.copy(alpha = 0.77f),
             frostRadius = if (solid) null else 10.dp,
             refractionHeight = 0.dp,
             refractionAmount = 0.dp,
@@ -192,9 +219,8 @@ fun ShelfBar(
                             // 液态：珠子抬起后接管,这颗灰透镜淡出让位。
                             // 毛玻璃：珠子只是一层近白的底（白压白看不见）,透镜必须留着 ——
                             // 否则按住时反馈整个消失（11-02 米11 实机看到的）。
-                            alpha = if (refractive) 1f - drag.pressProgress.coerceIn(0f, 1f) else 1f
+                            alpha = if (refractive) 1f - liftSmooth.value else 1f
                         }
-                        .padding(start = 3.dp)
                         .size(width = pillW, height = pillH)
                         .background(ink.ghost.copy(alpha = if (ink.dark) 0.18f else 0.30f), Capsule()),
                 )
@@ -215,6 +241,12 @@ fun ShelfBar(
                             val down = awaitFirstDown(pass = PointerEventPass.Initial)
                             if (!down.pressed) return@awaitEachGesture
                             drag.press()
+                            // 按哪跑哪：手指落点在哪格,水珠立刻跳过去（引擎弹簧 stiffness 1000,
+                            // 跟手级别的快）,不用等抬手换页后才滑。用户 11-02 指出的。
+                            val pressedCell = (down.position.x / stepPx).toInt().coerceIn(0, pageCount - 1)
+                            if (pressedCell != drag.targetValue.toInt()) {
+                                drag.updateValue(pressedCell.toFloat())
+                            }
                             var last = down.position
                             var totalDx = 0f
                             // 触摸阈值：手指静止也会抖几个像素,不挡的话一按住就慢慢漂到
@@ -240,11 +272,9 @@ fun ShelfBar(
                                     )
                                 }
                             }
-                            if (abs(totalDx) > slop * 2f) {
-                                val target = drag.targetValue.roundToInt().coerceIn(0, pageCount - 1)
-                                if (target != current) onSelect(target)
-                                drag.animateToValue(target.toFloat())
-                            }
+                            val target = drag.targetValue.roundToInt().coerceIn(0, pageCount - 1)
+                            if (target != currentRef.value) onSelect(target)
+                            drag.updateValue(target.toFloat())
                             drag.release()
                         }
                     },
@@ -281,12 +311,12 @@ fun ShelfBar(
                 Box(
                     Modifier
                         .align(Alignment.CenterStart)
-                        .padding(start = 3.dp)
                         .graphicsLayer {
                             translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
-                            alpha = drag.pressProgress.coerceIn(0f, 1f)
-                            scaleX = if (drag.scaleX.isFinite()) drag.scaleX else 1f
-                            scaleY = if (drag.scaleY.isFinite()) drag.scaleY else 1f
+                            alpha = liftSmooth.value
+                            val s = liftSmooth.value
+                            scaleX = 1f + ((if (drag.scaleX.isFinite()) drag.scaleX else 1f) - 1f) * s
+                            scaleY = 1f + ((if (drag.scaleY.isFinite()) drag.scaleY else 1f) - 1f) * s
                         }
                         .size(width = pillW, height = pillH)
                         .drawPlainBackdrop(
@@ -296,7 +326,7 @@ fun ShelfBar(
                                 if (refractive) {
                                     nativeControlLens(
                                         style = NativeControlLensStyle.TabBarIndicator,
-                                        liftProgress = drag.pressProgress.coerceIn(0f, 1f),
+                                        liftProgress = liftSmooth.value,
                                         isDark = ink.dark,
                                         liftedContent = tabsBackdrop,
                                     )
