@@ -3,9 +3,20 @@ package com.andaxin.core.design
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import io.github.neoruaa.glasmio.glass.render.Backdrop
 import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
+
+/**
+ * [NoSamplingBackdrop] 里被顶掉的那层真页面层。
+ *
+ * 采样层里的玻璃控件不能采自己（见 [NoSamplingBackdrop]），但采样层里**开独立窗口**的东西
+ * 例外：Dialog 在另一个 window 里，采的是宿主那层已录好的贴图，不会递归。
+ * 它要的就是这一格 —— 拿不到就退回 [LocalGlassBackdrop]。
+ */
+val LocalSamplingBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /**
  * 采样层专用：把层内的玻璃控件一律退回「不采样」。
@@ -23,9 +34,11 @@ import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
 @Composable
 fun NoSamplingBackdrop(content: @Composable () -> Unit) {
     val none = remember { emptyBackdrop() }
+    val page = LocalSamplingBackdrop.current ?: LocalGlassBackdrop.current
     CompositionLocalProvider(
         LocalGlassBackdrop provides none,
         LocalBlurBackdrop provides none,
+        LocalSamplingBackdrop provides page,
     ) {
         content()
     }

@@ -1,5 +1,6 @@
 package com.andaxin.feature.brief
 
+import com.andaxin.core.design.LocalSamplingBackdrop
 import com.andaxin.core.design.NoSamplingBackdrop
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.glass.GlassSurface
@@ -830,10 +831,15 @@ private fun PickDialog(
     // 会静默算出错位、玻璃采不到东西。库为此提供了 rememberCrossWindowBackdrop —— 它改走
     // 屏幕坐标，把两个窗口的变换都算进去。Dialog 里的 LocalGlassBackdrop.current 继承的正是
     // 调用方那一屏的页面层（ScaffoldPage 的 host），所以这里采到的就是背后那一页。
-    val pageBackdrop = rememberCrossWindowBackdrop(LocalGlassBackdrop.current)
+    // 这一屏的业务内容在采样层里（NoSamplingBackdrop 把 LocalGlassBackdrop 换成了空层，
+    // 否则玻璃件会采到正在录制的自己 —— 见 GlassSafe.kt）。但 Dialog 开在另一个 window，
+    // 采的是宿主已录好的那一页贴图，不构成递归，所以要拿回被顶掉的那层。
+    val pageBackdrop = rememberCrossWindowBackdrop(
+        LocalSamplingBackdrop.current ?: LocalGlassBackdrop.current
+    )
     val glass = LocalGlassColors.current
     val sheetShape = RoundedCornerShape(24.dp)
-    val shellTint = glass.elevatedBackground.copy(alpha = 0.88f)
+    val shellTint = glass.elevatedBackground.copy(alpha = 0.62f)
     val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
     Dialog(onDismissRequest = onDismiss) {
         Column(
