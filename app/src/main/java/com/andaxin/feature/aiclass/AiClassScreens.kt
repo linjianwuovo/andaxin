@@ -480,6 +480,7 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(Gap.sm))
+                val codeReady = !codeBusy && code.length == 6
                 GlasmioButton(
                     onClick = {
                         codeBusy = true
@@ -493,9 +494,14 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                             codeBusy = false
                         }
                     },
-                    enabled = !codeBusy && code.length == 6,
+                    enabled = codeReady,
+                    navigationSurfaceColor = MaterialTheme.colorScheme.primary,
                 ) {
-                    Text(if (codeBusy) "签…" else "签到", fontSize = Type.body)
+                    Text(
+                        if (codeBusy) "签…" else "签到",
+                        fontSize = Type.body,
+                        color = if (codeReady) MaterialTheme.colorScheme.onPrimary else ink.faint,
+                    )
                 }
             }
             codeMsg?.let {

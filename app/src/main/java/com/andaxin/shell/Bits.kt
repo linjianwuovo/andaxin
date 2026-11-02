@@ -541,8 +541,13 @@ fun LoadWhy(why: String?, modifier: Modifier = Modifier, wide: Boolean = true) {
                     onClick = { scope.launch { graph.session.leaveBrowsing() } },
                     modifier = Modifier.fillMaxWidth(),
                     sampleBackdrop = false,
+                    navigationSurfaceColor = MaterialTheme.colorScheme.primary,
                 ) {
-                    Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
+                    Text(
+                        "去登录",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontSize = Type.title, fontWeight = FontWeight.Medium,
+                    )
                 }
             } else {
                 Text(

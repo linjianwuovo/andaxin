@@ -122,8 +122,13 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
             GlasmioButton(
                 onClick = { scope.launch { graph.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
+                navigationSurfaceColor = MaterialTheme.colorScheme.primary,
             ) {
-                Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
+                Text(
+                    "去登录",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = Type.title, fontWeight = FontWeight.Medium,
+                )
             }
         } else {
             why?.let {

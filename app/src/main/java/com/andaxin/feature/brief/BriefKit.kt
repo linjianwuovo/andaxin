@@ -461,8 +461,13 @@ fun BriefFormPage(
             GlasmioButton(
                 onClick = { scope.launch { graph.session.leaveBrowsing() } },
                 modifier = Modifier.fillMaxWidth(),
+                navigationSurfaceColor = MaterialTheme.colorScheme.primary,
             ) {
-                Text("去登录", fontSize = Type.title, fontWeight = FontWeight.Medium)
+                Text(
+                    "去登录",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = Type.title, fontWeight = FontWeight.Medium,
+                )
             }
             Spacer(Modifier.height(Gap.md))
         }
@@ -502,6 +507,7 @@ fun BriefFormPage(
                 enabled = !state.sending,
                 modifier = Modifier.fillMaxWidth(),
                 destructive = armed,   // 再按一次真发:同上一条,走 destructive 语义
+                navigationSurfaceColor = if (armed) null else MaterialTheme.colorScheme.primary,
             ) {
                 Text(
                     text = when {
@@ -509,6 +515,7 @@ fun BriefFormPage(
                         armed -> "再按一次，真的发给学校"
                         else -> "提交"
                     },
+                    color = if (!state.sending && !armed) MaterialTheme.colorScheme.onPrimary else LocalGlassColors.current.content,
                     fontSize = Type.title,
                     fontWeight = FontWeight.Medium,
                 )

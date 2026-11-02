@@ -476,9 +476,11 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
             onClick = { submit() },
             enabled = canSubmit,
             modifier = Modifier.fillMaxWidth(),
+            navigationSurfaceColor = MaterialTheme.colorScheme.primary,
         ) {
             Text(
                 text = if (submitting) "正在提交…" else "提交签到",
+                color = if (canSubmit) MaterialTheme.colorScheme.onPrimary else ink.faint,
                 fontSize = Type.title,
                 fontWeight = FontWeight.Medium,
             )

@@ -4,7 +4,6 @@ import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioCard
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.core.LocalGlassColors
-import androidx.compose.ui.graphics.Color
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -435,7 +434,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         ) {
             Text(
                 text = if (busy) "正在登录…" else "登录",
-                color = if (canLogin) Color.White else LocalGlassColors.current.content,
+                color = if (canLogin) MaterialTheme.colorScheme.onPrimary else LocalGlassColors.current.content,
                 fontSize = Type.title, fontWeight = FontWeight.Medium,
             )
         }
