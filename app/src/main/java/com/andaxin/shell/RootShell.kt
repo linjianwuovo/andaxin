@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Motion
+import com.andaxin.core.design.NoSamplingBackdrop
 import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.spec
 import com.andaxin.feature.about.AboutScreen
@@ -493,6 +494,9 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     GlasmioBackdropHost(
         modifier = Modifier.fillMaxSize(),
         sampledContent = {
+        // 五个 tab 的内容也在这层里，里面同样有玻璃件（首页那排按钮等）。
+        // 采样层内自采样会递归把 RenderThread 栈打穿，统一关掉（见 NoSamplingBackdrop）。
+        NoSamplingBackdrop {
         HorizontalPager(
             state = pager,
             beyondViewportPageCount = 1,
@@ -514,6 +518,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 Shelf.Notice -> NoticeScreen(open = open)
                 Shelf.Me -> MeScreen(open = open)
             }
+        }
         }
 
         },

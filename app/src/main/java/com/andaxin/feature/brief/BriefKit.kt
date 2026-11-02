@@ -1,9 +1,13 @@
 package com.andaxin.feature.brief
 
+import com.andaxin.core.design.NoSamplingBackdrop
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.glass.GlassSurface
 import androidx.compose.material3.HorizontalDivider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
+import io.github.neoruaa.glasmio.glass.rememberCrossWindowBackdrop
+import io.github.neoruaa.glasmio.glass.render.drawPlainBackdrop
+import io.github.neoruaa.glasmio.glass.render.effects.blur
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import io.github.neoruaa.glasmio.core.LocalGlassColors
@@ -822,12 +826,26 @@ private fun PickDialog(
 ) {
     val ink = LocalInk.current
     val accent = MaterialTheme.colorScheme.primary
+    // 这个弹窗在**独立窗口**里：layerBackdrop 用 localPositionOf 换算坐标，跨 compose owner
+    // 会静默算出错位、玻璃采不到东西。库为此提供了 rememberCrossWindowBackdrop —— 它改走
+    // 屏幕坐标，把两个窗口的变换都算进去。Dialog 里的 LocalGlassBackdrop.current 继承的正是
+    // 调用方那一屏的页面层（ScaffoldPage 的 host），所以这里采到的就是背后那一页。
+    val pageBackdrop = rememberCrossWindowBackdrop(LocalGlassBackdrop.current)
+    val glass = LocalGlassColors.current
+    val sheetShape = RoundedCornerShape(24.dp)
+    val shellTint = glass.elevatedBackground.copy(alpha = 0.88f)
+    val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(LocalInk.current.offFill)
+                .drawPlainBackdrop(
+                    backdrop = pageBackdrop,
+                    shape = { sheetShape },
+                    effects = { blur(blurPx) },
+                    onDrawSurface = { drawRect(shellTint) },
+                )
+                .clip(sheetShape)
                 .padding(top = Gap.md, bottom = Gap.xs),
         ) {
             Text(
@@ -962,6 +980,13 @@ fun ScaffoldPage(
     GlasmioBackdropHost(
         modifier = Modifier.fillMaxSize(),
         sampledContent = {
+            // 采样层里不能再有玻璃件：库注释（GlassBackdrop.kt:67）说得很直白，
+            // sampledContent 会被录成一层贴图供上层玻璃采样，层里再放一个采 LocalGlassBackdrop
+            // 的控件就是"采正在录制的自己"。真机表现是 RenderThread 栈溢出直接 SIGSEGV
+            // （Fatal signal 11 / "stack pointer is not in a rw map" / 512 帧 prepareTreeImpl
+            // 递归），11-02 报修单页就是这么崩的。业务 content() 里的 GlasmioButton 全在这层里，
+            // 所以这里统一把采样关掉。
+            NoSamplingBackdrop {
             Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground)) {
                 Refreshable(onRefresh, Modifier.fillMaxSize()) {
                     Column(
@@ -984,6 +1009,7 @@ fun ScaffoldPage(
                         Spacer(Modifier.height(Gap.xxl))
                     }
                 }
+            }
             }
         },
         overlayContent = {
