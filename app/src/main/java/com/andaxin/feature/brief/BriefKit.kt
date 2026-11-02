@@ -4,6 +4,7 @@ import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.glass.GlassSurface
 import androidx.compose.material3.HorizontalDivider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.scaffold.GlasmioScaffold
@@ -971,6 +972,11 @@ fun ScaffoldPage(
                             // 里面,所以静止时内容在栏下,滚起来会钻到栏底下被折射。
                             .statusBarsPadding()
                             .padding(top = 52.dp)
+                            // 底部安全区必须留着：改造前这一层在 GlasmioScaffold 里,
+                            // 白拿 contentWindowInsets=safeDrawing;换成自搭两层壳后没人给了。
+                            // 米11 手势条 inset 实测 70px(≈20dp),只靠尾部 Spacer(Gap.xxl=32dp)
+                            // 勉强盖住 —— 换三键导航机型(inset≈48dp)最后一行就会被压住。
+                            .navigationBarsPadding()
                             .padding(horizontal = Gap.screen),
                     ) {
                         Spacer(Modifier.height(Gap.md))
