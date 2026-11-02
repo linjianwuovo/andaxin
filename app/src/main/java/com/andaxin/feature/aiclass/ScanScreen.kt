@@ -45,6 +45,9 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.pressClick
 import kotlin.math.roundToInt
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.GlassBackButton
+import com.andaxin.core.design.GlassBackInset
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
@@ -81,16 +84,10 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
 
     LaunchedEffect(Unit) { if (!granted) ask.launch(Manifest.permission.CAMERA) }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().padding(horizontal = Gap.screen),
+        Modifier.fillMaxSize().statusBarsPadding().padding(top = GlassBackInset).padding(horizontal = Gap.screen),
     ) {
-        Spacer(Modifier.height(Gap.xl))
-        Text(
-            "‹ 返回",
-            fontSize = Type.body,
-            color = ink.muted,
-            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
-        )
         Text("扫码签到", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
         Spacer(Modifier.height(Gap.lg))
 
@@ -132,6 +129,10 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
             )
         }
         Spacer(Modifier.height(Gap.md))
+    }
+        Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
+            GlassBackButton(onBack)
+        }
     }
 }
 

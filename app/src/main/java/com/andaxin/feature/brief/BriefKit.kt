@@ -82,6 +82,8 @@ import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.GlassBackButton
+import com.andaxin.core.design.GlassBackInset
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
@@ -964,9 +966,9 @@ private fun StepRow(s: com.andaxin.data.brief.Step, last: Boolean) {
 /**
  * 三种页共用的那一层壳。
  *
- * 换成 Miuix 的 `Scaffold` + `SmallTopAppBar`：HyperOS 那一档标题栏自带状态栏与
- * 刘海的留白，以前是我们手搓一个 `Spacer(Gap.xl)` 顶出来的，换个机型就得重调一次。
- * 返回那颗键仍然写"‹ 返回"三个字 —— 这仓的返回入口一直是这个说法，不换图标。
+ * ios 分支：这层壳分两片 —— 采样层是**真页面内容**，返回钮是浮在内容上的玻璃圆钮
+ * （见 [GlassBackButton]）。顶端留白留在滚动容器里面，所以静止时标题在钮下，
+ * 滚起来会钻到钮底下被折射。
  */
 @Composable
 fun ScaffoldPage(
@@ -976,9 +978,9 @@ fun ScaffoldPage(
     onRefresh: (suspend () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    // ios 分支：这一屏分两层 —— 采样层是**真页面内容**，顶栏是浮在内容上的玻璃条。
-    // 之前采样层是一块纯色纸：滑杆/开关不再采空变黑（11-02 那笔），但顶栏玻璃底下
-    // 永远是一片纯色,内容滚过去什么折射都没有。现在内容进采样层。
+    // ios 分支：这一屏分两层 —— 采样层是**真页面内容**，返回钮浮在内容上。
+    // 11-02 他嫌丑的那条全宽玻璃顶栏 + 分隔线拆了：标题不再占固定位,它跟内容一起滚，
+    // 滚到钮底下被折射。
     //
     // 内容层里的玻璃件只有 GlasmioCard,而库自己的 Card 把 backdrop 参数标了
     // @Suppress("UNUSED_PARAMETER") —— 它压根不采样,只是填色,所以不存在
@@ -999,10 +1001,10 @@ fun ScaffoldPage(
                         Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            // 顶部让开状态栏 + 那条 52dp 的浮层顶栏;这份留白在滚动容器
-                            // 里面,所以静止时内容在栏下,滚起来会钻到栏底下被折射。
+                            // 顶部让开状态栏 + 那颗 44dp 的悬浮返回钮;这份留白在滚动容器
+                            // 里面,所以静止时内容在钮下,滚起来会钻到钮底下被折射。
                             .statusBarsPadding()
-                            .padding(top = 52.dp)
+.padding(top = GlassBackInset)
                             // 底部安全区必须留着：改造前这一层在 GlasmioScaffold 里,
                             // 白拿 contentWindowInsets=safeDrawing;换成自搭两层壳后没人给了。
                             // 米11 手势条 inset 实测 70px(≈20dp),只靠尾部 Spacer(Gap.xxl=32dp)
@@ -1010,7 +1012,11 @@ fun ScaffoldPage(
                             .navigationBarsPadding()
                             .padding(horizontal = Gap.screen),
                     ) {
-                        Spacer(Modifier.height(Gap.md))
+                        // 给了标题才画：登录那一屏自己带一枚图标和名字，不需要顶端再挂一个"登录"。
+                        if (title.isNotBlank()) {
+                            Text(title, fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+                            Spacer(Modifier.height(Gap.lg))
+                        }
                         content()
                         Spacer(Modifier.height(Gap.xxl))
                     }
@@ -1019,33 +1025,10 @@ fun ScaffoldPage(
             }
         },
         overlayContent = {
-            // 只占顶部那一条：写 fillMaxSize 会整层透明盖住全屏,把内容层的滚动和
+            // 只占左上角那一颗：写 fillMaxSize 会整层透明盖住全屏,把内容层的滚动和
             // 点击全吃掉（米11 实测：滑不动,两帧截图字节完全相同）。
-            Column(Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
-                GlassSurface(
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp),
-                    backdrop = LocalGlassBackdrop.current,
-                    sampleBackdrop = true,
-                    frostRadius = 10.dp,
-                    refractionHeight = 0.dp,
-                    refractionAmount = 0.dp,
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().fillMaxHeight(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "‹ 返回",
-                            fontSize = Type.body,
-                            color = LocalInk.current.muted,
-                            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(horizontal = Gap.md, vertical = Gap.sm),
-                        )
-                        Spacer(Modifier.width(Gap.sm))
-                        Text(title, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
-                    }
-                }
-                HorizontalDivider(color = LocalGlassColors.current.separator)
+            Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
+                GlassBackButton(onBack)
             }
         },
     )

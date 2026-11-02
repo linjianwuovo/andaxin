@@ -36,6 +36,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.GlassBackButton
+import com.andaxin.core.design.GlassBackInset
+import androidx.compose.ui.text.style.TextOverflow
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
@@ -88,25 +91,8 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
             androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground))
         },
         overlayContent = {
+    Box(Modifier.fillMaxSize()) {
     GlasmioScaffold(
-        topBar = {
-            // ios 分支：同 ScaffoldPage 那一条 —— Miuix 头栏换手搭行(「‹ 返回」的说法没改)
-            Row(
-                Modifier.fillMaxWidth().statusBarsPadding().height(52.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "‹ 返回",
-                    fontSize = Type.body,
-                    color = ink.muted,
-                    modifier = Modifier
-                        .pressClick { if (canGoBack) webView?.goBack() else onBack() }
-                        .padding(horizontal = Gap.md, vertical = Gap.sm),
-                )
-                Spacer(Modifier.width(Gap.sm))
-                Text(pageTitle.ifBlank { title.ifBlank { url.take(28) } }, fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
-            }
-        },
         containerColor = LocalGlassColors.current.groupedBackground,
     ) { bars ->
         Column(
@@ -115,6 +101,16 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                 .padding(bars)
                 .background(MaterialTheme.colorScheme.background),
         ) {
+            // 标题原来在那条 52dp 的假顶栏里；11-02 起跟内容一起放，返回钮浮在它左上方。
+            Text(
+                pageTitle.ifBlank { title.ifBlank { url.take(28) } },
+                fontSize = Type.display,
+                fontWeight = FontWeight.SemiBold,
+                color = ink.strong,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(top = GlassBackInset, start = Gap.screen, end = Gap.screen),
+            )
             if (url.isBlank()) {
                 Text("地址是空的，进不来。", fontSize = Type.body, color = ink.faint, modifier = Modifier.padding(Gap.lg))
                 return@Column
@@ -186,6 +182,10 @@ fun WebScreen(encoded: String, title: String, onBack: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+        Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
+            GlassBackButton(onBack = { if (canGoBack) webView?.goBack() else onBack() })
         }
     }
         },

@@ -36,6 +36,9 @@ import com.andaxin.shell.pressClick
 import com.andaxin.shell.rememberArmConfirm
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.GlassBackButton
+import com.andaxin.core.design.GlassBackInset
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.InkSet
 import com.andaxin.core.design.LocalInk
@@ -795,23 +798,22 @@ fun SportMaintainScreen(onBack: () -> Unit) {
 
 @Composable
 internal fun Page(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxSize()) {
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
+.statusBarsPadding()
+            .padding(top = GlassBackInset)
+.padding(horizontal = Gap.screen),
     ) {
-        Spacer(Modifier.height(Gap.xl))
-        Text(
-            "‹ 返回",
-            fontSize = Type.body,
-            color = LocalInk.current.muted,
-            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
-        )
-        Spacer(Modifier.height(Gap.sm))
         Text(title, fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
         Spacer(Modifier.height(Gap.lg))
         content()
+    }
+        Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
+            GlassBackButton(onBack)
+        }
     }
 }
 

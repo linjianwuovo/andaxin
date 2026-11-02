@@ -49,6 +49,9 @@ import com.andaxin.R
 import com.andaxin.shell.pressClick
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
+import com.andaxin.core.design.GlassBackButton
+import com.andaxin.core.design.GlassBackInset
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.andaxin.core.design.AppIconTile
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
@@ -82,20 +85,15 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground))
         },
         overlayContent = {
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = Gap.screen),
+.statusBarsPadding()
+            .padding(top = GlassBackInset)
+.padding(horizontal = Gap.screen),
     ) {
-        Spacer(Modifier.height(Gap.xl))
-        Text(
-            "‹ 返回",
-            fontSize = Type.body,
-            color = ink.muted,
-            modifier = Modifier.pressClick(shrink = false, onClick = onBack).padding(vertical = Gap.sm),
-        )
-        Spacer(Modifier.height(Gap.sm))
         Text("主题", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
 
         Spacer(Modifier.height(Gap.xl))
@@ -247,6 +245,10 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.height(Gap.xxl))
     }
+        Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
+            GlassBackButton(onBack)
+        }
+        }
         }
     )
 }

@@ -1,9 +1,11 @@
 package com.andaxin.feature.modules
 
 import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.ui.GlasmioCard
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,11 +35,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.andaxin.core.design.AppIconTile
+import com.andaxin.core.launcher.LauncherIcons
 import com.andaxin.shell.Chip
 import com.andaxin.shell.LoadWhy
 import com.andaxin.shell.pressClick
@@ -306,62 +314,78 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             // 留着它，每次进这一屏都白试一遍还说不出原因，所以当场忘掉并说清下一步。
             graph.session.forgetPassword()
             rememberPw = false
-            note = "机器上那份口令解不开了（系统那把密钥不在了），重输一次就好。"
+            note = "机器上那份密码解不开了（系统那把密钥不在了），重输一次就好。"
         } else {
             secret = pw
         }
     }
 
-    ScaffoldPage(title = "登录", onBack = onBack) {
-        Column(verticalArrangement = Arrangement.spacedBy(Gap.md)) {
-            GlasmioTextField(
-                value = account,
-                onValueChange = { account = it },
-                placeholder = "校园账号",
-                // Miuix 那对 label/floating 槽在 Glasmio 收成一个 placeholder:上一行已转过去
-                modifier = Modifier.fillMaxWidth(),
-            )
-            GlasmioTextField(
-                value = secret,
-                onValueChange = { secret = it },
-                placeholder = "口令",
-                // Miuix 那对 label/floating 槽在 Glasmio 收成一个 placeholder:上一行已转过去
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-            )
+    ScaffoldPage(title = "", onBack = onBack) {
+        Spacer(Modifier.height(Gap.lg))
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            AppIconTile(LauncherIcons.current(LocalContext.current), size = 84.dp)
         }
-        Spacer(Modifier.height(Gap.md))
-        // 「记住密码」这一格不是方便少打六个字：校方那条 refresh.do 服务端是死的（404），
-        // 续期只能拿口令重登一次。不记住 = 每 8 小时、以及每次被顶号，都得回到这一屏手打。
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("记住密码", fontSize = Type.body, color = ink.strong)
-                Text(
-                    "口令用系统 Keystore 里一把不可导出的密钥加密后存本机；到期或被顶号时代你自动重登（会把对方客户端挤下线，校方一个账号只留一个活会话）。",
-                    fontSize = Type.micro, color = ink.faint, lineHeight = Type.microLine,
+        Spacer(Modifier.height(Gap.lg))
+        Text(
+            "安大信",
+            fontSize = Type.display,
+            fontWeight = FontWeight.SemiBold,
+            color = ink.strong,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(Gap.xxl))
+        // 一格一张玻璃卡：两行输入 + 一行开关。这里不能用 Sheet —— 它会再套一层
+        // Rhythm.cardPad(14dp)，而字段自带 16dp 内边距和 16dp 缩进的分组分隔线
+        // （库 IosInputs 的 glasmioGroupedListSeparator）,两边一叠就是 30dp，
+        // 字会缩到卡片正中。卡壳用 GlasmioCard，内边距让字段自己给。
+        GlasmioCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth()) {
+                GlasmioTextField(
+                    value = account,
+                    onValueChange = { account = it },
+                    placeholder = "校园账号",
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
-            Spacer(Modifier.width(Gap.md))
-            /*
-             * 这颗勾**不用 Miuix 的 Switch**。装机回读发现"勾着没存上"，
-             * 而两个分支都会写盘（不勾也要显式清掉），所以只要 `rememberPw` 是 true
-             * 就一定有键 —— 键完全不存在，说明进来的那次 `rememberPw` 是 false。
-             * 默认值是 true，中间只可能有一次我没预期的回调把它翻掉。
-             * 与其去猜第三方组件在组合期会不会自己发一次 onCheckedChange，
-             * 不如把这一格换成**只有我们自己那下 clickable 才改状态**的样子。
-             */
-            Box(
-                Modifier
-                    .size(30.dp)
-                    .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.offFill, Radius.field)
-                    .pressClick { rememberPw = !rememberPw },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (rememberPw) "✓" else "",
-                    fontSize = Type.title, color = Palette.Cream, fontWeight = FontWeight.Medium,
+                GlasmioTextField(
+                    value = secret,
+                    onValueChange = { secret = it },
+                    placeholder = "密码",
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    modifier = Modifier.fillMaxWidth(),
                 )
+                // 「记住密码」不是方便少打六个字：校方那条 refresh.do 服务端是死的，
+                // 续期只能拿口令重登一次。不记住 = 每 8 小时、以及每次被顶号，都得手打。
+                Row(
+                    Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("记住密码", fontSize = Type.body, color = ink.strong, modifier = Modifier.weight(1f))
+                    /*
+                     * 这颗开关**不用第三方 Switch**：装机回读发现"勾着没存上"，
+                     * 而两个分支都会写盘（不勾也要显式清掉），所以只要 `rememberPw` 是 true
+                     * 就一定有键 —— 键完全不存在，说明进来的那次 `rememberPw` 是 false。
+                     * 与其去猜第三方组件在组合期会不会自己发一次 onCheckedChange，
+                     * 不如把这一格做成**只有我们自己那下 pressClick 才改状态**的形状。
+                     */
+                    Box(
+                        Modifier
+                            .size(46.dp, 28.dp)
+                            .clip(Radius.pill)
+                            .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.offFill)
+                            .pressClick { rememberPw = !rememberPw },
+                    ) {
+                        Box(
+                            Modifier
+                                .align(if (rememberPw) Alignment.CenterEnd else Alignment.CenterStart)
+                                .padding(2.dp)
+                                .size(24.dp)
+                                .background(Palette.Cream, CircleShape),
+                        )
+                    }
+                }
             }
         }
         Spacer(Modifier.height(Gap.lg))
@@ -415,15 +439,19 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             Text(it, fontSize = Type.body, color = MaterialTheme.colorScheme.error, lineHeight = Type.bodyLine)
         }
         Spacer(Modifier.height(Gap.lg))
-        Text(
-            text = "先不登录，随便看看",
-            fontSize = Type.body,
-            color = ink.muted,
-            modifier = Modifier.pressClick(shrink = false) {
-                scope.launch { graph.session.browseWithoutLogin() }
-                onBack()
-            }.padding(vertical = Gap.sm),
-        )
+        Spacer(Modifier.height(Gap.xl))
+        // 次路居中:它跟「登录」不是同一件事(等于放弃登录),挨着主按钮左对齐会被当成第二颗按钮。
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "先不登录，随便看看",
+                fontSize = Type.body,
+                color = ink.muted,
+                modifier = Modifier.pressClick(shrink = false) {
+                    scope.launch { graph.session.browseWithoutLogin() }
+                    onBack()
+                }.padding(vertical = Gap.sm),
+            )
+        }
     }
 }
 
