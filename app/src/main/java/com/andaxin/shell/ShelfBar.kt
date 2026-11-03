@@ -80,6 +80,7 @@ import kotlin.math.abs
  *   ② 标签层   五格内容录进 tabsBackdrop —— 珠子的背板
  *   ③ 水珠    drawPlainBackdrop(页面+标签 合成层) + TabBarIndicator 透镜,
  *             press 抬起(liftProgress)、scaleX/Y 走引擎的双阻尼弹簧;
+ *             按住纵向鼓过栏高 ——「水珠不局限在栏里」(用户 11-03);
  *             按住珠子横向拖 = 甩珠子换页(onDrag 换算格宽,onDragStopped 落格)
  *   ④ 亮副本   跟珠子同位移同形变,再画一遍选中那枚压在珠子上 ——
  *             不然选中那枚会被珠子里那片页面糊掉（老坑,和旧版同一个解法）
@@ -136,6 +137,10 @@ fun ShelfBar(
         val stepPx = with(density) { cellW.toPx() }
         val pillPx = with(density) { pillW.toPx() }
         val pillRadiusPx = with(density) { (pillH / 2).toPx() }
+        // 珠子按住时的鼓包：珠子本身 50dp、栏高 58dp,纵向 ×1.36 = 68dp → 上下各探出 5dp,
+        // 水珠不再被栏剪住。横向只留 ×1.08 —— 一格才 71dp 宽,鼓过头会压到隔壁格的标签。
+        val bulgeX = 1.08f
+        val bulgeY = 1.36f
         // 珠子/透镜左缘位移：格中心 - 珠宽一半（start 侧留 3dp 内衬后按左缘定位）
         val leftPx = { v: Float -> (stepPx * v.coerceIn(0f, (pageCount - 1).toFloat()) + stepPx / 2f - pillPx / 2f).coerceAtLeast(0f) }
 
@@ -147,10 +152,10 @@ fun ShelfBar(
                 valueRange = 0f..(pageCount - 1).toFloat(),
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
-                // 库那档 78/56=1.392 会把珠子顶出 58dp 的栏：鼓出去的部分采的是栏外
-                // 未磨砂的页面正文（首页那行黑字被拉成一道黑弧）。50dp 珠 * 1.14 = 57dp,
-                // 恰好留在栏内 —— 抬起还在,黑弧没了。
-                pressedScale = 1.14f,
+                // 按下形变整档交给渲染层自己算（见 bulgeY/bulgeX）：引擎只有一条统一缩放
+                // （scaleX/scaleY 同目标值,demo 那档是 78/56=1.392）,而我们要的是「纵向鼓出
+                // 栏外、横向几乎不动」。这里留 1f,按下只剩引擎自带的抬升 pressProgress。
+                pressedScale = 1f,
                 onDragStarted = {},
                 onDrag = { _, dragAmount ->
                     updateValue(
@@ -319,8 +324,8 @@ fun ShelfBar(
                             translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
                             alpha = liftSmooth.value
                             val s = liftSmooth.value
-                            scaleX = 1f + ((if (drag.scaleX.isFinite()) drag.scaleX else 1f) - 1f) * s
-                            scaleY = 1f + ((if (drag.scaleY.isFinite()) drag.scaleY else 1f) - 1f) * s
+                            scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) * (1f + (bulgeX - 1f) * s)
+                            scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) * (1f + (bulgeY - 1f) * s)
                         }
                         .size(width = pillW, height = pillH)
                         .drawPlainBackdrop(
