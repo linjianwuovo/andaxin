@@ -81,6 +81,8 @@ import kotlin.math.abs
  *   ③ 水珠    drawPlainBackdrop(页面+标签 合成层) + TabBarIndicator 透镜,
  *             press 抬起(liftProgress)、scaleX/Y 走引擎的双阻尼弹簧;
  *             按住纵向鼓过栏高 ——「水珠不局限在栏里」(用户 11-03);
+ *             按住的面提亮 + 栏沿外一颗软投影 ——「和酷安一样就行」(用户 11-03,
+ *             酷安实测:那格的面 226→252、栏外多一条 ~5dp 暗带);
  *             按住珠子横向拖 = 甩珠子换页(onDrag 换算格宽,onDragStopped 落格)
  *   ④ 亮副本   跟珠子同位移同形变,再画一遍选中那枚压在珠子上 ——
  *             不然选中那枚会被珠子里那片页面糊掉（老坑,和旧版同一个解法）
@@ -326,6 +328,15 @@ fun ShelfBar(
                             val s = liftSmooth.value
                             scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) * (1f + (bulgeX - 1f) * s)
                             scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) * (1f + (bulgeY - 1f) * s)
+                            // 抬起阴影（借酷安的面色，11-03）：酷安按住时栏沿之外会透出
+                            // 一条 ~5dp 的暗带（实测页面 241 → 222）。库没有这一档,
+                            // 就给珠子挂一颗同形胶囊的投影：高度随按压进度起落、
+                            // 又跟着上面两条缩放一起放大 —— 鼓出栏外的那 5dp 因此有边,
+                            // 不再是硬切的色块。
+                            // 7dp 实测偏重：浅色白页面在珠下压到 -41,而酷安那条只有 -19,
+                            // 收到 4dp。另:平台的投影只往下方投,栏沿「上方」量不到暗带。
+                            shape = Capsule()
+                            shadowElevation = 4.dp.toPx() * s
                         }
                         .size(width = pillW, height = pillH)
                         .drawPlainBackdrop(
@@ -342,9 +353,22 @@ fun ShelfBar(
                                 }
                             },
                             onDrawSurface = {
+                                // 按下提亮（借酷安的面色，11-03）：酷安按住时那一格的面从
+                                // 226 抬到近纯白 252。库的镜头自己只带一点抬亮
+                                // （浅色实测 172 → 186）,差的那一截用按压进度缩放的白补上。
+                                val s = liftSmooth.value
                                 if (!refractive) {
                                     drawRoundRect(
-                                        color = Color.White.copy(alpha = if (ink.dark) 0.10f else 0.42f),
+                                        color = Color.White.copy(
+                                            alpha = (if (ink.dark) 0.10f else 0.42f) * (1f + 0.30f * s),
+                                        ),
+                                        cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
+                                    )
+                                } else if (s > 0.001f) {
+                                    drawRoundRect(
+                                        color = Color.White.copy(
+                                            alpha = (if (ink.dark) 0.07f else 0.14f) * s,
+                                        ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
                                 }
