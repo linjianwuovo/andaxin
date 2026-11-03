@@ -124,6 +124,11 @@ fun ShelfBar(
     val currentRef = rememberUpdatedState(current)
     val density = LocalDensity.current
 
+    // 橡皮筋动画量（正式分支底栏的手感）：手势里累加这一趟的横向位移，抬手弹回 0。
+    // 换算成像素偏移放在 BoxWithConstraints 里（要栏宽才能饱和），见 panelShift。
+    val offsetAnimation = remember { Animatable(0f) }
+    val rubberBandPx = with(density) { 4.dp.toPx() }
+
     val pageBackdrop = LocalGlassBackdrop.current
     val tabsBackdrop = rememberLayerBackdrop()
     val ownBarBackdrop = rememberLayerBackdrop()
@@ -137,6 +142,19 @@ fun ShelfBar(
             .navigationBarsPadding()
             .padding(horizontal = 26.dp, vertical = Gap.sm),
     ) {
+        // 橡皮筋（正式分支 main 底栏的手感）：拖着珠子走的时候整条栏跟着手指偏一点点 ——
+        // 偏移量取「累计位移 / 栏宽」的饱和比例，最多 4dp（main 那份 PANEL_RUBBER_BAND），
+        // 抬手弹回 0。main 用的是 kyant 的 EaseOut，ios 这条链上没有那条曲线，
+        // 用等价的三次缓出代替：越往外越拉不动。
+        val barWidthPx = with(density) { maxWidth.toPx() }
+        val panelShift by remember(density, barWidthPx) {
+            derivedStateOf {
+                val f = (offsetAnimation.value / barWidthPx).coerceIn(-1f, 1f)
+                val a = abs(f)
+                val eased = 1f - (1f - a) * (1f - a) * (1f - a)
+                (if (f < 0f) -1f else 1f) * rubberBandPx * eased
+            }
+        }
         val cellW = maxWidth / pageCount
         // 酷安实测：那颗胶囊 281px 宽 vs 格 254px = 格的 111%（略微压到邻格上）。
         // 我们原来是 cellW - 6dp（= 91%），照抄成 cellW + 6dp。
@@ -260,7 +278,8 @@ fun ShelfBar(
                     Modifier
                         .align(Alignment.CenterStart)
                         .graphicsLayer {
-                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
+                            translationX = panelShift +
+                                leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
                                 with(density) { (softSpread / 2).toPx() }
                             val s = liftSmooth.value
                             // 酷安按住那圈柔影实测：栏沿外上方页面 241→233（−8）、下方 245→233（−14），
@@ -298,6 +317,7 @@ fun ShelfBar(
                 .fillMaxWidth()
                 .height(58.dp)
                 .align(Alignment.Center)
+                .graphicsLayer { translationX = panelShift }
                 .layerBackdrop(ownBarBackdrop)
                 .drawPlainBackdrop(
                     backdrop = if (solid) emptyBackdrop() else pageBackdrop,
@@ -364,7 +384,8 @@ fun ShelfBar(
                     Modifier
                         .align(Alignment.CenterStart)
                         .graphicsLayer {
-                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
+                            translationX = panelShift +
+                                leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
                                 with(density) { haloSpread.toPx() }
                             alpha = 0.16f * liftSmooth.value
                         }
@@ -386,7 +407,8 @@ fun ShelfBar(
                     Modifier
                         .align(Alignment.CenterStart)
                         .graphicsLayer {
-                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
+                            translationX = panelShift +
+                                leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
                             val s = liftSmooth.value
                             alpha = s
                             // wob 只取弹簧「冲过 1」的那一段：稳定后归 0。
@@ -486,6 +508,7 @@ fun ShelfBar(
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .padding(top = 5.dp, bottom = 7.dp)
+                    .graphicsLayer { translationX = panelShift }
                     .layerBackdrop(tabsBackdrop)
                     // 按下即抬起：引擎自带的 drag.modifier 只在越过拖拽阈值后才 press,
                     // 静止按住永远不抬 —— iOS 那颗是按下就抬。这里自己收手势,走 Initial
@@ -525,12 +548,17 @@ fun ShelfBar(
                                         (drag.targetValue + dx / stepPx)
                                             .coerceIn(0f, (pageCount - 1).toFloat()),
                                     )
+                                    // 橡皮筋：这一帧的增量立刻累进偏移，动画只会把它拖慢
+                                    scope.launch { offsetAnimation.snapTo(offsetAnimation.value + dx) }
                                 }
                             }
                             val target = drag.targetValue.roundToInt().coerceIn(0, pageCount - 1)
                             if (target != currentRef.value) onSelect(target)
                             drag.updateValue(target.toFloat())
                             drag.release()
+                            scope.launch {
+                                offsetAnimation.animateTo(0f, androidx.compose.animation.core.spring(1f, 300f))
+                            }
                         }
                     },
             ) {
@@ -550,6 +578,8 @@ fun ShelfBar(
                         iconAccentRes = iconsAccent.getOrElse(i) { 0 },
                         iconOnRes = iconsOn.getOrElse(i) { 0 },
                         badge = badges.getOrElse(i) { 0 },
+                        // 只有被水珠压住的那一格放大，同 main 那条 lerp 式子，量收到 10%
+                        pressScale = { 1f + 0.10f * fill() * liftSmooth.value },
                     )
                 }
             }
@@ -573,6 +603,8 @@ private fun ShelfCell(
     iconOnRes: Int = 0,
     badge: Int = 0,
     interactive: Boolean = true,
+    /** 按住时这一格跟着放大多少（正式分支的手感：被水珠压住的那格被托起来） */
+    pressScale: () -> Float = { 1f },
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -581,6 +613,11 @@ private fun ShelfCell(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .fillMaxHeight()
+            .graphicsLayer {
+                val k = pressScale()
+                scaleX = k
+                scaleY = k
+            }
             .then(
                 if (interactive) Modifier.clickable(
                     interactionSource = remember(label) { MutableInteractionSource() },
