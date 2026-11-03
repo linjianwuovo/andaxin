@@ -150,7 +150,9 @@ fun ShelfBar(
         // 「同样形状换个材质」肉眼读成没动。酷安那边静止根本没有胶囊,按下才长出一颗亮的。
         // 所以这版给一个「量」的变化：整颗均匀放大 10%（50→55dp,仍在 58dp 栏内、不鼓出栏外）,
         // 面提亮推到接近纯白,柔影加重到看得见；过冲那一段仍横向摊开、竖向压扁（体积近似守恒）。
-        val pressGrow = 0.14f   // 按住时整颗放大 14%（50→57dp,仍不出 58dp 栏；挂在 liftSmooth 上）
+        // 按住时整颗放大 10%：50×1.10 = 55dp 高、66×1.10 = 72.6dp 宽 —— 正好一格（酷安按住那块
+        // 亮白实测就是整格宽 254px = 72.6dp）,再大就压到邻格上了。
+        val pressGrow = 0.10f
         val wobbleX = 0.30f     // 冲过头时横向摊开 30%（wob×阻尼比≈+6% 峰值）
         val wobbleY = 0.24f     // 同时竖向压扁,体积别涨
         val trailMax = 0.12f    // 被甩着走时沿运动方向的拉长上限
@@ -307,7 +309,11 @@ fun ShelfBar(
                 Box(Modifier.fillMaxWidth().fillMaxHeight()
                     .background(ink.offFill.copy(alpha = if (ink.dark) 0.94f else 0.90f), Capsule()))
             } else {
-                // 静止的选中透镜：按住后珠子抬起接管,它退场（alpha=1-press）
+                // 静止的选中透镜：按住后珠子抬起接管,它退场（alpha=1-press）。
+                // 11-03 五次收口（用户「你自己触摸看看」）：这层以前是 0.30/0.18,静止时选中格
+                // 恒有一颗比栏体暗 27 的灰胶囊（实测 199 vs 栏 226）,按下只是「同一形状换材质」——
+                // 酷安静止根本没有胶囊（图标着色就够了）,按下才长出一颗亮的。所以压到 0.10/0.07:
+                // 静止几乎看不出（栏 226 → 217）,按下那颗白胶囊才是唯一的形。
                 Box(
                     Modifier
                         .align(Alignment.CenterStart)
@@ -319,7 +325,16 @@ fun ShelfBar(
                             alpha = if (refractive) 1f - liftSmooth.value else 1f
                         }
                         .size(width = pillW, height = pillH)
-                        .background(ink.ghost.copy(alpha = if (ink.dark) 0.18f else 0.30f), Capsule()),
+                        // 液态档彻底不画静止胶囊（11-03 六次收口）：酷安静止时选中格上什么
+                        // 都没有（实测图标容器与标签底下就是栏体 226 本身,没有第二块面）,
+                        // 按下才长出一颗 252 的白胶囊。我们之前那颗灰饼让人读成「两颗胶囊
+                        // 换材质」。毛玻璃档珠子只是清水底（白压白看不见）—— 那边必须留着。
+                        .background(
+                            ink.ghost.copy(
+                                alpha = if (refractive) 0f else if (ink.dark) 0.18f else 0.30f,
+                            ),
+                            Capsule(),
+                        ),
                 )
             }
         }
@@ -343,16 +358,18 @@ fun ShelfBar(
                             // 入场那段（s < 1）不参与摊开/压扁 —— 否则珠子会在淡入途中被拉成竖的,
                             // 又变成用户说的那种膨胀；放大扛在 s 上,入场就能看出在长。
                             val wob = (s - 1f).coerceAtLeast(0f)
-                            // 放大挂在 s 上（s 会冲过 1 再回坐,放大跟着冲一下=有弹性）,
-                            // 摊开/压扁只取冲过的那一段（见常量处注释）。
-                            val grow = 1f + (pressGrow + wobbleX) * s.coerceAtMost(1.25f)
+                            // 11-03 五次收口（用户「你自己触摸看看」）：上一版把 wobbleX/Y 直接乘在 s 上,
+                            // 弹簧落定 s=1 时摊开/压扁全量留下 —— 按住稳定态是 66dp×1.44 / 50dp×0.90
+                            // 的一块扁饼（实测 82dp 宽、1.5dp 才高）,越看越难看。wobble 只该取
+                            // 「冲过 1」的那一段（上面那个 wob）,落定后归 0,只剩均匀放大。
+                            val grow = 1f + pressGrow * s.coerceAtMost(1.1f)
                             // 入场「从无到有」那一段：s 0→1 时珠子从 78% 长到 100%,
                             // 配合 alpha=s 才读成一颗弹出来的水珠,而不是原地换材质（酷安那颗就是长出来的）。
                             val pop = 0.78f + 0.22f * s.coerceIn(0f, 1f)
                             scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) *
-                                grow * pop * (1f + trail)
+                                grow * pop * (1f + wobbleX * wob) * (1f + trail)
                             scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) *
-                                (1f + (pressGrow - wobbleY) * s.coerceAtMost(1.25f)) * pop * (1f - trail * 0.55f)
+                                grow * pop * (1f - wobbleY * wob) * (1f - trail * 0.55f)
                             // 抬起阴影整档交给 ② 那片柔影（11-03 二次收口）：平台 elevation
                             // 只往栏下投,既画不到栏沿上外,实测 −31 也比酷安 −19 重。
                         }
