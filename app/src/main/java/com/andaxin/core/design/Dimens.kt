@@ -52,6 +52,12 @@ object Gap {
  */
 object Type {
     val display = 22.sp
+
+    /**
+     * 二级屏顶上的大标题。iOS 的 largeTitle 是 34pt，照抄到我们屏上「报修单 10-14」
+     * 这种带日期的标题会在 1440px 里折行，所以收一档到 30。
+     */
+    val largeTitle = 30.sp
     val num = 26.sp
     val title = 16.sp
     val body = 14.sp

@@ -1021,7 +1021,7 @@ fun ScaffoldPage(
                     ) {
                         // 给了标题才画：登录那一屏自己带一枚图标和名字，不需要顶端再挂一个"登录"。
                         if (title.isNotBlank()) {
-                            Text(title, fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+                            Text(title, fontSize = Type.largeTitle, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
                             Spacer(Modifier.height(Gap.lg))
                         }
                         content()

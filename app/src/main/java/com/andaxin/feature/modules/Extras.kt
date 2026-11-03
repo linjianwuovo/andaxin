@@ -88,7 +88,7 @@ fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
     ScaffoldPage(title = "更多功能", onBack = onBack) {
         Sheet {
             MORE.forEachIndexed { i, (label, route) ->
-                RowLine(title = label, right = "›", onClick = { open(route) })
+                RowLine(title = label, onClick = { open(route) })
                 if (i != MORE.lastIndex) Hairline()
             }
         }

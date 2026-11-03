@@ -107,7 +107,7 @@ fun AboutScreen(
                 if (i > 0) {
                     Spacer(Modifier.height(Gap.xxs)); Hairline(); Spacer(Modifier.height(Gap.xxs))
                 }
-                RowLine(row.name, right = "›", onClick = {
+                RowLine(row.name, onClick = {
                     if (row.external) openOutside(context, row.url, open) else open("web/" + encodeUrl(row.url))
                 })
             }

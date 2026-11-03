@@ -215,7 +215,6 @@ private fun LiveUpdateRows() {
         // 所以先试专门那条，拉不起来才退回通知页、再退到应用信息页。三条全空就明说没打开。
         sub = if (jumped) "总开关、允许哪些应用上岛，都在那一页。"
             else "那几页这台机器都没应，去系统设置里搜「流体云」。",
-        right = "›",
         onClick = { jumped = LiveUpdates.openPromotedSettings(ctx) },
     )
     if (!canPost && LiveUpdates.supported()) {

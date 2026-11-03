@@ -197,7 +197,7 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 
         if (!session.loggedIn) {
             Spacer(Modifier.height(Gap.md))
-            RowLine("去登录", sub = "回到登录那一屏", right = "›", onClick = {
+            RowLine("去登录", sub = "回到登录那一屏", onClick = {
                 scope.launch { graph.session.leaveBrowsing() }
             })
         }

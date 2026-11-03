@@ -230,6 +230,10 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
  * ② 主文字最多两行、副文字一行，超了就省略号 —— 不许把行高撑开；
  * ③ 副文字和主文字之间只留 2dp，行内上下 padding 走 [Rhythm.rowV]，
  *    这样一屏能多塞三四条，滚动距离少一半。
+ *
+ * ④ 可点的行自己在尾巴上补一颗 `›`（iOS 那种 disclosure）：以前只有五处手写
+ *    `right = "›"`，其余可点的行光秃秃的，两种形状在同一屏里混着。现在统一在这里画，
+ *    调用点再写 `right = "›"` 就是重复，已清掉。
  */
 @Composable
 fun RowLine(
@@ -294,6 +298,10 @@ fun RowLine(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = 150.dp),
             )
+        }
+        if (onClick != null) {
+            Spacer(Modifier.width(Gap.xs))
+            Text("›", fontSize = Type.title, color = ink.faint)
         }
     }
 }
