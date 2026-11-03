@@ -138,7 +138,9 @@ fun ShelfBar(
             .padding(horizontal = 26.dp, vertical = Gap.sm),
     ) {
         val cellW = maxWidth / pageCount
-        val pillW = cellW - 6.dp
+        // 酷安实测：那颗胶囊 281px 宽 vs 格 254px = 格的 111%（略微压到邻格上）。
+        // 我们原来是 cellW - 6dp（= 91%），照抄成 cellW + 6dp。
+        val pillW = cellW + 6.dp
         val pillH = 50.dp
         val stepPx = with(density) { cellW.toPx() }
         val pillPx = with(density) { pillW.toPx() }
@@ -152,8 +154,11 @@ fun ShelfBar(
         // 面提亮推到接近纯白,柔影加重到看得见；过冲那一段仍横向摊开、竖向压扁（体积近似守恒）。
         // 按住时整颗放大 10%：50×1.10 = 55dp 高、66×1.10 = 72.6dp 宽 —— 正好一格（酷安按住那块
         // 亮白实测就是整格宽 254px = 72.6dp）,再大就压到邻格上了。
-        val pressGrow = 0.10f
-        val wobbleX = 0.30f     // 冲过头时横向摊开 30%（wob×阻尼比≈+6% 峰值）
+        // 11-03 七次收口（用户「求你了照抄酷安吧」）：酷安静止与按住那颗胶囊**外轮廓一样大**
+        // （实测都是 x84..365 / 281px 宽），差别只在「面」：静止 226 的暗面 → 按住 252 的白面，
+        // 外加一圈柔影。所以放大/弹入整条撤掉，只留过冲那一段的微小摊开（灵动感）当余韵。
+        val pressGrow = 0f
+        val wobbleX = 0.18f     // 冲过头时横向摊开 18%（wob×阻尼比≈+4% 峰值）
         val wobbleY = 0.24f     // 同时竖向压扁,体积别涨
         val trailMax = 0.12f    // 被甩着走时沿运动方向的拉长上限
         val shadowGrow = 1.04f  // 柔影跟着稍微摊开一点,别跟着珠子一起鼓
@@ -258,11 +263,12 @@ fun ShelfBar(
                             translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
                                 with(density) { (softSpread / 2).toPx() }
                             val s = liftSmooth.value
-                            // 峰值 0.10、整颗上移 8dp：实测 0.15/−14dp 那档是栏上 −21.8、栏下 −9.6
-                            // （酷安 −13.4 / −19,上重下轻）,0.10 且下移一点正好两边都在 −14 上下。
-                            // 原来 0.06 只有 −8.7,肉眼几乎看不见,用户说「没区别」。
-                            translationY = -with(density) { 8.dp.toPx() }
-                            alpha = 0.14f * s
+                            // 酷安按住那圈柔影实测：栏沿外上方页面 241→233（−8）、下方 245→233（−14），
+                            // 上轻下重。所以影心略微下移 3dp、不透明度 0.12 —— 上一版 0.14/−8dp 是上重下轻。
+                            translationY = with(density) { 3.dp.toPx() }
+                            // 11-03 八次收口：实测我们 −11.5（上）/ −13.3（下）比酷安 −8 / −12.5 重，
+                            // 收到 0.10 后与它同档（栏外那圈只负责栏「外」，栏内的压暗改由 ②b 画）。
+                            alpha = 0.10f * s
                             scaleX = 1f + (shadowGrow - 1f) * s
                             scaleY = 1f + (shadowGrow - 1f) * s
                         }
@@ -282,10 +288,10 @@ fun ShelfBar(
         // 环本来就不会有（它是导航材质画的）,而磨砂、半透明、深浅色都是自己的。
         // onDrawSurface 是 DrawScope 不是 composable,颜色必须在组合期读好再闭包进去
         val shellTint = LocalGlassColors.current.container.copy(alpha = if (solid) 0.96f else 0.78f)
-        // 浅色下把栏体压深一档（11-03 五次收口）：酷安实测「栏体 226 / 页面 242」——它的栏比
-        // 页面暗,白胶囊按下去才弹得出来。我们的栏 252 比页面 242 还亮,白珠子按上去只能融进
-        // 白栏（实测面只 +13）,用户读成「按下去和没按有什么区别」。这层黑纱把栏体压到 ~227。
-        val shellVeil = if (solid || ink.dark) 0f else 0.10f
+        // 11-03 七次收口：撤掉栏体黑纱。重采酷安三帧（静止/按住/松手）后看清了——
+        // 它的**栏体是 252**（比页面 241 还亮），那道 226 是**选中胶囊的暗面**，我上一版
+        // 把这两个量反着用了：栏体压到 226、胶囊又抹掉，正好照抄反了。
+        val shellVeil = 0f
         val blurPx = with(density) { spec.blur.toPx() }
         Box(
             modifier = Modifier
@@ -325,16 +331,45 @@ fun ShelfBar(
                             alpha = if (refractive) 1f - liftSmooth.value else 1f
                         }
                         .size(width = pillW, height = pillH)
-                        // 液态档彻底不画静止胶囊（11-03 六次收口）：酷安静止时选中格上什么
-                        // 都没有（实测图标容器与标签底下就是栏体 226 本身,没有第二块面）,
-                        // 按下才长出一颗 252 的白胶囊。我们之前那颗灰饼让人读成「两颗胶囊
-                        // 换材质」。毛玻璃档珠子只是清水底（白压白看不见）—— 那边必须留着。
+                        // 11-03 七次收口：酷安静止时**有**一颗常驻胶囊，只是它是暗面不是亮面 ——
+                        // 实测栏体 252、选中格那颗 226（−26）。按住时这颗暗面淡出、白珠子接管。
+                        // 所以这里对液态档给一层黑纱 0.10（252×0.90 ≈ 227），松手再回来。
                         .background(
-                            ink.ghost.copy(
-                                alpha = if (refractive) 0f else if (ink.dark) 0.18f else 0.30f,
-                            ),
+                            if (refractive) {
+                                (if (ink.dark) Color.White.copy(alpha = 0.07f) else Color.Black.copy(alpha = 0.10f))
+                            } else {
+                                ink.ghost.copy(alpha = if (ink.dark) 0.18f else 0.30f)
+                            },
                             Capsule(),
                         ),
+                )
+            }
+        }
+
+        // ②b 落在栏面上的暖影（11-03 八次收口，照酷安）：酷安按住那颗白胶囊时,栏体在胶囊
+        // 周围一圈明显压暗 —— 横剖面 x380（胶囊右缘外 18px）实测 252 → 234,最深 −18,到 y3050
+        // 才回 252。我们上一版只有 ② 那片「画在壳后面」的柔影,被 78% 的栏体色板 attenuate 掉,
+        // 同一位置只有 −2,等于没有。所以这一层画在 ① 壳**之后**、③ 水珠之前,并 clip 成栏的胶囊
+        // 形状 —— 只压栏面,不漏到栏外页面（栏外那圈仍由 ② 负责）。
+        if (!solid && !ink.dark) {
+            val haloSpread = 30.dp
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .align(Alignment.Center)
+                    .clip(Capsule()),
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .graphicsLayer {
+                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
+                                with(density) { haloSpread.toPx() }
+                            alpha = 0.16f * liftSmooth.value
+                        }
+                        .requiredSize(width = pillW + haloSpread * 2, height = pillW + haloSpread * 2)
+                        .background(Brush.radialGradient(colors = listOf(Color.Black, Color.Transparent))),
                 )
             }
         }
@@ -362,10 +397,10 @@ fun ShelfBar(
                             // 弹簧落定 s=1 时摊开/压扁全量留下 —— 按住稳定态是 66dp×1.44 / 50dp×0.90
                             // 的一块扁饼（实测 82dp 宽、1.5dp 才高）,越看越难看。wobble 只该取
                             // 「冲过 1」的那一段（上面那个 wob）,落定后归 0,只剩均匀放大。
+                            // 酷安那颗按住前后外轮廓一样大（见 pressGrow 注释），所以这里不再放大
+                            // 也不再从 78% 弹出来 —— 变化全交给「面」的亮度（226 → 252）与那圈柔影。
                             val grow = 1f + pressGrow * s.coerceAtMost(1.1f)
-                            // 入场「从无到有」那一段：s 0→1 时珠子从 78% 长到 100%,
-                            // 配合 alpha=s 才读成一颗弹出来的水珠,而不是原地换材质（酷安那颗就是长出来的）。
-                            val pop = 0.78f + 0.22f * s.coerceIn(0f, 1f)
+                            val pop = 1f
                             scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) *
                                 grow * pop * (1f + wobbleX * wob) * (1f + trail)
                             scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) *
@@ -374,6 +409,11 @@ fun ShelfBar(
                             // 只往栏下投,既画不到栏沿上外,实测 −31 也比酷安 −19 重。
                         }
                         .size(width = pillW, height = pillH)
+                        // 11-03 八次收口：库镜头在胶囊左弧做 RGB 分离，面推到 0.95 的近纯白后
+                        // 左缘外 1~2px 冒出一条 (27,27,27) 的硬缝（浅色实测 x89；右缘没有；深色也有）。
+                        // 镜头不收色散参数,只能在渲染侧把溢出那一圈裁掉。clip 必须排在 drawPlainBackdrop
+                        // **之前**（链上更外）才裁得到它自己画的那一笔,排在后面只能裁子节点。
+                        .clip(Capsule())
                         .drawPlainBackdrop(
                             backdrop = if (refractive) sourceBackdrop else emptyBackdrop(),
                             shape = { Capsule() },
@@ -397,15 +437,29 @@ fun ShelfBar(
                                         color = Color.White.copy(
                                             // 深色的白要收着给（11-03）：标签现在压在珠子上方、不再被
                                             // 洗白,珠面一白 #007AFF 就掉对比（实测 0.30 → 面 97、对比 1.7）。
-                                            // 收到 0.18 只留「亮起来」的信号,读数交给放大与柔影。
                                             alpha = (if (ink.dark) 0.18f else 0.95f) * (1f + 0.15f * s),
                                         ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
                                 } else if (s > 0.001f) {
+                                    // 酷安按住那颗面实测就是近纯白 252（栏体也是 252，等于把那一格的
+                                    // 暗面整个提亮成白）。0.95 的足够把镜头自带的一点底色推到 252。
                                     drawRoundRect(
                                         color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.13f else 0.85f) * s,
+                                            alpha = (if (ink.dark) 0.13f else 0.95f) * s,
+                                        ),
+                                        cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
+                                    )
+                                    // 顶缘内阴影：酷安那颗按压胶囊上缘是 232 → 中段 252 的渐变
+                                    // （实测顶 16dp 内 +20）。不加这条，白胶囊上缘会像贴了张纸。
+                                    drawRoundRect(
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Black.copy(alpha = (if (ink.dark) 0.16f else 0.09f) * s),
+                                                Color.Transparent,
+                                            ),
+                                            startY = 0f,
+                                            endY = size.height * 0.42f,
                                         ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
