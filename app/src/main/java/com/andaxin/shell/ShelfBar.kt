@@ -80,15 +80,16 @@ import kotlin.math.abs
  * DampedDragAnimation + nativeControlLens(TabBarIndicator)，和库自家导航条同一配方。
  *
  *   ① 壳      GlassSurface(RegularSmall, frost 10, 折射归零) —— 静止的磨砂轨道
- *   ② 标签层   五格内容录进 tabsBackdrop —— 珠子的背板
+ *   ② 标签层   五格内容录进 tabsBackdrop —— 珠子的背板（内容本身画在 ④ 那层）
  *   ③ 水珠    drawPlainBackdrop(页面+标签 合成层) + TabBarIndicator 透镜,
  *             press 抬起(liftProgress)、scaleX/Y 走引擎的双阻尼弹簧;
  *             按住纵向鼓过栏高 ——「水珠不局限在栏里」(用户 11-03);
  *             按住的面提亮 + 栏沿外一颗软投影 ——「和酷安一样就行」(用户 11-03,
  *             酷安实测:那格的面 226→252、栏外多一条 ~5dp 暗带);
  *             按住珠子横向拖 = 甩珠子换页(onDrag 换算格宽,onDragStopped 落格)
- *   ④ 亮副本   跟珠子同位移同形变,再画一遍选中那枚压在珠子上 ——
- *             不然选中那枚会被珠子里那片页面糊掉（老坑,和旧版同一个解法）
+ *   ④ 标签层   图标/文字永远压在玻璃之上（酷安/iOS 同构）；它单独一层、
+ *             排在 ③ 水珠之后才画得上去。原来这层在壳里、被珠子盖住,
+ *             按住时那 0.85 的白直接压蓝图标 ⇒「首页 看不见」(用户 11-03 贴图)
  *
  * 老规矩没动：三层 vector 图标、99+ 角标、双份文字淡入淡出、点中才震、
  * 玻璃里不留水波纹（indication=null）、珠子是栏体的兄弟节点不被壳剪。
@@ -321,7 +322,94 @@ fun ShelfBar(
                         .background(ink.ghost.copy(alpha = if (ink.dark) 0.18f else 0.30f), Capsule()),
                 )
             }
-            // ② 标签层（录进 tabsBackdrop）
+        }
+
+        if (!solid) {
+            // ③ 水珠：栏体的兄弟节点,不被壳剪;手势挂在珠子上（按住拖=甩珠）
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .align(Alignment.Center),
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .graphicsLayer {
+                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
+                            val s = liftSmooth.value
+                            alpha = s
+                            // wob 只取弹簧「冲过 1」的那一段：稳定后归 0。
+                            // 入场那段（s < 1）不参与摊开/压扁 —— 否则珠子会在淡入途中被拉成竖的,
+                            // 又变成用户说的那种膨胀；放大扛在 s 上,入场就能看出在长。
+                            val wob = (s - 1f).coerceAtLeast(0f)
+                            // 放大挂在 s 上（s 会冲过 1 再回坐,放大跟着冲一下=有弹性）,
+                            // 摊开/压扁只取冲过的那一段（见常量处注释）。
+                            val grow = 1f + (pressGrow + wobbleX) * s.coerceAtMost(1.25f)
+                            // 入场「从无到有」那一段：s 0→1 时珠子从 78% 长到 100%,
+                            // 配合 alpha=s 才读成一颗弹出来的水珠,而不是原地换材质（酷安那颗就是长出来的）。
+                            val pop = 0.78f + 0.22f * s.coerceIn(0f, 1f)
+                            scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) *
+                                grow * pop * (1f + trail)
+                            scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) *
+                                (1f + (pressGrow - wobbleY) * s.coerceAtMost(1.25f)) * pop * (1f - trail * 0.55f)
+                            // 抬起阴影整档交给 ② 那片柔影（11-03 二次收口）：平台 elevation
+                            // 只往栏下投,既画不到栏沿上外,实测 −31 也比酷安 −19 重。
+                        }
+                        .size(width = pillW, height = pillH)
+                        .drawPlainBackdrop(
+                            backdrop = if (refractive) sourceBackdrop else emptyBackdrop(),
+                            shape = { Capsule() },
+                            effects = {
+                                if (refractive) {
+                                    nativeControlLens(
+                                        style = NativeControlLensStyle.TabBarIndicator,
+                                        liftProgress = liftSmooth.value,
+                                        isDark = ink.dark,
+                                        liftedContent = tabsBackdrop,
+                                    )
+                                }
+                            },
+                            onDrawSurface = {
+                                // 按下提亮（借酷安的面色，11-03）：酷安按住时那一格的面从
+                                // 226 抬到近纯白 252。库的镜头自己只带一点抬亮
+                                // （浅色实测 172 → 186）,差的那一截用按压进度缩放的白补上。
+                                val s = liftSmooth.value
+                                if (!refractive) {
+                                    drawRoundRect(
+                                        color = Color.White.copy(
+                                            // 深色的白要收着给（11-03）：标签现在压在珠子上方、不再被
+                                            // 洗白,珠面一白 #007AFF 就掉对比（实测 0.30 → 面 97、对比 1.7）。
+                                            // 收到 0.18 只留「亮起来」的信号,读数交给放大与柔影。
+                                            alpha = (if (ink.dark) 0.18f else 0.95f) * (1f + 0.15f * s),
+                                        ),
+                                        cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
+                                    )
+                                } else if (s > 0.001f) {
+                                    drawRoundRect(
+                                        color = Color.White.copy(
+                                            alpha = (if (ink.dark) 0.13f else 0.85f) * s,
+                                        ),
+                                        cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
+                                    )
+                                }
+                            },
+                        ),
+                )
+            }
+        }
+
+        // ④ 标签层（录进 tabsBackdrop）：在水珠之后声明 = 画在水珠之上。
+        // 用户 11-03 贴图骂「首页 图标文字被洗白」：之前 Row 在壳里，珠子又在壳后声明，
+        // 按下时那 0.85 的白胶囊直接压在 #007AFF 图标与文字上 ⇒ 淡蓝、180~240。酷安/iOS 的图标文字
+        // 永远在玻璃之上，所以这层整块搬出来、排在 ③ 水珠之后。
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+                .align(Alignment.Center),
+        ) {
+            // ④ 标签层内容：图标/文字永远压在玻璃之上（酷安 / iOS 同构）
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -393,78 +481,6 @@ fun ShelfBar(
                         badge = badges.getOrElse(i) { 0 },
                     )
                 }
-            }
-        }
-
-        if (!solid) {
-            // ③ 水珠：栏体的兄弟节点,不被壳剪;手势挂在珠子上（按住拖=甩珠）
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(58.dp)
-                    .align(Alignment.Center),
-            ) {
-                Box(
-                    Modifier
-                        .align(Alignment.CenterStart)
-                        .graphicsLayer {
-                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
-                            val s = liftSmooth.value
-                            alpha = s
-                            // wob 只取弹簧「冲过 1」的那一段：稳定后归 0。
-                            // 入场那段（s < 1）不参与摊开/压扁 —— 否则珠子会在淡入途中被拉成竖的,
-                            // 又变成用户说的那种膨胀；放大扛在 s 上,入场就能看出在长。
-                            val wob = (s - 1f).coerceAtLeast(0f)
-                            // 放大挂在 s 上（s 会冲过 1 再回坐,放大跟着冲一下=有弹性）,
-                            // 摊开/压扁只取冲过的那一段（见常量处注释）。
-                            val grow = 1f + (pressGrow + wobbleX) * s.coerceAtMost(1.25f)
-                            // 入场「从无到有」那一段：s 0→1 时珠子从 78% 长到 100%,
-                            // 配合 alpha=s 才读成一颗弹出来的水珠,而不是原地换材质（酷安那颗就是长出来的）。
-                            val pop = 0.78f + 0.22f * s.coerceIn(0f, 1f)
-                            scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) *
-                                grow * pop * (1f + trail)
-                            scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) *
-                                (1f + (pressGrow - wobbleY) * s.coerceAtMost(1.25f)) * pop * (1f - trail * 0.55f)
-                            // 抬起阴影整档交给 ② 那片柔影（11-03 二次收口）：平台 elevation
-                            // 只往栏下投,既画不到栏沿上外,实测 −31 也比酷安 −19 重。
-                        }
-                        .size(width = pillW, height = pillH)
-                        .drawPlainBackdrop(
-                            backdrop = if (refractive) sourceBackdrop else emptyBackdrop(),
-                            shape = { Capsule() },
-                            effects = {
-                                if (refractive) {
-                                    nativeControlLens(
-                                        style = NativeControlLensStyle.TabBarIndicator,
-                                        liftProgress = liftSmooth.value,
-                                        isDark = ink.dark,
-                                        liftedContent = tabsBackdrop,
-                                    )
-                                }
-                            },
-                            onDrawSurface = {
-                                // 按下提亮（借酷安的面色，11-03）：酷安按住时那一格的面从
-                                // 226 抬到近纯白 252。库的镜头自己只带一点抬亮
-                                // （浅色实测 172 → 186）,差的那一截用按压进度缩放的白补上。
-                                val s = liftSmooth.value
-                                if (!refractive) {
-                                    drawRoundRect(
-                                        color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.40f else 0.95f) * (1f + 0.15f * s),
-                                        ),
-                                        cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
-                                    )
-                                } else if (s > 0.001f) {
-                                    drawRoundRect(
-                                        color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.30f else 0.85f) * s,
-                                        ),
-                                        cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
-                                    )
-                                }
-                            },
-                        ),
-                )
             }
         }
     }
