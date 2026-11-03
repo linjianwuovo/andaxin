@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,11 +34,13 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import io.github.neoruaa.glasmio.glass.render.effects.blur
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
@@ -139,10 +142,18 @@ fun ShelfBar(
         val stepPx = with(density) { cellW.toPx() }
         val pillPx = with(density) { pillW.toPx() }
         val pillRadiusPx = with(density) { (pillH / 2).toPx() }
-        // 珠子按住时的鼓包：珠子本身 50dp、栏高 58dp,纵向 ×1.36 = 68dp → 上下各探出 5dp,
-        // 水珠不再被栏剪住。横向只留 ×1.08 —— 一格才 71dp 宽,鼓过头会压到隔壁格的标签。
-        val bulgeX = 1.08f
-        val bulgeY = 1.36f
+        // 液滴的形变（11-03 三次收口：用户「人家酷安的水滴多灵动,你做的什么屎」）。
+        // 这次把「鼓大」整条路撤掉了 —— 酷安按住那一格形状几乎不长（按住帧与静止帧的
+        // 轮廓差分只是一片向下张开的柔影）,用户嫌的就是长出来的那圈。按下改成
+        // 「压扁→回弹」：弹簧冲过 1 的那一小段横向摊开、竖向压扁（体积近似守恒）,
+        // 回坐时反向小晃一次,稳定后 wob=0、珠子回到原尺寸。灵动放在「动」上,不在「大」上。
+        val wobbleX = 0.30f     // 冲过头时横向摊开 30%（wob×阻尼比≈+6% 峰值）
+        val wobbleY = 0.24f     // 同时竖向压扁,体积别涨
+        val trailMax = 0.12f    // 被甩着走时沿运动方向的拉长上限
+        val shadowGrow = 1.04f  // 柔影跟着稍微摊开一点,别跟着珠子一起鼓
+        // ② 柔影比珠子大的那一圈：60dp（半径 65dp = 229px）。酷安那片暗带从栏沿一直漫到
+        // 栏顶上方 ~27dp、横向漫出格子 ~11dp,这一圈才够摊开那片 blur。
+        val softSpread = 64.dp
         // 珠子/透镜左缘位移：格中心 - 珠宽一半（start 侧留 3dp 内衬后按左缘定位）
         val leftPx = { v: Float -> (stepPx * v.coerceIn(0f, (pageCount - 1).toFloat()) + stepPx / 2f - pillPx / 2f).coerceAtLeast(0f) }
 
@@ -171,24 +182,88 @@ fun ShelfBar(
                 },
             )
         }
-// 松手回缩太快的解法（用户 11-02 指）：引擎的 unlift 弹簧是 private
-    // （TabBarIndicator 档 spring(1f, 631.65f)）,从外面改不动。这里不动引擎,
-    // 而是在渲染层给 press 加一条非对称的慢跟：抬起瞬时跟,落下用 300ms 补间,
-    // 珠子的 alpha 和形变量都乘这条曲线 —— 回缩就有了余韵,抬起依然跟手。
+    // 按压曲线（11-03 二次收口：用户指「一点都不灵动、太快了」）。上一版这里是
+    // liftSmooth.snapTo(1f) —— 按下那一帧珠子的 alpha、鼓包、提亮全部到位,看着像
+    // 开关不像水。改成两条弹簧：按下用欠阻尼冲过头一点点再回坐,抬手用接近临界阻尼
+    // 慢慢收 —— 液滴才有余韵,而抬手依然跟手。三次收口把按下这条从 0.52/240（回弹
+    // 拖到 1s 像橡皮）收到 0.45/520：约 0.4s 落定,一次明显的过冲 + 一次小幅反晃。
     var liftRaw by remember { mutableFloatStateOf(0f) }
     val liftSmooth = remember { Animatable(0f) }
     LaunchedEffect(drag.pressProgress > 0.5f) {
         val up = drag.pressProgress > 0.5f
-        if (up) liftSmooth.snapTo(1f)
-        liftSmooth.animateTo(if (up) 1f else 0f, androidx.compose.animation.core.tween(if (up) 90 else 300))
+        liftSmooth.animateTo(
+            targetValue = if (up) 1f else 0f,
+            animationSpec = if (up) {
+                androidx.compose.animation.core.spring(dampingRatio = 0.45f, stiffness = 520f)
+            } else {
+                androidx.compose.animation.core.spring(dampingRatio = 0.85f, stiffness = 420f)
+            },
+        )
     }
 
+    // 液滴的「流」：珠子被甩着走的时候沿运动方向拉长、竖向收窄,停下后自己缩回。
+    // liftSmooth 那两条弹簧只管「抬起」,这一条管「移动」—— 酷安那颗按住时形状几乎
+    // 不长（见上）,灵动来自「跟上手指的过程」,不是「鼓多大」。
+    var trail by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var lastV = 0f
+        var lastT = 0L
+        while (true) {
+            withFrameNanos { now ->
+                val v = drag.value
+                if (v.isFinite()) {
+                    if (lastT != 0L) {
+                        val cellV = abs(v - lastV)              // 这一帧走掉几格
+                        val target = (cellV * 1.6f).coerceIn(0f, trailMax)
+                        trail += (target - trail) * 0.45f       // 低通：抬手后自己缩回
+                    }
+                    lastV = v
+                    lastT = now
+                }
+            }
+        }
+    }
 
         // 外部翻页（pager 滑动、点通知跳格）把珠子带过去
         LaunchedEffect(slide, current) {
             val t = if (slide.isFinite()) slide else current.toFloat()
             if (kotlin.math.abs(drag.targetValue - t) > 0.01f && !drag.isDraggingLike()) {
                 drag.animateToValue(t, animatePress = false)
+            }
+        }
+
+        // ② 按下的柔影（11-03 二次收口,照酷安）：酷安按住时栏沿之外会浮出一片大 blur
+        // 的暗带（浅色实测:页面 242 → 223,压住栏顶内外各 ~27dp,横向也漫出格子 ~11dp）。
+        // 平台的 elevation 只往栏「下」投、实测 −31 比酷安 −19 重,还画不到栏沿上外,
+        // 所以自己画：一颗比珠子大一圈的方形径向渐变（黑心→透明,radius 默认取边长一半）,
+        // 不透明度与缩放都挂在 liftSmooth 上,按下才浮起来。它必须排在 ① 壳「之前」才会
+        // 被玻璃盖住中间、只在栏外露出那一圈柔 —— 深色下酷安同样看不见（实测 0 → 0）。
+        if (!solid && !ink.dark) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .align(Alignment.Center),
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .graphicsLayer {
+                            translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
+                                with(density) { (softSpread / 2).toPx() }
+                            val s = liftSmooth.value
+                            // 峰值 0.06、整颗影子再上移 14dp：目标对齐酷安按下的
+                            // 栏上方 −13.4 / 栏下方 −19（浅色、栏上 150,2860 与栏下 150,3104）。
+                            // 栏下会偏重一点是库镜头自带的按下暗带叠上来,抬起来让它只留库那层。
+                            translationY = -with(density) { 14.dp.toPx() }
+                            alpha = 0.06f * s
+                            scaleX = 1f + (shadowGrow - 1f) * s
+                            scaleY = 1f + (shadowGrow - 1f) * s
+                        }
+                        // requiredSize：size() 会被父约束（栏体 58dp）截断,影子就永远出不了栏
+                        .requiredSize(width = pillW + softSpread, height = pillW + softSpread)
+                        .background(Brush.radialGradient(colors = listOf(Color.Black, Color.Transparent))),
+                )
             }
         }
 
@@ -324,19 +399,18 @@ fun ShelfBar(
                         .align(Alignment.CenterStart)
                         .graphicsLayer {
                             translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
-                            alpha = liftSmooth.value
                             val s = liftSmooth.value
-                            scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) * (1f + (bulgeX - 1f) * s)
-                            scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) * (1f + (bulgeY - 1f) * s)
-                            // 抬起阴影（借酷安的面色，11-03）：酷安按住时栏沿之外会透出
-                            // 一条 ~5dp 的暗带（实测页面 241 → 222）。库没有这一档,
-                            // 就给珠子挂一颗同形胶囊的投影：高度随按压进度起落、
-                            // 又跟着上面两条缩放一起放大 —— 鼓出栏外的那 5dp 因此有边,
-                            // 不再是硬切的色块。
-                            // 7dp 实测偏重：浅色白页面在珠下压到 -41,而酷安那条只有 -19,
-                            // 收到 4dp。另:平台的投影只往下方投,栏沿「上方」量不到暗带。
-                            shape = Capsule()
-                            shadowElevation = 4.dp.toPx() * s
+                            alpha = s
+                            // wob 只取弹簧「冲过 1」的那一段：稳定后归 0,按住不放就是原尺寸
+                            // （酷安实测按住不长形状）。入场那段（s < 1）不参与形变 —— 否则珠子
+                            // 会在淡入途中被拉成竖的,又变成用户说的那种膨胀。
+                            val wob = (s - 1f).coerceAtLeast(0f)
+                            scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) *
+                                (1f + wobbleX * wob) * (1f + trail)
+                            scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) *
+                                (1f - wobbleY * wob) * (1f - trail * 0.55f)
+                            // 抬起阴影整档交给 ② 那片柔影（11-03 二次收口）：平台 elevation
+                            // 只往栏下投,既画不到栏沿上外,实测 −31 也比酷安 −19 重。
                         }
                         .size(width = pillW, height = pillH)
                         .drawPlainBackdrop(
@@ -360,7 +434,7 @@ fun ShelfBar(
                                 if (!refractive) {
                                     drawRoundRect(
                                         color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.10f else 0.42f) * (1f + 0.30f * s),
+                                            alpha = (if (ink.dark) 0.10f else 0.34f) * (1f + 0.30f * s),
                                         ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
