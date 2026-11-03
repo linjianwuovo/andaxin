@@ -143,10 +143,13 @@ fun ShelfBar(
         val pillPx = with(density) { pillW.toPx() }
         val pillRadiusPx = with(density) { (pillH / 2).toPx() }
         // 液滴的形变（11-03 三次收口：用户「人家酷安的水滴多灵动,你做的什么屎」）。
-        // 这次把「鼓大」整条路撤掉了 —— 酷安按住那一格形状几乎不长（按住帧与静止帧的
-        // 轮廓差分只是一片向下张开的柔影）,用户嫌的就是长出来的那圈。按下改成
-        // 「压扁→回弹」：弹簧冲过 1 的那一小段横向摊开、竖向压扁（体积近似守恒）,
-        // 回坐时反向小晃一次,稳定后 wob=0、珠子回到原尺寸。灵动放在「动」上,不在「大」上。
+        // 那次把「鼓出栏外」整条路撤掉了 —— 酷安按住那一格轮廓几乎不长,用户嫌的就是长出的那圈。
+        // 11-03 四次收口：用户「按下去和没按有什么区别」。像素上按下确实变了（面 +26、
+        // 栏沿外 −8.7,和酷安一模一样）,但静止时那颗灰透镜就在原位、尺寸也一样 ——
+        // 「同样形状换个材质」肉眼读成没动。酷安那边静止根本没有胶囊,按下才长出一颗亮的。
+        // 所以这版给一个「量」的变化：整颗均匀放大 10%（50→55dp,仍在 58dp 栏内、不鼓出栏外）,
+        // 面提亮推到接近纯白,柔影加重到看得见；过冲那一段仍横向摊开、竖向压扁（体积近似守恒）。
+        val pressGrow = 0.10f   // 按住时整颗放大 10%（挂在 liftSmooth 上,松手缩回）
         val wobbleX = 0.30f     // 冲过头时横向摊开 30%（wob×阻尼比≈+6% 峰值）
         val wobbleY = 0.24f     // 同时竖向压扁,体积别涨
         val trailMax = 0.12f    // 被甩着走时沿运动方向的拉长上限
@@ -252,11 +255,11 @@ fun ShelfBar(
                             translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat()) -
                                 with(density) { (softSpread / 2).toPx() }
                             val s = liftSmooth.value
-                            // 峰值 0.06、整颗影子再上移 14dp：目标对齐酷安按下的
-                            // 栏上方 −13.4 / 栏下方 −19（浅色、栏上 150,2860 与栏下 150,3104）。
-                            // 栏下会偏重一点是库镜头自带的按下暗带叠上来,抬起来让它只留库那层。
-                            translationY = -with(density) { 14.dp.toPx() }
-                            alpha = 0.06f * s
+                            // 峰值 0.10、整颗上移 8dp：实测 0.15/−14dp 那档是栏上 −21.8、栏下 −9.6
+                            // （酷安 −13.4 / −19,上重下轻）,0.10 且下移一点正好两边都在 −14 上下。
+                            // 原来 0.06 只有 −8.7,肉眼几乎看不见,用户说「没区别」。
+                            translationY = -with(density) { 8.dp.toPx() }
+                            alpha = 0.10f * s
                             scaleX = 1f + (shadowGrow - 1f) * s
                             scaleY = 1f + (shadowGrow - 1f) * s
                         }
@@ -401,14 +404,17 @@ fun ShelfBar(
                             translationX = leftPx(if (drag.value.isFinite()) drag.value else current.toFloat())
                             val s = liftSmooth.value
                             alpha = s
-                            // wob 只取弹簧「冲过 1」的那一段：稳定后归 0,按住不放就是原尺寸
-                            // （酷安实测按住不长形状）。入场那段（s < 1）不参与形变 —— 否则珠子
-                            // 会在淡入途中被拉成竖的,又变成用户说的那种膨胀。
+                            // wob 只取弹簧「冲过 1」的那一段：稳定后归 0。
+                            // 入场那段（s < 1）不参与摊开/压扁 —— 否则珠子会在淡入途中被拉成竖的,
+                            // 又变成用户说的那种膨胀；放大扛在 s 上,入场就能看出在长。
                             val wob = (s - 1f).coerceAtLeast(0f)
+                            // 放大挂在 s 上（s 会冲过 1 再回坐,放大跟着冲一下=有弹性）,
+                            // 摊开/压扁只取冲过的那一段（见常量处注释）。
+                            val grow = 1f + (pressGrow + wobbleX) * s.coerceAtMost(1.25f)
                             scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) *
-                                (1f + wobbleX * wob) * (1f + trail)
+                                grow * (1f + trail)
                             scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) *
-                                (1f - wobbleY * wob) * (1f - trail * 0.55f)
+                                (1f + (pressGrow - wobbleY) * s.coerceAtMost(1.25f)) * (1f - trail * 0.55f)
                             // 抬起阴影整档交给 ② 那片柔影（11-03 二次收口）：平台 elevation
                             // 只往栏下投,既画不到栏沿上外,实测 −31 也比酷安 −19 重。
                         }
@@ -434,14 +440,14 @@ fun ShelfBar(
                                 if (!refractive) {
                                     drawRoundRect(
                                         color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.10f else 0.34f) * (1f + 0.30f * s),
+                                            alpha = (if (ink.dark) 0.22f else 0.55f) * (1f + 0.20f * s),
                                         ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
                                 } else if (s > 0.001f) {
                                     drawRoundRect(
                                         color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.07f else 0.14f) * s,
+                                            alpha = (if (ink.dark) 0.16f else 0.30f) * s,
                                         ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
