@@ -43,9 +43,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -726,40 +723,21 @@ private fun FieldRow(
             value = if (field.unit.isBlank()) "未填" else "未填 · ${field.unit}",
         )
         // 日期终于能点了。以前这一行只写着"（日期控件批次三补）"，
-        // 而 DatePicker 的 import 一直挂在这个文件里没人用 —— 表单里所有日期字段都填不上。
+        // 而那个控件的 import 一直挂在这个文件里没人用 —— 表单里所有日期字段都填不上。
+        // 现在点开的是 iOS 那三只轮子（见 DateWheel.kt）。
         is Field.Date -> {
-            if (picking) {
-                val ps = rememberDatePickerState()
-                DatePickerDialog(
-                    onDismissRequest = { picking = false },
-                    confirmButton = {
-                        Text(
-                            text = "选定",
-                            fontSize = Type.body,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .pressClick(shrink = false) {
-                                    ps.selectedDateMillis?.let(::formatUtcDay)?.let { put(field.key, it) }
-                                    picking = false
-                                }
-                                .padding(horizontal = Gap.md, vertical = Gap.sm),
-                        )
-                    },
-                    dismissButton = {
-                        Text(
-                            text = "取消",
-                            fontSize = Type.body,
-                            color = ink.muted,
-                            modifier = Modifier
-                                .pressClick(shrink = false) { picking = false }
-                                .padding(horizontal = Gap.md, vertical = Gap.sm),
-                        )
-                    },
-                ) {
-                    DatePicker(state = ps, showModeToggle = false)
-                }
-            }
             val chosen = get(field.key)
+            if (picking) {
+                DateWheelDialog(
+                    title = field.label,
+                    initial = chosen,
+                    onPick = {
+                        put(field.key, it)
+                        picking = false
+                    },
+                    onDismiss = { picking = false },
+                )
+            }
             Column(Modifier.pressClick(shrink = false) { picking = true }) {
                 Text(field.label, fontSize = Type.meta, color = ink.muted)
                 Spacer(Modifier.height(Gap.xs))
@@ -913,14 +891,6 @@ private fun PickDialog(
 private fun optionTail(group: String, opt: String): String =
     opt.removePrefix("$group · ").removePrefix("$group ").ifBlank { opt }
 
-/**
- * M3 的 DatePicker 给的是 **UTC 零点**的毫秒数，所以这里也按 UTC 格式化。
- * 换成机器时区的话，在东八区没事、在西五区就会把用户点的日期整整挪后一天。
- */
-private fun formatUtcDay(millis: Long): String =
-    java.time.Instant.ofEpochMilli(millis)
-        .atZone(java.time.ZoneOffset.UTC)
-        .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
 /**
  * 审批链的一环：左边一个圆点 + 一根连到下一环的竖线，右边"环节 · 谁 · 状态 · 时间"。
