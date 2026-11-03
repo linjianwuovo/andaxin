@@ -149,7 +149,7 @@ fun ShelfBar(
         // 「同样形状换个材质」肉眼读成没动。酷安那边静止根本没有胶囊,按下才长出一颗亮的。
         // 所以这版给一个「量」的变化：整颗均匀放大 10%（50→55dp,仍在 58dp 栏内、不鼓出栏外）,
         // 面提亮推到接近纯白,柔影加重到看得见；过冲那一段仍横向摊开、竖向压扁（体积近似守恒）。
-        val pressGrow = 0.10f   // 按住时整颗放大 10%（挂在 liftSmooth 上,松手缩回）
+        val pressGrow = 0.14f   // 按住时整颗放大 14%（50→57dp,仍不出 58dp 栏；挂在 liftSmooth 上）
         val wobbleX = 0.30f     // 冲过头时横向摊开 30%（wob×阻尼比≈+6% 峰值）
         val wobbleY = 0.24f     // 同时竖向压扁,体积别涨
         val trailMax = 0.12f    // 被甩着走时沿运动方向的拉长上限
@@ -259,7 +259,7 @@ fun ShelfBar(
                             // （酷安 −13.4 / −19,上重下轻）,0.10 且下移一点正好两边都在 −14 上下。
                             // 原来 0.06 只有 −8.7,肉眼几乎看不见,用户说「没区别」。
                             translationY = -with(density) { 8.dp.toPx() }
-                            alpha = 0.10f * s
+                            alpha = 0.14f * s
                             scaleX = 1f + (shadowGrow - 1f) * s
                             scaleY = 1f + (shadowGrow - 1f) * s
                         }
@@ -279,6 +279,10 @@ fun ShelfBar(
         // 环本来就不会有（它是导航材质画的）,而磨砂、半透明、深浅色都是自己的。
         // onDrawSurface 是 DrawScope 不是 composable,颜色必须在组合期读好再闭包进去
         val shellTint = LocalGlassColors.current.container.copy(alpha = if (solid) 0.96f else 0.78f)
+        // 浅色下把栏体压深一档（11-03 五次收口）：酷安实测「栏体 226 / 页面 242」——它的栏比
+        // 页面暗,白胶囊按下去才弹得出来。我们的栏 252 比页面 242 还亮,白珠子按上去只能融进
+        // 白栏（实测面只 +13）,用户读成「按下去和没按有什么区别」。这层黑纱把栏体压到 ~227。
+        val shellVeil = if (solid || ink.dark) 0f else 0.10f
         val blurPx = with(density) { spec.blur.toPx() }
         Box(
             modifier = Modifier
@@ -290,7 +294,10 @@ fun ShelfBar(
                     backdrop = if (solid) emptyBackdrop() else pageBackdrop,
                     shape = { Capsule() },
                     effects = { if (!solid) blur(blurPx) },
-                    onDrawSurface = { drawRect(shellTint) },
+                    onDrawSurface = {
+                        drawRect(shellTint)
+                        if (shellVeil > 0f) drawRect(Color.Black.copy(alpha = shellVeil))
+                    },
                 )
                 .clip(Capsule()),
             contentAlignment = Alignment.CenterStart,
@@ -411,10 +418,13 @@ fun ShelfBar(
                             // 放大挂在 s 上（s 会冲过 1 再回坐,放大跟着冲一下=有弹性）,
                             // 摊开/压扁只取冲过的那一段（见常量处注释）。
                             val grow = 1f + (pressGrow + wobbleX) * s.coerceAtMost(1.25f)
+                            // 入场「从无到有」那一段：s 0→1 时珠子从 78% 长到 100%,
+                            // 配合 alpha=s 才读成一颗弹出来的水珠,而不是原地换材质（酷安那颗就是长出来的）。
+                            val pop = 0.78f + 0.22f * s.coerceIn(0f, 1f)
                             scaleX = (if (drag.scaleX.isFinite()) drag.scaleX else 1f) *
-                                grow * (1f + trail)
+                                grow * pop * (1f + trail)
                             scaleY = (if (drag.scaleY.isFinite()) drag.scaleY else 1f) *
-                                (1f + (pressGrow - wobbleY) * s.coerceAtMost(1.25f)) * (1f - trail * 0.55f)
+                                (1f + (pressGrow - wobbleY) * s.coerceAtMost(1.25f)) * pop * (1f - trail * 0.55f)
                             // 抬起阴影整档交给 ② 那片柔影（11-03 二次收口）：平台 elevation
                             // 只往栏下投,既画不到栏沿上外,实测 −31 也比酷安 −19 重。
                         }
@@ -440,14 +450,14 @@ fun ShelfBar(
                                 if (!refractive) {
                                     drawRoundRect(
                                         color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.22f else 0.55f) * (1f + 0.20f * s),
+                                            alpha = (if (ink.dark) 0.40f else 0.95f) * (1f + 0.15f * s),
                                         ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
                                 } else if (s > 0.001f) {
                                     drawRoundRect(
                                         color = Color.White.copy(
-                                            alpha = (if (ink.dark) 0.16f else 0.30f) * s,
+                                            alpha = (if (ink.dark) 0.30f else 0.85f) * s,
                                         ),
                                         cornerRadius = CornerRadius(pillRadiusPx, pillRadiusPx),
                                     )
