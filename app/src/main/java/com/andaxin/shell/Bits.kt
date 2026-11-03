@@ -1,13 +1,19 @@
 package com.andaxin.shell
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,11 +25,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshState
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Immutable
@@ -35,9 +44,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
@@ -181,6 +195,7 @@ fun Refreshable(
     }
     var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val pull = rememberPullToRefreshState()
     PullToRefreshBox(
         isRefreshing = refreshing,
         onRefresh = {
@@ -190,9 +205,49 @@ fun Refreshable(
                 refreshing = false
             }
         },
+        state = pull,
         modifier = modifier,
+        indicator = { IosRefreshSpinner(pull = pull, refreshing = refreshing) },
         content = { content() },
     )
+}
+
+/**
+ * 下拉指示器：iOS 那只细圈。
+ *
+ * 库默认那颗是 Material 3 的"圆角容器 + 箭头"，紫底白箭头，一拉出来就和整屏的玻璃
+ * 气质对不上。这里只画一条 2dp 的灰弧：下拉距离决定扫角，松手转起来。
+ */
+@Composable
+private fun BoxScope.IosRefreshSpinner(pull: PullToRefreshState, refreshing: Boolean) {
+    val ink = LocalInk.current
+    val spin = rememberInfiniteTransition(label = "iosRefresh")
+    val turn by spin.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(animation = tween(Motion.pageEnter, easing = LinearEasing)),
+        label = "iosRefreshTurn",
+    )
+    val fraction = pull.distanceFraction.coerceIn(0f, 1f)
+    Canvas(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(top = Gap.sm)
+            .size(20.dp)
+            .alpha(if (refreshing) 1f else fraction),
+    ) {
+        val stroke = 2.dp.toPx()
+        val inset = stroke / 2
+        drawArc(
+            color = ink.faint,
+            startAngle = if (refreshing) turn else -90f,
+            sweepAngle = if (refreshing) 300f else 360f * fraction,
+            useCenter = false,
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - stroke, size.height - stroke),
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+    }
 }
 
 /**
