@@ -379,6 +379,8 @@ fun BriefDetailPage(
                     enabled = !state.acting,
                     modifier = Modifier.fillMaxWidth(),
                     destructive = armed || a.danger,   // 危险那一档:红底白字由 Glasmio 的 destructive 语义管
+                    // 非危险档走 iOS 的主行动色（systemBlue 实心 + 白字），和下面那条提交同一个约定；危险档交给 destructive 的红
+                    navigationSurfaceColor = if (armed || a.danger) null else MaterialTheme.colorScheme.primary,
                 ) {
                     Text(
                         text = when {
@@ -386,6 +388,8 @@ fun BriefDetailPage(
                             armed -> "再按一次，真的${a.label}"
                             else -> a.label
                         },
+                        color = if (!state.acting && !armed && !a.danger) MaterialTheme.colorScheme.onPrimary
+                            else LocalGlassColors.current.content,
                         fontSize = Type.title,
                         fontWeight = FontWeight.Medium,
                     )

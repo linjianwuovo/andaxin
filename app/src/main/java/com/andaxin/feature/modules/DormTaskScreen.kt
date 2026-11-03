@@ -259,7 +259,15 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                 GlasmioButton(
                     onClick = { scope.launch { load() } },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("重试", fontSize = Type.title, fontWeight = FontWeight.Medium) }
+                ) {
+                    Text(
+                        "重试",
+                        fontSize = Type.title,
+                        fontWeight = FontWeight.Medium,
+                        // 次要动作照 iOS 那档：玻璃胶囊 + 系统蓝字（tinted glass）
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             Spacer(Modifier.height(Gap.xxl))
             return@ScaffoldPage
@@ -409,11 +417,13 @@ fun DormTaskScreen(dateId: String, onBack: () -> Unit) {
                 GlasmioButton(
                     onClick = { snap() },
                     modifier = Modifier.fillMaxWidth(),
+                    navigationSurfaceColor = MaterialTheme.colorScheme.primary,
                 ) {
                     Text(
                         if (bmp == null) "拍一张" else "重拍一张",
                         fontSize = Type.title,
                         fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
                 Spacer(Modifier.height(Gap.xs))

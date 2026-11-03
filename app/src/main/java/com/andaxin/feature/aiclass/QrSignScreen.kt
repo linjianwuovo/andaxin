@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -118,7 +119,13 @@ fun QrSignScreen(url: String, onBack: () -> Unit) {
                 onClick = { tryNo++ },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("再发一次", fontSize = Type.title, fontWeight = FontWeight.Medium)
+                Text(
+                    "再发一次",
+                    fontSize = Type.title,
+                    fontWeight = FontWeight.Medium,
+                    // 次要动作照 iOS 那档：玻璃胶囊 + 系统蓝字（tinted glass）
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
         if (ok) {

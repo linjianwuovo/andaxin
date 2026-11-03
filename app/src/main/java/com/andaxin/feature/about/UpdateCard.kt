@@ -123,8 +123,14 @@ internal fun UpdateCard(open: (String) -> Unit) {
                             }
                     },
                     modifier = Modifier.weight(1f, fill = false),
+                    navigationSurfaceColor = MaterialTheme.colorScheme.primary,
                 ) {
-                    Text("下载 ${latest!!.version}", fontSize = Type.body, fontWeight = FontWeight.Medium)
+                    Text(
+                        "下载 ${latest!!.version}",
+                        fontSize = Type.body,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
                 }
             }
             Spacer(Modifier.weight(1f))

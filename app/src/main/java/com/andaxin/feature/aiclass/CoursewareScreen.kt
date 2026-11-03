@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -121,8 +122,14 @@ fun CoursewareScreen(
                                 }
                         },
                         modifier = Modifier.fillMaxWidth(),
+                        navigationSurfaceColor = MaterialTheme.colorScheme.primary,
                     ) {
-                        Text("下载原文件", fontSize = Type.body, fontWeight = FontWeight.Medium)
+                        Text(
+                            "下载原文件",
+                            fontSize = Type.body,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
                     }
                     if (file?.second == "0") {
                         Spacer(Modifier.height(Gap.xs))
