@@ -49,9 +49,13 @@ object Gap {
  *
  * 用法：屏标题 [display]、格子里的大数字 [num]、一行主文字 [title]、
  * 正文段落 [body]、次要信息/右栏值 [meta]、说明与免责 [micro]。
+ *
+ * 取值对齐 iOS 那一套（正文 16 / 一行主文字 17 / 脚注 13 / 说明 12 / 屏标题 24）：
+ * 11-05 他拿手机系统里的 App 对着看，说正文比他习惯的小一号。抬档时只动这五档，
+ * [largeTitle]、[num] 和三条窄容器档（[tiny]、[tinier]、[hero]）一个数没改。
  */
 object Type {
-    val display = 22.sp
+    val display = 24.sp
 
     /**
      * 二级屏顶上的大标题。iOS 的 largeTitle 是 34pt，照抄到我们屏上「报修单 10-14」
@@ -59,10 +63,10 @@ object Type {
      */
     val largeTitle = 30.sp
     val num = 26.sp
-    val title = 16.sp
-    val body = 14.sp
-    val meta = 12.sp
-    val micro = 11.sp
+    val title = 17.sp
+    val body = 16.sp
+    val meta = 13.sp
+    val micro = 12.sp
 
     /**
      * 三档"窄容器专用"，不是给普通文字用的：
@@ -90,9 +94,9 @@ object Type {
     val tabular = TextStyle(fontFeatureSettings = "tnum")
 
     /** 行高跟着字号走，别默认挤在一起。 */
-    val bodyLine = 21.sp
-    val metaLine = 16.sp
-    val microLine = 15.sp
+    val bodyLine = 24.sp
+    val metaLine = 18.sp
+    val microLine = 16.sp
 }
 
 /** 节奏：卡片内边距、行高、卡与卡之间、区块与区块之间。 */
