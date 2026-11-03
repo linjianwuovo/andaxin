@@ -233,9 +233,8 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         GroupTitle("玻璃参数")
         Sheet {
             SliderRow("模糊度", draft.blur, commit) { draft = draft.copy(blur = it) }
-            SliderRow("折射度", draft.refraction, commit) { draft = draft.copy(refraction = it) }
-            SliderRow("扭曲度", draft.distortion, commit) { draft = draft.copy(distortion = it) }
-            SliderRow("色散", draft.dispersion, commit) { draft = draft.copy(dispersion = it) }
+            // 折射度/扭曲度/色散三行撤了：珠子吃的是库的 nativeControlLens，那三个量它都不收
+            // （色散就是那圈彩边，写死在库内部）。三根留在数据里，珠子换自己镜头那天再放回来。
             Text(
                 text = "调完松手就存，底栏实时跟着变。",
                 fontSize = Type.micro,

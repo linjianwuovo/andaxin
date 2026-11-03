@@ -190,11 +190,11 @@ fun ShelfBar(
         // 环是没了,但 frost 磨砂也跟着没了,再被 navigationSurfaceAlphaMultiplier=1.25
         // 一乘,0.77 的白变成 0.96 —— 用户 11-02 一句"tab 为什么是实心的"点破：那就是一块
         // 不透明板。这版不借 GlassSurface 了,直接 drawPlainBackdrop 自己搭：
-        // 采页面层 → blur 10dp 磨砂 → 盖一层色板 container 62% 的 tint → 剪成胶囊。
+        // 采页面层 → blur spec.blur（出厂 20dp）磨砂 → 盖一层色板 container 62% 的 tint → 剪成胶囊。
         // 环本来就不会有（它是导航材质画的）,而磨砂、半透明、深浅色都是自己的。
         // onDrawSurface 是 DrawScope 不是 composable,颜色必须在组合期读好再闭包进去
         val shellTint = LocalGlassColors.current.container.copy(alpha = if (solid) 0.96f else 0.78f)
-        val blurPx = with(density) { 20.dp.toPx() }
+        val blurPx = with(density) { spec.blur.toPx() }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
