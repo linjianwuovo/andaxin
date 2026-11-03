@@ -338,7 +338,7 @@ private fun IconPreview(ic: LauncherIcon, on: Boolean) {
 
 private val ACCENTS = listOf(
     "跟随" to "",
-    "蓝" to "#2563EB",
+    "蓝" to "#007AFF",
     "青" to "#0D9488",
     "琥珀" to "#B45309",
     "紫" to "#7C3AED",

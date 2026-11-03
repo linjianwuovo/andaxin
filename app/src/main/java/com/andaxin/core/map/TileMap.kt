@@ -326,7 +326,7 @@ fun TileMap(
                 moveTo(pts.first().x, pts.first().y)
                 pts.drop(1).forEach { lineTo(it.x, it.y) }
             }
-            drawPath(line, color = Color(0xFF2563EB), style = Stroke(width = 5f * density))
+            drawPath(line, color = Color(0xFF007AFF), style = Stroke(width = 5f * density))
         }
 
         markersWgs.map {

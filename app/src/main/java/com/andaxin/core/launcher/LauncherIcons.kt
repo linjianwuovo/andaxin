@@ -47,10 +47,10 @@ data class LauncherIcon(
 object LauncherIcons {
 
     val ALL: List<LauncherIcon> = listOf(
-        LauncherIcon("blue", "蓝底青杠", ".LauncherBlue", 0xFF2563EB, 0xFFFAFBFD, 0xFF0D9488),
-        LauncherIcon("paper", "纸白墨杠", ".LauncherPaper", 0xFFF4F6F9, 0xFF191C22, 0xFF2563EB),
+        LauncherIcon("blue", "蓝底青杠", ".LauncherBlue", 0xFF007AFF, 0xFFFAFBFD, 0xFF0D9488),
+        LauncherIcon("paper", "纸白墨杠", ".LauncherPaper", 0xFFF2F2F7, 0xFF191C22, 0xFF007AFF),
         LauncherIcon("ink", "墨底青杠", ".LauncherInk", 0xFF191C22, 0xFFFAFBFD, 0xFF0D9488),
-        LauncherIcon("teal", "青底蓝杠", ".LauncherTeal", 0xFF0D9488, 0xFFFAFBFD, 0xFF2563EB),
+        LauncherIcon("teal", "青底蓝杠", ".LauncherTeal", 0xFF0D9488, 0xFFFAFBFD, 0xFF007AFF),
         LauncherIcon("indigo", "靛底青杠", ".LauncherIndigo", 0xFF4338CA, 0xFFFAFBFD, 0xFF0D9488),
     )
 
