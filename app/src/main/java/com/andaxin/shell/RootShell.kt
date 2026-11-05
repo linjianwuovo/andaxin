@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -85,7 +86,8 @@ import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
 import io.github.neoruaa.glasmio.glass.trackBackdropPosition
 import io.github.neoruaa.glasmio.icons.SfSymbol
-import io.github.neoruaa.glasmio.ui.GlasmioNavigationBar
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationBarWithTrailingItem
+import io.github.neoruaa.glasmio.scaffold.glasmioNavigationScrollHint
 import io.github.neoruaa.glasmio.ui.GlasmioTabItem
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
@@ -493,11 +495,12 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             GlasmioTabItem(Shelf.Timetable, labels[1], SfSymbol.ClockFilled),
             GlasmioTabItem(Shelf.Message, labels[2], SfSymbol.Ellipsis),
             GlasmioTabItem(Shelf.Notice, labels[3], SfSymbol.InfoCircle),
-            GlasmioTabItem(Shelf.Me, labels[4], SfSymbol.PersonFilled),
         )
     }
-    // 库条恒展开：没接 nestedScroll 的折叠，进度钉在 0。
-    val compactProgress = remember { mutableStateOf(0f) }
+    // 照 MeiloX：最后一格不挤在主条里，单独占右边一颗小胶囊。
+    val trailing = remember(labels) { GlasmioTabItem(Shelf.Me, labels[4], SfSymbol.PersonFilled) }
+    // 照 MeiloX 的滚动折叠：向下滚收成圆球，往回滚或顶边回弹展开（ShelfNavScrollState）。
+    val navScroll = rememberShelfNavScrollState()
 
     // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
     val graph = LocalAppGraph.current
@@ -528,7 +531,8 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 .fillMaxSize()
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
                 .layerBackdrop(pageBackdrop)
-                .trackBackdropPosition(pageBackdrop),
+                .trackBackdropPosition(pageBackdrop)
+                .nestedScroll(navScroll.nestedScrollConnection),
         ) {
             // 五个 tab 的内容也在这层里，里面同样有玻璃件（首页那排按钮等）。
             // 采样层内自采样会递归把 RenderThread 栈打穿，统一关掉（见 NoSamplingBackdrop）。
@@ -549,17 +553,23 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             }
         }
 
-        GlasmioNavigationBar(
+        GlasmioNavigationBarWithTrailingItem(
             items = tabs,
+            trailingItem = trailing,
             selectedKey = Shelf.entries[pager.currentPage],
             onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
-            onExpand = {},
-            compactProgress = compactProgress,
+            onExpand = navScroll::expand,
+            compactProgress = navScroll.compactProgress,
             compactSize = 48.dp,
             backdrop = barBackdrop,
+            // 外边距照 MeiloX 的 Dimensions：左右各 20.dp、底 8.dp；
+            // 滚动提示挂在 padding 里侧（库注释要求贴着栏的完整分配区），外边距留在外层。
             modifier = Modifier
                 .fillMaxWidth()
                 .align(androidx.compose.ui.Alignment.BottomCenter)
+                .padding(horizontal = 20.dp)
+                .glasmioNavigationScrollHint(navScroll.scrollHintProgress)
+                .padding(bottom = 8.dp)
                 .navigationBarsPadding(),
         )
     }
