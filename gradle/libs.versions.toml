@@ -12,7 +12,7 @@ okhttp = "4.12.0"
 serialization-json = "1.9.0"
 coil = "3.0.4"
 # ios 分支的外观底座：iOS 27 液态玻璃复刻框架（Apache-2.0，minSdk 33）
-glasmio = "0.1.1"
+glasmio = "0.1.2"
 camerax = "1.5.0-alpha06"
 mlkit-barcode = "17.3.0"
 

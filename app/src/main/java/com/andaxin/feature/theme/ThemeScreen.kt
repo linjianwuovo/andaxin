@@ -2,7 +2,6 @@ package com.andaxin.feature.theme
 
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
-import io.github.neoruaa.glasmio.ui.GlasmioSlider
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -59,7 +58,6 @@ import com.andaxin.core.design.Radius
 import com.andaxin.core.launcher.LauncherIcon
 import com.andaxin.core.launcher.LauncherIcons
 import com.andaxin.core.settings.Appearance
-import com.andaxin.core.settings.BarMaterial
 import com.andaxin.core.settings.DayNight
 import com.andaxin.core.settings.HeroStyle
 import com.andaxin.shell.Hairline
@@ -174,25 +172,6 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.height(Gap.xl))
-        GroupTitle("底栏材质")
-        Sheet {
-            ChoiceRow(
-                options = listOf(
-                    "液态玻璃" to BarMaterial.Liquid,
-                    "毛玻璃" to BarMaterial.Frosted,
-                    "纯色" to BarMaterial.Solid,
-                ),
-                picked = draft.material,
-            ) { draft = draft.copy(material = it); commit() }
-            Text(
-                text = "毛玻璃和纯色只吃下面第一根滑杆，另外三根只对液态玻璃有效。",
-                fontSize = Type.micro,
-                color = ink.faint,
-                modifier = Modifier.padding(top = Gap.md),
-            )
-        }
-
-        Spacer(Modifier.height(Gap.xl))
         GroupTitle("强调色")
         Sheet {
             Row(horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
@@ -229,19 +208,6 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         GroupTitle("启动图标")
         LauncherIconSection()
 
-        Spacer(Modifier.height(Gap.xl))
-        GroupTitle("玻璃参数")
-        Sheet {
-            SliderRow("模糊度", draft.blur, commit) { draft = draft.copy(blur = it) }
-            // 折射度/扭曲度/色散三行撤了：珠子吃的是库的 nativeControlLens，那三个量它都不收
-            // （色散就是那圈彩边，写死在库内部）。三根留在数据里，珠子换自己镜头那天再放回来。
-            Text(
-                text = "调完松手就存，底栏实时跟着变。",
-                fontSize = Type.micro,
-                color = ink.faint,
-                modifier = Modifier.padding(top = Gap.sm),
-            )
-        }
         Spacer(Modifier.height(Gap.xxl))
     }
         Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
@@ -384,23 +350,5 @@ private fun <T : Any> ChoiceRow(options: List<Pair<String, T>>, picked: T, onPic
                     .padding(horizontal = Gap.lg, vertical = Gap.sm),
             )
         }
-    }
-}
-
-@Composable
-private fun SliderRow(label: String, value: Float, onDone: () -> Unit, onChange: (Float) -> Unit) {
-    val ink = LocalInk.current
-    var local by remember(value) { mutableStateOf(value) }
-    Column(Modifier.fillMaxWidth().padding(vertical = Gap.xs)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, fontSize = Type.body, color = ink.body)
-            Text("%.2f".format(local), fontSize = Type.meta, color = ink.faint)
-        }
-        GlasmioSlider(
-            value = local,
-            onValueChange = { local = it; onChange(it) },
-            // 松手才落盘：拖的过程中每帧写一次磁盘会把 IO 打满
-            onValueChangeFinished = onDone,
-        )
     }
 }

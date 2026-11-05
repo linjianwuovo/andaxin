@@ -7,7 +7,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import io.github.neoruaa.glasmio.glass.render.Backdrop
 import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
-import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
+import androidx.compose.ui.graphics.Color
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCanvasBackdrop
 
 /**
  * [NoSamplingBackdrop] 里被顶掉的那层真页面层。
@@ -33,7 +35,8 @@ val LocalSamplingBackdrop = staticCompositionLocalOf<Backdrop?> { null }
  */
 @Composable
 fun NoSamplingBackdrop(content: @Composable () -> Unit) {
-    val none = remember { emptyBackdrop() }
+    val grouped = LocalGlassColors.current.groupedBackground
+    val none = rememberCanvasBackdrop { drawRect(grouped) }
     val page = LocalSamplingBackdrop.current ?: LocalGlassBackdrop.current
     CompositionLocalProvider(
         LocalGlassBackdrop provides none,

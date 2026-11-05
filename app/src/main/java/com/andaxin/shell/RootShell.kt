@@ -80,7 +80,10 @@ import com.andaxin.feature.modules.RepairListScreen
 import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.web.WebScreen
-import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
+import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import io.github.neoruaa.glasmio.glass.trackBackdropPosition
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import io.github.neoruaa.glasmio.ui.GlasmioNavigationBar
 import io.github.neoruaa.glasmio.ui.GlasmioTabItem
@@ -506,38 +509,46 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
         graph.tabJump.value = -1
     }
 
-    GlasmioBackdropHost(
-        modifier = Modifier.fillMaxSize(),
-        sampledContent = {
-        // 五个 tab 的内容也在这层里，里面同样有玻璃件（首页那排按钮等）。
-        // 采样层内自采样会递归把 RenderThread 栈打穿，统一关掉（见 NoSamplingBackdrop）。
-        NoSamplingBackdrop {
-        HorizontalPager(
-            state = pager,
-            beyondViewportPageCount = 1,
+    // 照 MeiloX 的接法：页面录成一层 layerBackdrop 当"源"，底栏的 shared backdrop
+    // 再拿它当 source、拿一块静态色当 base。两条都不能省：
+    // ① base 若也给 pageBackdrop，玻璃就采到自己身上（实测整条变粉色棋盘残影）；
+    // ② 录制层那个 Box 上绝不能加 graphicsLayer{compositingStrategy=Offscreen}，
+    //    加了顶上必出一条彩带、图标/文字后面几块纯白、栏体压暗。
+    val pageBackdrop = rememberLayerBackdrop()
+    val pageTint = androidx.compose.material3.MaterialTheme.colorScheme.background
+    val canvasBackdrop = io.github.neoruaa.glasmio.glass.render.backdrops.rememberCanvasBackdrop {
+        drawRect(pageTint)
+    }
+    // 底座用静态色（MeiloX 的 glassBackdrop），源才是录下来的页面层。
+    val barBackdrop = io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop(canvasBackdrop, pageBackdrop)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                /*
-                 * 这里以前写着 `.padding(bottom = 92.dp)`，把整页挡在底栏上方。
-                 * 那一挡就是"玻璃栏背景是纯色"的真正原因：栏子采的那一层背景底下永远只有
-                 * 一片空窗口底色，模糊再大糊出来的也是一个颜色，跟不透明没区别。
-                 * 现在整页铺到屏幕底，内容从栏底下滚过去，折射和模糊才有东西可吃；
-                 * 各屏尾部那条 ShelfTail 负责让最后一条停在栏子上沿之上。
-                 */
-        ) { index ->
-            when (Shelf.entries[index]) {
-                Shelf.Home -> HomeScreen(open = open)
-                Shelf.Timetable -> TimetableScreen()
-                Shelf.Message -> MessageScreen()
-                Shelf.Notice -> NoticeScreen(open = open)
-                Shelf.Me -> MeScreen(open = open)
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .layerBackdrop(pageBackdrop)
+                .trackBackdropPosition(pageBackdrop),
+        ) {
+            // 五个 tab 的内容也在这层里，里面同样有玻璃件（首页那排按钮等）。
+            // 采样层内自采样会递归把 RenderThread 栈打穿，统一关掉（见 NoSamplingBackdrop）。
+            NoSamplingBackdrop {
+                HorizontalPager(
+                    state = pager,
+                    beyondViewportPageCount = 1,
+                    modifier = Modifier.fillMaxSize().statusBarsPadding(),
+                ) { index ->
+                    when (Shelf.entries[index]) {
+                        Shelf.Home -> HomeScreen(open = open)
+                        Shelf.Timetable -> TimetableScreen()
+                        Shelf.Message -> MessageScreen()
+                        Shelf.Notice -> NoticeScreen(open = open)
+                        Shelf.Me -> MeScreen(open = open)
+                    }
+                }
             }
         }
-        }
 
-        },
-        overlayContent = {
         GlasmioNavigationBar(
             items = tabs,
             selectedKey = Shelf.entries[pager.currentPage],
@@ -545,11 +556,11 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             onExpand = {},
             compactProgress = compactProgress,
             compactSize = 48.dp,
+            backdrop = barBackdrop,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(androidx.compose.ui.Alignment.BottomCenter)
                 .navigationBarsPadding(),
         )
-        }
-    )
+    }
 }
