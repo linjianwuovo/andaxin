@@ -2,18 +2,14 @@ package com.andaxin.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,20 +22,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlin.math.roundToInt
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavBackStackEntry
@@ -101,8 +85,6 @@ import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.web.WebScreen
 import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
-import io.github.neoruaa.glasmio.icons.GlasmioIconProvider
-import io.github.neoruaa.glasmio.icons.GlasmioIconResolver
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderMotion
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderSpec
@@ -112,6 +94,7 @@ import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationOperation
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationScaffold
 import io.github.neoruaa.glasmio.scaffold.glasmioNavigationScrollHint
+import io.github.neoruaa.glasmio.ui.CompactBottomControlSize
 import io.github.neoruaa.glasmio.ui.GlasmioTabItem
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
@@ -510,13 +493,15 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val pager = rememberPagerState(initialPage = Shelf.Home.ordinal) { Shelf.entries.size }
     val scope = rememberCoroutineScope()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
-    // 纯照抄库成品条：图标走库自带的 SfSymbol + 默认 MaterialGlasmioIconResolver，
-    // 不挂自绘 vector。库那 36 个符号里没有信封/铃铛，"消息"退成 ellipsis（Material 兜底 MoreHoriz）、
-    // "公告"用 info.circle（兜底 Info）—— 用户 11-05 定的"纯照抄"，宁可符号不对也不加适配层。
-    val tabs = remember(labels) {
+    // 逐行照库自带 demo 的 SampleBottomBar（gla_sample_main.kt:686-693）：选中格用实心符号、
+    // 其余用空心（sample 里是 SfSymbol.HouseFilled 与 SfSymbol.House 二选一）。
+    // 图标只走库自带的 SfSymbol + 默认 MaterialGlasmioIconResolver，不挂自绘 vector：
+    // 那 36 个符号里没有信封/铃铛，"消息"就是 ellipsis（Material 兜底 MoreHoriz）、"公告"就是 info.circle。
+    val selectedKey = Shelf.entries[pager.currentPage]
+    val tabs = remember(labels, selectedKey) {
         listOf(
-            GlasmioTabItem(Shelf.Home, labels[0], SfSymbol.HouseFilled),
-            GlasmioTabItem(Shelf.Timetable, labels[1], SfSymbol.ClockFilled),
+            GlasmioTabItem(Shelf.Home, labels[0], if (selectedKey == Shelf.Home) SfSymbol.HouseFilled else SfSymbol.House),
+            GlasmioTabItem(Shelf.Timetable, labels[1], if (selectedKey == Shelf.Timetable) SfSymbol.ClockFilled else SfSymbol.Clock),
             GlasmioTabItem(Shelf.Message, labels[2], SfSymbol.Ellipsis),
             GlasmioTabItem(Shelf.Notice, labels[3], SfSymbol.InfoCircle),
         )
@@ -614,84 +599,25 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             }
         }
 
-        // 库的条上没有角标这个位（GlasmioTabItem 只有 key/label/symbol），
-        // 但它把每格的位置报出来（onItemBoundsChanged），所以自己叠一颗在"消息"那格上。
-        var barOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-        var messageCell by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-        val unread by com.andaxin.core.store.Unread.messages.collectAsStateWithLifecycle()
-        val compact by navScroll.compactProgress
-
-        // 库的图标扩展点。那 36 个 SfSymbol 里没有信封/喇叭，落到 Material 就是 MoreHoriz / Info；
-        // 这里用本仓自绘的 vector 顶掉这两个 systemName，其余名字照旧走库的 Material 映射。
-        val messageIcon = ImageVector.vectorResource(R.drawable.ic_tab_message)
-        val noticeIcon = ImageVector.vectorResource(R.drawable.ic_tab_notice)
-        val iconResolver = remember(messageIcon, noticeIcon) {
-            GlasmioIconResolver { name ->
-                when {
-                    name.startsWith("ellipsis") -> messageIcon
-                    name.startsWith("info") -> noticeIcon
-                    else -> null
-                }
-            }
-        }
-
-        Box(
+        // 逐行照库自带 demo 的 SampleBottomBar（gla_sample_main.kt:694-710）：
+        // 同样的参数、同样的修饰符顺序、同样的 CompactBottomControlSize，
+        // 不叠角标、不换图标 —— 那两件是本仓自己加的，官方实现里没有。
+        GlasmioNavigationBarWithTrailingItem(
+            items = tabs,
+            trailingItem = trailing,
+            selectedKey = selectedKey,
+            onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
+            onExpand = navScroll::expand,
+            compactProgress = navScroll.compactProgress,
+            compactSize = CompactBottomControlSize,
+            backdrop = barBackdrop,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(androidx.compose.ui.Alignment.BottomCenter)
-                .onGloballyPositioned { barOrigin = it.boundsInWindow().topLeft },
-        ) {
-            GlasmioIconProvider(resolver = iconResolver) {
-                GlasmioNavigationBarWithTrailingItem(
-                    items = tabs,
-                    trailingItem = trailing,
-                    selectedKey = Shelf.entries[pager.currentPage],
-                    onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
-                    onExpand = navScroll::expand,
-                    compactProgress = navScroll.compactProgress,
-                    compactSize = 48.dp,
-                    backdrop = barBackdrop,
-                    onItemBoundsChanged = { key, rect ->
-                        if (key == Shelf.Message) messageCell = rect
-                    },
-                    // 外边距照 MeiloX 的 Dimensions：左右各 20.dp、底 8.dp；
-                    // 滚动提示挂在 padding 里侧（库注释要求贴着栏的完整分配区），外边距留在外层。
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .glasmioNavigationScrollHint(navScroll.scrollHintProgress)
-                        .padding(bottom = 8.dp)
-                        .navigationBarsPadding(),
-                )
-            }
-
-            // 收成圆球时条上只留当前那一格，"消息"格不在画面上，角标会飘到球旁边，所以只在展开态画。
-            val cell = messageCell
-            if (cell != null && unread > 0 && compact < 0.5f) {
-                // 格子矩形与这层 Box 的原点都是窗口坐标，相减就落回本层；再往图标右上一提。
-                Box(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                (cell.center.x - barOrigin.x).roundToInt() + 4.dp.roundToPx(),
-                                (cell.top - barOrigin.y).roundToInt() - 2.dp.roundToPx(),
-                            )
-                        }
-                        .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(androidx.compose.material3.MaterialTheme.colorScheme.error)
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center,
-                ) {
-                    androidx.compose.material3.Text(
-                        text = if (unread > 99) "99+" else "$unread",
-                        color = androidx.compose.ui.graphics.Color.White,
-                        fontSize = 10.sp,
-                        lineHeight = 10.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 8.dp)
+                .glasmioNavigationScrollHint(navScroll.scrollHintProgress)
+                .navigationBarsPadding(),
+        )
     }
 }
