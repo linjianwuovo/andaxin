@@ -3,6 +3,8 @@ package com.andaxin.shell
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -13,6 +15,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -78,6 +81,9 @@ import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.web.WebScreen
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
+import io.github.neoruaa.glasmio.icons.SfSymbol
+import io.github.neoruaa.glasmio.ui.GlasmioNavigationBar
+import io.github.neoruaa.glasmio.ui.GlasmioTabItem
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -475,11 +481,20 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val pager = rememberPagerState(initialPage = Shelf.Home.ordinal) { Shelf.entries.size }
     val scope = rememberCoroutineScope()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
-    val icons = Shelf.entries.map { it.iconRes }
-    val iconsAccent = Shelf.entries.map { it.iconAccentRes }
-    val iconsOn = Shelf.entries.map { it.iconOnRes }
-    // 五格里只有「消息」那一格有未读概念（公告那份数据里没有已读未读），顺序对齐 Shelf
-    val unreadMsgs by com.andaxin.core.store.Unread.messages.collectAsStateWithLifecycle()
+    // 纯照抄库成品条：图标走库自带的 SfSymbol + 默认 MaterialGlasmioIconResolver，
+    // 不挂自绘 vector。库那 36 个符号里没有信封/铃铛，"消息"退成 ellipsis（Material 兜底 MoreHoriz）、
+    // "公告"用 info.circle（兜底 Info）—— 用户 11-05 定的"纯照抄"，宁可符号不对也不加适配层。
+    val tabs = remember(labels) {
+        listOf(
+            GlasmioTabItem(Shelf.Home, labels[0], SfSymbol.HouseFilled),
+            GlasmioTabItem(Shelf.Timetable, labels[1], SfSymbol.ClockFilled),
+            GlasmioTabItem(Shelf.Message, labels[2], SfSymbol.Ellipsis),
+            GlasmioTabItem(Shelf.Notice, labels[3], SfSymbol.InfoCircle),
+            GlasmioTabItem(Shelf.Me, labels[4], SfSymbol.PersonFilled),
+        )
+    }
+    // 库条恒展开：没接 nestedScroll 的折叠，进度钉在 0。
+    val compactProgress = remember { mutableStateOf(0f) }
 
     // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
     val graph = LocalAppGraph.current
@@ -523,19 +538,17 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
 
         },
         overlayContent = {
-        ShelfBar(
-            current = pager.currentPage,
-            slide = with(pager) { currentPage + currentPageOffsetFraction },
-            pageCount = Shelf.entries.size,
-            onSelect = { scope.launch { pager.animateScrollToPage(it) } },
-            material = appearance.material,
-            spec = appearance.spec(),
-            labels = labels,
-            icons = icons,
-            iconsAccent = iconsAccent,
-            iconsOn = iconsOn,
-            badges = listOf(0, 0, unreadMsgs, 0, 0),
-            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+        GlasmioNavigationBar(
+            items = tabs,
+            selectedKey = Shelf.entries[pager.currentPage],
+            onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
+            onExpand = {},
+            compactProgress = compactProgress,
+            compactSize = 48.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(androidx.compose.ui.Alignment.BottomCenter)
+                .navigationBarsPadding(),
         )
         }
     )

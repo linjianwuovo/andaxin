@@ -33,11 +33,11 @@ object Gap {
     val screen: Dp = 18.dp
 
     /**
-     * 悬浮底栏让出来的那条尾巴（再加系统导航条的高度，见 shell 的 ShelfTail）。
+     * 底栏让出来的那条尾巴（再加系统导航条的高度，见 shell 的 ShelfTail）。
      *
-     * 64 栏体 + 12 栏底间距 + 收尾留白，凑成 96。
+     * 62 栏体（库的 NavigationBarSurfaceHeight）+ 12 栏底间距 + 20 收尾留白，凑成 94。
      */
-    val shelfTail: Dp = 96.dp
+    val shelfTail: Dp = 94.dp
 }
 
 /**
