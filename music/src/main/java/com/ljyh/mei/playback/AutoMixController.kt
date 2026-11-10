@@ -1,7 +1,7 @@
 package com.ljyh.mei.playback
 
 import android.content.Context
-import android.net.Uri
+import android.os.SystemClock
 import androidx.datastore.preferences.core.Preferences
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -20,12 +20,17 @@ import com.ljyh.mei.constants.AutoMixModeKey
 import com.ljyh.mei.constants.AutoMixTailCutBarsKey
 import com.ljyh.mei.constants.AutoMixTempoMatchingKey
 import com.ljyh.mei.constants.AutoMixTransitionBarsKey
+import com.ljyh.mei.constants.AudioOutputMode
+import com.ljyh.mei.constants.AudioOutputModeKey
 import com.ljyh.mei.utils.dataStore
 import com.ljyh.mei.utils.toEnum
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -57,17 +62,20 @@ data class AutoMixRuntimeConfiguration(
  * The standby deck owns the complete playlist, seeks to the incoming start while paused, and is
  * promoted in place after the overlap. Promotion never pauses or seeks the incoming audio.
  */
-class AutoMixController(
+class AutoMixController internal constructor(
     context: Context,
     private val player: StableDeckPlayer,
     private val scope: CoroutineScope,
-    private val sourceResolver: suspend (MediaItem) -> Uri,
+    private val sourceResolver: suspend (MediaItem) -> ResolvedMediaSource,
 ) : Player.Listener {
     private data class ActiveTransition(
         val outgoingDeck: ExoPlayer,
         val incomingDeck: ExoPlayer,
         val outgoingMediaId: String,
+        val outgoingEntryId: String?,
         val incomingMediaId: String,
+        val incomingEntryId: String?,
+        val incomingTargetIndex: Int,
         val outgoingStartPositionMs: Long,
         val incomingStartPositionMs: Long,
         val durationMs: Long,
@@ -79,7 +87,7 @@ class AutoMixController(
     )
 
     val isTransitioning: Boolean
-        get() = activeTransition != null
+        get() = activeTransition != null || recoveryJob != null
 
     private var configuration = AutoMixRuntimeConfiguration()
     private var preparedMediaId: String? = null
@@ -88,9 +96,11 @@ class AutoMixController(
     private var preparationGeneration = 0L
     private var activeTransition: ActiveTransition? = null
     private var transitionJob: Job? = null
-    private var analysisJob: Job? = null
+    private var recoveryJob: Job? = null
+    private var recoveryDeck: ExoPlayer? = null
+    private val endPauseRecovery = AutoMixEndPauseRecovery()
+    private val analysisTask = SmartAutoMixAnalysisTask(scope)
     private var smartPlan: SmartAutoMixPlan? = null
-    private var analyzedAttempt: Pair<String, String>? = null
     private var sourceGeneration = 0L
     private var monitorJob: Job? = null
     private var preferenceJob: Job? = null
@@ -116,6 +126,10 @@ class AutoMixController(
             context.dataStore.data.map { it.toAutoMixConfiguration() }.distinctUntilChanged().collectLatest { updated ->
                 val previous = configuration
                 configuration = updated
+                if (configuration != previous) {
+                    analysisTask.reset()
+                    smartPlan = null
+                }
                 monitorJob?.cancel()
                 monitorJob = null
                 if (!configuration.enabled) {
@@ -143,6 +157,7 @@ class AutoMixController(
     }
 
     override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+        if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) endPauseRecovery.cancel()
         if (isPromotingDeck) return
         if (isTransitioning) {
             if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
@@ -154,16 +169,21 @@ class AutoMixController(
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        endPauseRecovery.cancel()
         if (isPromotingDeck) return
         val transition = activeTransition
         if (transition == null) {
+            if (recoveryJob != null) cancelTransition(prepareAfterCancel = false)
             prepareNext()
             return
         }
-        when (mediaItem?.mediaId) {
-            transition.incomingMediaId -> finishTransition(transition.wantsPlayback)
-            transition.outgoingMediaId -> Unit
-            else -> cancelTransition(prepareAfterCancel = true)
+        when {
+            reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
+                mediaItem?.mediaId == transition.incomingMediaId &&
+                mediaItem.queueEntryId == transition.incomingEntryId -> finishTransition(transition.wantsPlayback)
+            reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ||
+                mediaItem?.mediaId != transition.outgoingMediaId -> cancelTransition(prepareAfterCancel = true)
         }
     }
 
@@ -172,10 +192,15 @@ class AutoMixController(
         newPosition: Player.PositionInfo,
         reason: Int,
     ) {
+        if (reason != Player.DISCONTINUITY_REASON_INTERNAL) endPauseRecovery.cancel()
         if (isPromotingDeck) return
+        if (recoveryJob != null && reason != Player.DISCONTINUITY_REASON_INTERNAL) {
+            cancelTransition(prepareAfterCancel = true)
+        }
         val transition = activeTransition ?: return
         if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION &&
-            newPosition.mediaItem?.mediaId == transition.incomingMediaId
+            newPosition.mediaItem?.mediaId == transition.incomingMediaId &&
+            newPosition.mediaItem?.queueEntryId == transition.incomingEntryId
         ) {
             finishTransition(transition.wantsPlayback)
         } else if (reason != Player.DISCONTINUITY_REASON_INTERNAL) {
@@ -184,16 +209,39 @@ class AutoMixController(
     }
 
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-        val transition = activeTransition ?: return
+        // Disabling pause-at-end crosses the playback thread. Its already queued pause can
+        // arrive after the failed transition and even after the gain recovery has finished.
+        val resumeCancelledEndPause = endPauseRecovery.consume(
+            mediaId = player.currentMediaItem?.mediaId,
+            entryId = player.currentMediaItem?.queueEntryId,
+            playWhenReady = playWhenReady,
+            reason = reason,
+        )
+        if (recoveryJob != null) cancelTransition(prepareAfterCancel = true)
+        val transition = activeTransition
+        if (transition == null) {
+            if (resumeCancelledEndPause) player.activeDeck.playWhenReady = true
+            return
+        }
         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
             finishTransition(transition.wantsPlayback)
+            if (player.activeDeck === transition.outgoingDeck && transition.wantsPlayback) {
+                // If the incoming deck is not ready, let the normal playlist advance past
+                // our pause-at-end boundary. User pause/seek callbacks never resume playback.
+                transition.outgoingDeck.playWhenReady = true
+            }
             return
         }
         transition.wantsPlayback = playWhenReady
         transition.incomingDeck.playWhenReady = playWhenReady
     }
 
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        if (!isPlaying) analysisTask.cancelPending()
+    }
+
     override fun onRepeatModeChanged(repeatMode: Int) {
+        endPauseRecovery.cancel()
         if (isPromotingDeck) return
         if (isTransitioning) {
             cancelTransition(prepareAfterCancel = true)
@@ -203,6 +251,7 @@ class AutoMixController(
     }
 
     override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+        endPauseRecovery.cancel()
         if (isPromotingDeck) return
         if (isTransitioning) {
             cancelTransition(prepareAfterCancel = true)
@@ -214,9 +263,11 @@ class AutoMixController(
     fun release() {
         if (released) return
         released = true
+        endPauseRecovery.cancel()
         preparationGeneration++
+        stopRecovery()
         transitionJob?.cancel()
-        analysisJob?.cancel()
+        analysisTask.reset()
         monitorJob?.cancel()
         preferenceJob?.cancel()
         retryJob?.cancel()
@@ -230,13 +281,10 @@ class AutoMixController(
     /** Drops deck state so neither player can reuse a source resolved for the old quality. */
     fun resetForQualityChange() {
         sourceGeneration++
-        analysisJob?.cancel()
-        analysisJob = null
+        analysisTask.reset()
         smartPlan = null
-        analyzedAttempt = null
         resetRetryState()
         cancelTransition(prepareAfterCancel = false)
-        prepareNext(force = true)
     }
 
     private fun prepareNext(
@@ -275,8 +323,20 @@ class AutoMixController(
             return
         }
 
-        val outgoingId = player.currentMediaItem?.mediaId
-        val planMatchesTarget = analyzedAttempt == (outgoingId to nextItem.mediaId)
+        val targetChanged = preparedMediaId != nextItem.mediaId || preparedTargetIndex != nextIndex
+        if (targetChanged) {
+            clearStandby(resetRetry = false)
+            analysisTask.reset()
+            smartPlan = null
+            preparedMediaId = nextItem.mediaId
+            preparedTargetIndex = nextIndex
+        }
+        // Keep the logical target on paused restoration without starting another audio loader.
+        if (!player.isPlaying) return
+
+        val outgoingId = player.currentMediaItem?.mediaId ?: return
+        val attempt = outgoingId to nextItem.mediaId
+        val planMatchesTarget = analysisTask.attempt == attempt
         val incomingStartMs = smartPlan
             ?.takeIf { planMatchesTarget }
             ?.incomingStartMs
@@ -289,14 +349,22 @@ class AutoMixController(
         ) {
             return
         }
-
-        val targetChanged = preparedMediaId != nextItem.mediaId || preparedTargetIndex != nextIndex
-        if (targetChanged) {
-            analysisJob?.cancel()
-            analysisJob = null
-            smartPlan = null
-            analyzedAttempt = null
+        if (shouldDeferAutoMixStandby(
+                hasPlan = smartPlan != null && planMatchesTarget,
+                remainingMs = remainingMs,
+                fixedTransitionDurationMs = configuration.durationMs,
+            )
+        ) {
+            // Keep a separate loader out of normal playback until its transition needs the bytes.
+            if (standby.mediaItemCount != 0 || standby.playbackState != Player.STATE_IDLE) {
+                preparationGeneration++
+                standby.stop()
+                standby.clearMediaItems()
+                preparedIncomingStartMs = 0L
+            }
+            return
         }
+        if (configuration.mode == AutoMixMode.Smart && smartPlan == null) analysisTask.skip(attempt)
         preparationGeneration++
         val items = List(player.mediaItemCount, player::getMediaItemAt)
         standby.stop()
@@ -325,7 +393,7 @@ class AutoMixController(
         val duration = player.duration
         if (duration <= 0L || duration == C.TIME_UNSET) return
         val remaining = duration - player.currentPosition
-        if (remaining <= SMART_ANALYSIS_WINDOW_MS + 5_000L && preparedMediaId == null) prepareNext()
+        prepareNext()
         if (configuration.mode == AutoMixMode.Smart && remaining <= SMART_ANALYSIS_WINDOW_MS) {
             ensureSmartPlan(duration)
         }
@@ -341,23 +409,24 @@ class AutoMixController(
     }
 
     private fun ensureSmartPlan(outgoingDurationMs: Long) {
-        if (analysisJob != null || smartPlan != null || preparedTargetIndex < 0) return
+        if (!configuration.enabled || configuration.mode != AutoMixMode.Smart || !player.isPlaying ||
+            smartPlan != null || preparedTargetIndex < 0
+        ) return
         val outgoing = player.currentMediaItem ?: return
-        val incoming = player.getMediaItemAt(preparedTargetIndex)
+        val incomingIndex = preparedTargetIndex
+        val incoming = player.getMediaItemAt(incomingIndex)
         val attempt = outgoing.mediaId to incoming.mediaId
-        if (analyzedAttempt == attempt) return
         val generation = sourceGeneration
         val preparation = preparationGeneration
-        analyzedAttempt = attempt
-        analysisJob = scope.launch {
+        analysisTask.start(attempt) {
             var analysisAccepted = false
             try {
                 val pair = analyzer.analyzePair(
                     outgoingId = outgoing.mediaId,
-                    outgoingUri = sourceResolver(outgoing),
+                    outgoingSource = sourceResolver(outgoing),
                     outgoingDurationMs = outgoingDurationMs,
                     incomingId = incoming.mediaId,
-                    incomingUri = sourceResolver(incoming),
+                    incomingSource = sourceResolver(incoming),
                 )
                 val plan = BeatNetAutoMixAnalyzer.makePlan(
                     pair = pair,
@@ -367,32 +436,31 @@ class AutoMixController(
                     tempoMatching = configuration.tempoMatching,
                     maximumTempoAdjustmentPercent = configuration.maximumTempoAdjustmentPercent,
                 )
-                if (generation == sourceGeneration && preparation == preparationGeneration &&
+                currentCoroutineContext().ensureActive()
+                if (configuration.enabled && configuration.mode == AutoMixMode.Smart && player.isPlaying &&
+                    generation == sourceGeneration && preparation == preparationGeneration &&
                     preparedMediaId == incoming.mediaId &&
-                    player.currentMediaItem?.mediaId == outgoing.mediaId
+                    preparedTargetIndex == incomingIndex &&
+                    player.getMediaItemAtOrNull(incomingIndex)?.queueEntryId == incoming.queueEntryId &&
+                    player.currentMediaItem?.mediaId == outgoing.mediaId &&
+                    player.currentMediaItem?.queueEntryId == outgoing.queueEntryId
                 ) {
                     analysisAccepted = true
                     smartPlan = plan
-                    if (plan != null) {
-                        if (plan.incomingStartMs != preparedIncomingStartMs) {
-                            prepareNext(force = true)
-                        } else {
-                            updateTempo(player.standbyDeck, plan.incomingStartRate)
-                        }
-                    }
+                    if (plan != null) prepareNext(force = true)
                 }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 Timber.tag(TAG).w(error, "BeatNet analysis failed; using fixed crossfade")
+            } catch (error: OutOfMemoryError) {
+                Timber.tag(TAG).w(error, "BeatNet analysis ran out of memory; using fixed crossfade")
             } finally {
                 if (generation == sourceGeneration) {
-                    analysisJob = null
                     if (!analysisAccepted && preparation != preparationGeneration &&
-                        analyzedAttempt == attempt &&
                         preparedMediaId == incoming.mediaId &&
                         player.currentMediaItem?.mediaId == outgoing.mediaId
                     ) {
-                        analyzedAttempt = null
+                        analysisTask.allowRetry(attempt)
                     }
                 }
             }
@@ -427,11 +495,15 @@ class AutoMixController(
         val outgoingId = outgoing.currentMediaItem?.mediaId ?: return
         val durationMs = (plan?.durationMs ?: configuration.durationMs).coerceAtLeast(1_000L)
         val wantsPlayback = player.playWhenReady
+        endPauseRecovery.cancel()
         val transition = ActiveTransition(
             outgoingDeck = outgoing,
             incomingDeck = incoming,
             outgoingMediaId = outgoingId,
+            outgoingEntryId = outgoing.currentMediaItem?.queueEntryId,
             incomingMediaId = targetId,
+            incomingEntryId = incoming.currentMediaItem?.queueEntryId,
+            incomingTargetIndex = targetIndex,
             outgoingStartPositionMs = outgoing.currentPosition.coerceAtLeast(0L),
             incomingStartPositionMs = incoming.currentPosition.coerceAtLeast(0L),
             durationMs = durationMs,
@@ -480,9 +552,18 @@ class AutoMixController(
         val transition = activeTransition ?: return
         if (player.activeDeck !== transition.outgoingDeck ||
             player.standbyDeck !== transition.incomingDeck ||
-            transition.incomingDeck.currentMediaItem?.mediaId != transition.incomingMediaId
+            !isAutoMixPromotionReady(
+                expectedMediaId = transition.incomingMediaId,
+                expectedEntryId = transition.incomingEntryId,
+                expectedIndex = transition.incomingTargetIndex,
+                currentMediaId = transition.incomingDeck.currentMediaItem?.mediaId,
+                currentEntryId = transition.incomingDeck.currentMediaItem?.queueEntryId,
+                currentIndex = transition.incomingDeck.currentMediaItemIndex,
+                playbackState = transition.incomingDeck.playbackState,
+                hasPlayerError = transition.incomingDeck.playerError != null,
+            )
         ) {
-            cancelTransition(prepareAfterCancel = true)
+            cancelTransition(prepareAfterCancel = true, smoothRecovery = true)
             return
         }
         transitionJob?.cancel()
@@ -508,20 +589,71 @@ class AutoMixController(
         prepareNext(force = true)
     }
 
-    private fun cancelTransition(prepareAfterCancel: Boolean) {
+    private fun cancelTransition(prepareAfterCancel: Boolean, smoothRecovery: Boolean = false) {
+        endPauseRecovery.cancel()
+        stopRecovery()
         val transition = activeTransition
         transitionJob?.cancel()
         transitionJob = null
         activeTransition = null
         if (transition != null) {
+            if (smoothRecovery && transition.wantsPlayback &&
+                player.activeDeck === transition.outgoingDeck &&
+                player.currentMediaItem?.mediaId == transition.outgoingMediaId &&
+                player.currentMediaItem?.queueEntryId == transition.outgoingEntryId
+            ) {
+                endPauseRecovery.arm(transition.outgoingMediaId, transition.outgoingEntryId)
+            }
             transition.outgoingDeck.setPauseAtEndOfMediaItems(false)
-            transition.outgoingDeck.volume = 1f
-            transition.outgoingDeck.playbackParameters = PlaybackParameters.DEFAULT
-            transition.outgoingDeck.playWhenReady = transition.wantsPlayback
             transition.incomingDeck.playWhenReady = false
         }
         clearStandby(resetRetry = false)
+        if (smoothRecovery && transition != null &&
+            player.activeDeck === transition.outgoingDeck && transition.outgoingDeck.isPlaying
+        ) {
+            recoverOutgoingDeck(transition.outgoingDeck, prepareAfterCancel)
+            return
+        }
+        transition?.outgoingDeck?.let {
+            it.volume = 1f
+            it.playbackParameters = PlaybackParameters.DEFAULT
+        }
         if (prepareAfterCancel) prepareNext(force = true)
+    }
+
+    private fun recoverOutgoingDeck(deck: ExoPlayer, prepareAfterCancel: Boolean) {
+        val startingGain = deck.volume
+        val startingRate = deck.playbackParameters.speed
+        val entryId = deck.currentMediaItem?.queueEntryId
+        val mediaId = deck.currentMediaItem?.mediaId
+        recoveryDeck = deck
+        recoveryJob = scope.launch {
+            val startedAt = SystemClock.elapsedRealtime()
+            while (isActive && player.activeDeck === deck &&
+                deck.currentMediaItem?.mediaId == mediaId && deck.currentMediaItem?.queueEntryId == entryId
+            ) {
+                val progress = ((SystemClock.elapsedRealtime() - startedAt).toFloat() / RECOVERY_DURATION_MS)
+                    .coerceIn(0f, 1f)
+                val fraction = autoMixSmoothstep(progress)
+                deck.volume = startingGain + (1f - startingGain) * fraction
+                updateTempo(deck, startingRate + (1f - startingRate) * fraction)
+                if (progress >= 1f) break
+                delay(ENVELOPE_INTERVAL_MS)
+            }
+            recoveryJob = null
+            recoveryDeck = null
+            if (prepareAfterCancel) prepareNext(force = true)
+        }
+    }
+
+    private fun stopRecovery() {
+        recoveryJob?.cancel()
+        recoveryJob = null
+        recoveryDeck?.takeIf { it === player.activeDeck }?.let {
+            it.volume = 1f
+            it.playbackParameters = PlaybackParameters.DEFAULT
+        }
+        recoveryDeck = null
     }
 
     private fun clearStandby(resetRetry: Boolean) {
@@ -542,6 +674,7 @@ class AutoMixController(
     }
 
     private fun clearPreparedState(resetRetry: Boolean) {
+        analysisTask.cancelPending()
         preparedMediaId = null
         preparedTargetIndex = C.INDEX_UNSET
         preparedIncomingStartMs = 0L
@@ -555,7 +688,7 @@ class AutoMixController(
         if (deck.currentMediaItem?.mediaId != targetId || deck.currentMediaItemIndex != targetIndex) return
         Timber.tag(TAG).w(error, "Standby deck failed for %s", targetId)
         if (isTransitioning) {
-            cancelTransition(prepareAfterCancel = false)
+            cancelTransition(prepareAfterCancel = false, smoothRecovery = true)
         } else {
             clearStandby(resetRetry = false)
         }
@@ -608,8 +741,95 @@ class AutoMixController(
         private const val SMART_ANALYSIS_WINDOW_MS = 60_000L
         private const val MAX_STANDBY_RETRY_ATTEMPTS = 1
         private const val STANDBY_RETRY_DELAY_MS = 750L
+        private const val RECOVERY_DURATION_MS = 200L
     }
 }
+
+/** Owns one pending analysis without letting a cancelled predecessor clear its replacement. */
+internal class SmartAutoMixAnalysisTask(private val scope: CoroutineScope) {
+    private var job: Job? = null
+    val isPending: Boolean get() = job != null
+    var attempt: Pair<String, String>? = null
+        private set
+
+    fun start(attempt: Pair<String, String>, action: suspend CoroutineScope.() -> Unit): Boolean {
+        if (job != null || this.attempt == attempt) return false
+        this.attempt = attempt
+        val pending = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                action()
+            } finally {
+                if (job === currentCoroutineContext()[Job]) job = null
+            }
+        }
+        job = pending
+        pending.start()
+        return true
+    }
+
+    fun cancelPending() {
+        if (job != null) reset()
+    }
+
+    fun reset() {
+        job?.cancel()
+        job = null
+        attempt = null
+    }
+
+    fun skip(attempt: Pair<String, String>) {
+        reset()
+        this.attempt = attempt
+    }
+
+    suspend fun allowRetry(attempt: Pair<String, String>) {
+        if (job === currentCoroutineContext()[Job] && this.attempt == attempt) this.attempt = null
+    }
+}
+
+/** A completed Smart plan reuses its analyzed head; other modes load near their fixed transition. */
+internal fun shouldDeferAutoMixStandby(
+    hasPlan: Boolean,
+    remainingMs: Long,
+    fixedTransitionDurationMs: Long,
+): Boolean = !hasPlan &&
+    remainingMs > fixedTransitionDurationMs.coerceAtLeast(1_000L) + 5_000L
+
+/** A failed mix may leave one already queued internal pause, never a user playback request. */
+internal class AutoMixEndPauseRecovery {
+    private var pendingMediaId: String? = null
+    private var pendingEntryId: String? = null
+
+    fun arm(mediaId: String, entryId: String?) {
+        pendingMediaId = mediaId
+        pendingEntryId = entryId
+    }
+
+    fun cancel() {
+        pendingMediaId = null
+        pendingEntryId = null
+    }
+
+    fun consume(mediaId: String?, entryId: String?, playWhenReady: Boolean, reason: Int): Boolean {
+        val shouldResume = pendingMediaId != null && pendingMediaId == mediaId &&
+            pendingEntryId == entryId && !playWhenReady &&
+            reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM
+        cancel()
+        return shouldResume
+    }
+}
+
+internal fun isAutoMixPromotionReady(
+    expectedMediaId: String,
+    expectedEntryId: String?,
+    expectedIndex: Int,
+    currentMediaId: String?,
+    currentEntryId: String?,
+    currentIndex: Int,
+    playbackState: Int,
+    hasPlayerError: Boolean,
+): Boolean = !hasPlayerError && playbackState == Player.STATE_READY &&
+    currentMediaId == expectedMediaId && currentEntryId == expectedEntryId && currentIndex == expectedIndex
 
 internal fun isAutoMixStandbyReady(
     preparedMediaId: String,
@@ -740,8 +960,9 @@ internal fun shouldBlockAutoMixSecondaryPreparation(
 ): Boolean = sameRetryTarget && !isScheduledRetry &&
     (retryJobActive || retryAttempts >= maxRetryAttempts)
 
-private fun Preferences.toAutoMixConfiguration() = AutoMixRuntimeConfiguration(
-    enabled = this[AutoMixEnabledKey] ?: false,
+internal fun Preferences.toAutoMixConfiguration() = AutoMixRuntimeConfiguration(
+    enabled = (this[AutoMixEnabledKey] ?: false) &&
+        this[AudioOutputModeKey].toEnum(AudioOutputMode.AudioTrack) != AudioOutputMode.UsbBitPerfect,
     mode = this[AutoMixModeKey].toEnum(AutoMixMode.Smart),
     durationMs = (((this[AutoMixDurationKey] ?: 8f).coerceIn(3f, 20f)) * 1_000).toLong(),
     fadeCurve = this[AutoMixFadeCurveKey].toEnum(AutoMixFadeCurve.EqualPower),

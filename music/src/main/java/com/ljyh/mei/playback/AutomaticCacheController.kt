@@ -9,23 +9,56 @@ import com.ljyh.mei.constants.AutoCachePlaybackThresholdKey
 import com.ljyh.mei.constants.AutoCacheQualityKey
 import com.ljyh.mei.constants.DownloadPathKey
 import com.ljyh.mei.constants.DownloadQuality
-import com.ljyh.mei.data.network.Resource
-import com.ljyh.mei.data.repository.PlaylistRepository
+import com.ljyh.mei.source.api.*
+import com.ljyh.mei.data.model.metadata
+import kotlinx.coroutines.CancellationException
 import com.ljyh.mei.di.AppDatabase
 import com.ljyh.mei.utils.DownloadManager
 import com.ljyh.mei.utils.dataStore
 import com.ljyh.mei.utils.get
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Counts a queue entry only after actual playback, never from paused restoration or buffering. */
+internal class AutomaticCachePlaybackTracker(private val scope: CoroutineScope) {
+    private var pending: Job? = null
+    private var recorded = false
+
+    fun update(isPlaying: Boolean, recordPlayback: suspend () -> Unit) {
+        if (!isPlaying) {
+            if (!recorded) {
+                pending?.cancel()
+                pending = null
+            }
+            return
+        }
+        if (recorded || pending != null) return
+        pending = scope.launch {
+            delay(5_000L)
+            recorded = true
+            recordPlayback()
+        }
+    }
+
+    fun reset() {
+        pending?.cancel()
+        pending = null
+        recorded = false
+    }
+}
+
 @Singleton
 class AutomaticCacheController @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val repository: PlaylistRepository,
+    private val mediaUriProvider: MediaUriProvider,
     private val database: AppDatabase,
 ) {
     suspend fun recordPlayback(mediaItem: MediaItem) {
@@ -40,14 +73,21 @@ class AutomaticCacheController @Inject constructor(
         val quality = runCatching {
             DownloadQuality.valueOf(context.dataStore[AutoCacheQualityKey] ?: DownloadQuality.EXHIGH.name)
         }.getOrDefault(DownloadQuality.EXHIGH)
-        val result = repository.getSongUrlV1(listOf(songId), quality.toMusicQuality())
-        val source = (result as? Resource.Success)?.data?.fullSourceFor(songId)
-        if (source?.url == null) {
-            Timber.w("Automatic cache could not resolve source for %s", songId)
+        val metadata = mediaItem.mediaMetadata
+        val trackRef = mediaItem.metadata?.trackRef ?: TrackRefCodec.decode(songId) ?: return
+        val resolution = try {
+            mediaUriProvider.resolveDownloadSource(Track(trackRef,
+                metadata.title?.toString().orEmpty(),
+                mediaItem.metadata?.artists?.map { SourceArtist(it.name, it.ref) }.orEmpty(),
+                SourceAlbum(metadata.albumTitle?.toString().orEmpty()),
+                mediaItem.metadata?.duration ?: 0L, metadata.artworkUri?.toString().orEmpty()), quality.toMusicQuality().text)
+        } catch (cancelled: CancellationException) { throw cancelled
+        } catch (_: Exception) {
+            Timber.w("Automatic cache could not resolve source")
             return
         }
-
-        val metadata = mediaItem.mediaMetadata
+        if (resolution.resource.cachePolicy == CachePolicy.NO_STORE) return
+        val source = resolution.resource
         val artists = metadata.extras?.getStringArrayList("artist_list")
             ?.filter(String::isNotBlank)
             .orEmpty()
@@ -57,14 +97,16 @@ class AutomaticCacheController @Inject constructor(
             songs = listOf(
                 SongDownloadInfo(
                     songId = songId,
-                    url = source.url,
+                    url = source.uri,
                     songTitle = metadata.title?.toString().orEmpty().ifBlank { context.getString(R.string.unknown_song) },
                     songArtist = artists,
                     songAlbum = metadata.albumTitle?.toString().orEmpty(),
                     songCover = metadata.artworkUri?.toString().orEmpty(),
                     duration = metadata.durationMs ?: 0,
-                    fileType = source.encodeType,
-                    quality = source.level,
+                    fileType = "",
+                    quality = quality.toMusicQuality().text,
+                    originTrackRef = trackRef,
+                    resolution = resolution,
                 ),
             ),
             playlistName = context.getString(R.string.automatic_cache),

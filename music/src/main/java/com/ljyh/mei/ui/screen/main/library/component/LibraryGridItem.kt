@@ -14,9 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import coil3.compose.AsyncImage
-import com.ljyh.mei.ui.glass.IosTypography
-import com.ljyh.mei.ui.glass.LocalGlassColors
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.core.LocalGlassColors
 import com.kyant.capsule.ContinuousRoundedRectangle
 
 @Composable
@@ -26,6 +27,8 @@ fun LibraryGridItem(
     cover: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    titleStyle: androidx.compose.ui.text.TextStyle = IosTypography.body,
+    captionSpacing: Dp = 12.dp,
 ) {
     Column(
         modifier = modifier
@@ -44,11 +47,11 @@ fun LibraryGridItem(
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(captionSpacing))
 
         Text(
             text = title,
-            style = IosTypography.body,
+            style = titleStyle,
             color = LocalGlassColors.current.content,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

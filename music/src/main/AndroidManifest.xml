@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- 读本地音频（媒体库「扫描本地音乐」）与脚本音源的悬浮窗。上游 app/src/main/AndroidManifest.xml:8-11
+         有这三条，宿主收音乐模块时漏了，导致 checkSelfPermission 恒为拒绝、扫不出任何歌。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -46,6 +52,24 @@
         <meta-data
             android:name="io.github.andrealtb.lockscreenlyrics.OPLUS_MEDIA_HISTORY"
             android:value="true" />
+
+        <!-- 脚本音源跑在独立沙箱进程里（上游 app/src/main/AndroidManifest.xml:80-84）。 -->
+        <service
+            android:name=".source.script.QuickJsEngineService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":source_sandbox" />
+
+        <!-- 分享/导入文件要能给别的 app 发 content://（上游 app/src/main/AndroidManifest.xml:54-62）。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- 由安大信内部拉起，不进桌面：没有 LAUNCHER / APP_MUSIC 两条 category，
              否则装完会多出第二个图标。 -->

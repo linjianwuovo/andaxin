@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.history
 
+import com.ljyh.mei.ui.navigation.meiloxHeaderAction
 import android.text.format.DateUtils
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Arrangement
@@ -23,16 +24,16 @@ import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.R
+import com.ljyh.mei.data.model.toMediaItem
 import com.ljyh.mei.playback.queue.ListQueue
-import com.ljyh.mei.ui.component.GlobalProfileAvatarButton
-import com.ljyh.mei.ui.glass.GlassCard
-import com.ljyh.mei.ui.glass.GlassIconButton
-import com.ljyh.mei.ui.glass.IosListRow
-import com.ljyh.mei.ui.glass.IosPinnedListPage
-import com.ljyh.mei.ui.glass.IosTypography
-import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.SfIcon
-import com.ljyh.mei.ui.glass.SfSymbol
+import com.ljyh.mei.ui.component.globalProfileHeaderAction
+import io.github.neoruaa.glasmio.ui.GlasmioCard
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.icons.SfIcon
+import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
@@ -50,21 +51,25 @@ fun HistoryScreen(
     val historyList = state.items
     val insets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
 
-    IosPinnedListPage(
+    MeiloXPinnedListPage(
         title = stringResource(R.string.listening_history),
         onNavigateBack = if (isNavigationTab) null else ({ navController.navigateUp() }),
         bottomPadding = insets.calculateBottomPadding(),
         verticalArrangement = Arrangement.spacedBy(0.dp),
         actions = {
-            GlassIconButton(viewModel::refresh) {
-                SfIcon(SfSymbol.ArrowClockwise, stringResource(R.string.refresh))
-            }
-            if (state.canClearLocalHistory) {
-                GlassIconButton(viewModel::clearHistory) {
-                    SfIcon("trash", stringResource(R.string.clear_history))
-                }
-            }
-            if (isNavigationTab) GlobalProfileAvatarButton()
+            listOfNotNull(
+                meiloxHeaderAction(
+                    key = "history.refresh",
+                    contentDescription = stringResource(R.string.refresh),
+                    onClick = viewModel::refresh,
+                ) { SfIcon(SfSymbol.ArrowClockwise, null) },
+                if (state.canClearLocalHistory) meiloxHeaderAction(
+                    key = "history.clear",
+                    contentDescription = stringResource(R.string.clear_history),
+                    onClick = viewModel::clearHistory,
+                ) { SfIcon("trash", null) } else null,
+                if (isNavigationTab) globalProfileHeaderAction() else null,
+            )
         },
     ) {
         when {
@@ -89,7 +94,7 @@ fun HistoryScreen(
                 contentType = "history-item",
                 firstItemTopPadding = 10.dp,
             ) { item, index ->
-                IosListRow(
+                GlasmioListRow(
                     title = item.song.title,
                     subtitle = item.song.artists.joinToString(" / ") { it.name },
                     detail = item.playedAt?.let(::relativeTime),
@@ -107,7 +112,7 @@ fun HistoryScreen(
                             ListQueue(
                                 id = "history",
                                 title = navController.context.getString(R.string.listening_history),
-                                items = historyList.map { it.song.id.toString() to null },
+                                items = historyList.map { entry -> entry.song.toMediaItem().let { it.mediaId to it } },
                                 startIndex = index,
                                 position = 0,
                             ),
@@ -122,7 +127,7 @@ fun HistoryScreen(
 @Composable
 private fun EmptyHistoryState(error: String?) {
     val colors = LocalGlassColors.current
-    GlassCard(Modifier.fillMaxWidth().padding(top = 42.dp)) {
+    GlasmioCard(Modifier.fillMaxWidth().padding(top = 42.dp)) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 52.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

@@ -60,6 +60,9 @@ onnxRuntime = "1.31.0"
 camerax = "1.6.2"
 mlkitBarcodeScanning = "17.3.0"
 zstdJni = "1.5.7-23"
+oboe = "1.10.0"
+quickjsKt = "1.0.18"
+webkit = "1.14.0"
 
 bcprovJdk18on = "1.86"
 
@@ -121,6 +124,10 @@ material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "m
 kmpalette-core = { module = "com.kmpalette:kmpalette-core", version.ref = "kmpalette" }
 kmpalette-extensions-network = { module = "com.kmpalette:extensions-network", version.ref = "kmpalette" }
 miuix-navigation3-ui-android = { module = "top.yukonga.miuix.kmp:miuix-navigation3-ui-android", version.ref = "miuixNavigation3UiAndroid" }
+miuix-ui-android = { module = "top.yukonga.miuix.kmp:miuix-ui-android", version.ref = "miuixNavigation3UiAndroid" }
+oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
+webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 provider = { module = "io.github.proify.lyricon:provider", version.ref = "provider" }
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-scalars = { group = "com.squareup.retrofit2", name = "converter-scalars", version.ref = "retrofit" }

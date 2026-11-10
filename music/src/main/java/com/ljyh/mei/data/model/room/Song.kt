@@ -2,6 +2,9 @@ package com.ljyh.mei.data.model.room
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
+import com.ljyh.mei.source.api.ProviderIds
+import com.ljyh.mei.source.api.TrackRefCodec
 
 @Entity(tableName = "song")
 data class Song(
@@ -10,6 +13,7 @@ data class Song(
     val artist: List<String>,
     val album: String,
     val cover: String,
+    /** Audio duration in milliseconds, matching Media3 and MediaStore. */
     val duration: Long,
     val path: String? = null,
     val sourceType: SourceType = SourceType.STREAM,
@@ -20,7 +24,13 @@ data class Song(
     val sampleRate: Int? = null,
     val folderPath: String? = null,
     val addedAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "'netease'")
+    val providerId: String = TrackRefCodec.decode(id, sourceType == SourceType.LOCAL, isPodcast = true)
+        ?.providerId ?: ProviderIds.NETEASE,
+    @ColumnInfo(defaultValue = "''")
+    val providerTrackId: String = TrackRefCodec.decode(id, sourceType == SourceType.LOCAL, isPodcast = true)
+        ?.trackId ?: id,
 )
 
 

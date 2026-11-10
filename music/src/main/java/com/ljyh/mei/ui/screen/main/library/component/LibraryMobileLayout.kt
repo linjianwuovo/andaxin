@@ -1,11 +1,13 @@
 package com.ljyh.mei.ui.screen.main.library.component
 
+import com.ljyh.mei.ui.component.playlist.songListDividerColor
+import io.github.neoruaa.glasmio.scaffold.rememberGlasmioHeaderScrollEdge
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 
 import android.text.format.DateUtils
-import android.widget.Toast
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -30,11 +32,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -43,7 +46,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -53,47 +55,51 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
 import com.kyant.capsule.ContinuousRoundedRectangle
+import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
+import com.ljyh.mei.utils.TimeUtils.formatDuration
+import com.ljyh.mei.ui.component.item.LandscapeMediaRow
 import com.ljyh.mei.R
 import com.ljyh.mei.constants.PodcastsEnabledKey
+import com.ljyh.mei.data.model.toMediaMetadata
 import com.ljyh.mei.data.model.MediaMetadata
-import com.ljyh.mei.data.model.room.DownloadStatus
-import com.ljyh.mei.data.model.room.DownloadTask
 import com.ljyh.mei.data.model.room.Playlist
-import com.ljyh.mei.data.model.room.Song
 import com.ljyh.mei.data.model.toMediaItem
-import com.ljyh.mei.di.AppDatabase
 import com.ljyh.mei.playback.PlayerConnection
 import com.ljyh.mei.playback.queue.ListQueue
-import com.ljyh.mei.ui.component.GlobalProfileAvatarButton
+import com.ljyh.mei.playback.queue.PlaylistQueueSource
+import com.ljyh.mei.ui.component.globalProfileHeaderAction
+import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
 import com.ljyh.mei.ui.component.player.OverlayState
 import com.ljyh.mei.ui.component.player.PlayerViewModel
-import com.ljyh.mei.ui.glass.IosActionSheetContent
-import com.ljyh.mei.ui.glass.GlassSearchBar
-import com.ljyh.mei.ui.glass.GlassSegmentedControl
-import com.ljyh.mei.ui.glass.IosGroupedList
-import com.ljyh.mei.ui.glass.IosListRow
-import com.ljyh.mei.ui.glass.IosModalSheet
-import com.ljyh.mei.ui.glass.IosPinnedPage
-import com.ljyh.mei.ui.glass.IosTypography
-import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.LocalGroupedListBackgroundAlpha
-import com.ljyh.mei.ui.glass.LocalGroupedListIconColor
-import com.ljyh.mei.ui.glass.SfIcon
-import com.ljyh.mei.ui.glass.SfSymbol
+import io.github.neoruaa.glasmio.ui.GlasmioSearchBar
+import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import com.ljyh.mei.ui.navigation.MeiloXPinnedPage
+import com.ljyh.mei.ui.navigation.registerMeiloXNavigationViewport
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.core.LocalGroupedListBackgroundAlpha
+import io.github.neoruaa.glasmio.core.LocalGroupedListIconColor
+import io.github.neoruaa.glasmio.icons.SfIcon
+import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
@@ -104,21 +110,20 @@ import com.ljyh.mei.ui.screen.main.library.LibraryCollectionState
 import com.ljyh.mei.ui.screen.main.library.LibraryPlaylistFilter
 import com.ljyh.mei.ui.screen.cloud.CloudMusicViewModel
 import com.ljyh.mei.ui.screen.cloud.CloudMusicUiState
+import com.ljyh.mei.ui.screen.cloud.CloudMusicPaginationFooter
 import com.ljyh.mei.ui.screen.history.HistoryViewModel
 import com.ljyh.mei.ui.screen.history.HistoryUiState
-import com.ljyh.mei.ui.screen.playlist.PlaylistViewModel
 import com.ljyh.mei.ui.screen.playlist.component.StandaloneTrackActionOverlay
 import com.ljyh.mei.ui.screen.podcast.PodcastViewModel
 import com.ljyh.mei.ui.screen.podcast.PodcastUiState
 import com.ljyh.mei.ui.screen.podcast.PodcastTab
-import com.ljyh.mei.utils.DownloadManager
 import com.ljyh.mei.utils.rememberPreference
+import io.github.neoruaa.glasmio.scaffold.pullToRefreshRebound
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 
 /**
  * Adds rows directly to the parent lazy list while retaining the visual treatment of
- * [IosGroupedList]. The original component owns a ColumnScope, so putting a large dynamic list
+ * [GlasmioGroupedList]. The original component owns a ColumnScope, so putting a large dynamic list
  * inside it eagerly composes every row. Each row gets the corresponding edge shape here and can
  * therefore be composed and disposed independently by the parent LazyColumn.
  */
@@ -196,7 +201,11 @@ fun LibraryMobileLayout(
     onLoadMorePlaylists: () -> Unit,
     onRefreshAlbums: () -> Unit,
     onLoadMoreAlbums: () -> Unit,
-    likedSongs: List<MediaMetadata>,
+    likedSongs: LazyPagingItems<MediaMetadata>,
+    likedSongIds: List<Long>,
+    likedPlaylistId: Long?,
+    likedSongSearchLoading: Boolean,
+    onLikedSongQueryChange: (String) -> Unit,
     likedSongsLoading: Boolean,
     likedSongsError: String?,
     onRetryLikedSongs: () -> Unit,
@@ -205,14 +214,31 @@ fun LibraryMobileLayout(
     onAlbumClick: (String) -> Unit,
     isCategoryPage: Boolean = false,
     mergeAlbumPodcasts: Boolean = false,
+    sourceAction: (@Composable () -> GlasmioHeaderAction)? = null,
 ) {
-    val navController = LocalNavController.current
-    val context = LocalContext.current
-    val playerConnection = LocalPlayerConnection.current
-    val scope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
+    val pages = LibraryPage.entries.filter { !mergeAlbumPodcasts || it != LibraryPage.Podcasts }
     val listState = rememberLazyListState()
-    val playlistViewModel: PlaylistViewModel = hiltViewModel()
+    val tabPosition = remember {
+        Animatable(pages.indexOf(selectedPage).coerceAtLeast(0).toFloat(), 0.001f)
+    }
+    if (selectedPage == LibraryPage.Downloads) {
+        LibraryDownloadsPage(
+            isNavigationTab = isNavigationTab,
+            isCategoryPage = isCategoryPage,
+            pages = pages,
+            onPageSelect = onPageSelect,
+            listState = listState,
+            tabPosition = tabPosition,
+        )
+        return
+    }
+    registerMeiloXNavigationViewport(listState)
+    val navController = LocalNavController.current
+    val playerConnection = LocalPlayerConnection.current
+    val focusManager = LocalFocusManager.current
+    val isLandscape = rememberDeviceInfo().isLandscape
+    val landscapeSongs = isLandscape && selectedPage == LibraryPage.Songs
+    val catalogRows = selectedPage == LibraryPage.Songs || selectedPage == LibraryPage.Playlists
     val playerViewModel: PlayerViewModel = hiltViewModel()
     val insets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
     val showsAlbums = selectedPage == LibraryPage.Albums
@@ -232,18 +258,6 @@ fun LibraryMobileLayout(
     val historyState = historyViewModel?.state?.collectAsState()?.value ?: HistoryUiState()
     LaunchedEffect(historyViewModel) {
         historyViewModel?.refresh()
-    }
-    val (downloadTasks, playableDownloadSongs) = if (selectedPage == LibraryPage.Downloads) {
-        val dao = remember(context) { AppDatabase.getDatabase(context).downloadDao() }
-        val tasksFlow = remember(dao) { dao.getAll() }
-        val songsFlow = remember(dao) { dao.getPlayableSongs() }
-        tasksFlow.collectAsState(initial = emptyList()).value to
-            songsFlow.collectAsState(initial = emptyList()).value
-    } else {
-        emptyList<DownloadTask>() to emptyList()
-    }
-    val playableDownloadSongsById = remember(playableDownloadSongs) {
-        playableDownloadSongs.associateBy(Song::id)
     }
     val collapseDistance = with(LocalDensity.current) { 56.dp.toPx() }
     LaunchedEffect(listState, selectedPage, podcastViewModel) {
@@ -265,34 +279,35 @@ fun LibraryMobileLayout(
             else (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f)
         }
     }
-    val pages = LibraryPage.entries.filter { !mergeAlbumPodcasts || it != LibraryPage.Podcasts }
     val title = stringResource(if (isCategoryPage) selectedPage.titleRes else R.string.app_tab_library)
     val likedTitle = stringResource(R.string.app_tab_library_songs)
-    val downloadsTitle = stringResource(R.string.app_tab_library_downloads)
-    val usesGroupedLazyRows = selectedPage == LibraryPage.Downloads ||
-        selectedPage == LibraryPage.Cloud ||
+    val usesGroupedLazyRows = selectedPage == LibraryPage.Cloud ||
         selectedPage == LibraryPage.History
-    val pageSpacing = if (usesGroupedLazyRows) 12.dp else 0.dp
+    val pageSpacing = if (usesGroupedLazyRows || catalogRows) 12.dp else 0.dp
     var currentOverlay by remember { mutableStateOf<OverlayState>(OverlayState.None) }
-    var selectedDownloadTaskId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(selectedPage) {
-        if (selectedPage != LibraryPage.Downloads) selectedDownloadTaskId = null
-    }
     var searchQuery by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue())
     }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     val query = searchQuery.text.trim()
     val isSearching = query.isNotEmpty()
-    val visibleLikedSongs = remember(likedSongs, query) {
-        likedSongs.filterIfSearching(query) { song ->
-            song.title.containsQuery(query) ||
-                song.album.title.containsQuery(query) ||
-                song.tns.containsQuery(query) ||
-                song.artists.any { artist ->
-                    artist.name.containsQuery(query) || artist.alias.orEmpty().any { it.containsQuery(query) }
-                }
-        }
+    LaunchedEffect(selectedPage, query, likedPlaylistId) {
+        onLikedSongQueryChange(if (selectedPage == LibraryPage.Songs) query else "")
+    }
+    fun playLikedSongs(startTrackId: Long? = null) {
+        val playlistId = likedPlaylistId ?: return
+        val loaded = likedSongs.itemSnapshotList.items.associateBy { it.id }
+        val ids = if (isSearching) likedSongs.itemSnapshotList.items.map { it.id } else likedSongIds
+        if (ids.isEmpty()) return
+        playerConnection?.playQueue(
+            ListQueue(
+                id = "library-liked",
+                title = likedTitle,
+                items = ids.map { it.toString() to loaded[it]?.toMediaItem() },
+                startIndex = startTrackId?.let(ids::indexOf)?.coerceAtLeast(0) ?: 0,
+                playlistSource = if (isSearching) null else PlaylistQueueSource(playlistId),
+            ),
+        )
     }
     val visibleCreatedPlaylists = remember(createdPlaylists, query) {
         createdPlaylists.filterIfSearching(query) { it.matchesQuery(query) }
@@ -312,10 +327,6 @@ fun LibraryMobileLayout(
         LibraryPlaylistFilter.Created -> visibleCreatedPlaylists
         LibraryPlaylistFilter.Subscribed -> visibleCollectedPlaylists
     }
-    LaunchedEffect(selectedPage, playlistFilter) {
-        listState.scrollToItem(0)
-    }
-
     val collectionLoading = if (selectedPage == LibraryPage.Playlists) {
         playlistState.isLoading
     } else {
@@ -326,14 +337,13 @@ fun LibraryMobileLayout(
         if (!collectionLoading) isPullRefreshing = false
     }
 
-    IosPinnedPage(
+    MeiloXPinnedPage(
         title = title,
         bottomPadding = insets.calculateBottomPadding(),
         collapseProgress = collapseProgress,
+        topBarBlurProgress = rememberGlasmioHeaderScrollEdge(listState),
         onNavigateBack = if (isNavigationTab) null else ({ navController.navigateUp() }),
-        actions = {
-            if (isNavigationTab) GlobalProfileAvatarButton()
-        },
+        actions = { listOfNotNull(sourceAction?.invoke(), if (isNavigationTab) globalProfileHeaderAction() else null) },
     ) { contentPadding ->
         LibraryCollectionRefresh(
             enabled = showsAlbums || showsPodcasts || selectedPage == LibraryPage.Playlists,
@@ -355,14 +365,14 @@ fun LibraryMobileLayout(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        start = 16.dp,
-                        top = contentPadding.calculateTopPadding(),
-                        end = 16.dp,
+                        start = if (isLandscape) 32.dp else 16.dp,
+                        top = contentPadding.calculateTopPadding() + if (isLandscape) com.ljyh.mei.constants.LandscapeSearchTopAdjustment else 0.dp,
+                        end = if (isLandscape) 32.dp else 16.dp,
                         bottom = contentPadding.calculateBottomPadding(),
                     ),
-                    verticalArrangement = if (usesGroupedLazyRows) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(12.dp),
+                    verticalArrangement = if (usesGroupedLazyRows || catalogRows) Arrangement.spacedBy(0.dp) else Arrangement.spacedBy(12.dp),
                 ) {
-                    item(key = "library-title") {
+                    if (!isLandscape) item(key = "ios-large-title:$title") {
                         Text(
                             title,
                             style = IosTypography.largeTitle,
@@ -374,7 +384,7 @@ fun LibraryMobileLayout(
                         )
                     }
                     item(key = "library-search") {
-                        GlassSearchBar(
+                        GlasmioSearchBar(
                             query = searchQuery,
                             onQueryChange = { searchQuery = it },
                             active = searchActive,
@@ -391,10 +401,11 @@ fun LibraryMobileLayout(
                     }
                     if (!isCategoryPage) {
                         item(key = "library-pages") {
-                            GlassSegmentedControl(
+                            GlasmioSegmentedControl(
                                 items = pages.map { it to stringResource(it.titleRes) },
                                 selected = selectedPage,
                                 onSelected = onPageSelect,
+                                positionAnimation = tabPosition,
                                 modifier = Modifier.fillMaxWidth().padding(bottom = pageSpacing),
                             )
                         }
@@ -402,7 +413,10 @@ fun LibraryMobileLayout(
 
                     when (selectedPage) {
                         LibraryPage.Songs -> {
-                            if (likedSongs.isEmpty() && likedSongsLoading) {
+                            val refresh = likedSongs.loadState.refresh
+                            val append = likedSongs.loadState.append
+                            val hasSongs = likedPlaylistId != null && likedSongs.itemCount > 0
+                            if (!hasSongs && (likedSongsLoading || refresh is LoadState.Loading || likedSongSearchLoading)) {
                                 item(key = "liked-loading") {
                                     Box(
                                         Modifier.fillMaxWidth().height(120.dp),
@@ -411,51 +425,48 @@ fun LibraryMobileLayout(
                                         CircularProgressIndicator()
                                     }
                                 }
-                            } else if (likedSongsError != null && likedSongs.isEmpty()) {
-                                item(key = "liked-error") { CollectionFooter(false, true, onRetryLikedSongs) }
-                            } else if (visibleLikedSongs.isNotEmpty()) {
+                            } else if (!hasSongs && (likedSongsError != null || refresh is LoadState.Error)) {
+                                item(key = "liked-error") {
+                                    CollectionFooter(false, true) {
+                                        if (likedSongsError != null) onRetryLikedSongs() else likedSongs.retry()
+                                    }
+                                }
+                            } else if (hasSongs) {
                                 item(key = "liked-actions") {
-                                    IosGroupedList {
-                                        IosListRow(
+                                    GlasmioGroupedList(modifier = Modifier.padding(bottom = 12.dp)) {
+                                        GlasmioListRow(
                                             title = stringResource(R.string.library_play_all),
                                             systemName = "play.fill",
                                             showTopSeparator = false,
-                                            onClick = {
-                                                playerConnection?.playQueue(
-                                                    ListQueue(
-                                                        id = "library-liked",
-                                                        title = likedTitle,
-                                                        items = visibleLikedSongs.map { it.id.toString() to it.toMediaItem() },
-                                                    ),
-                                                )
-                                            },
+                                            enabled = !isSearching || (!likedSongSearchLoading && likedSongsError == null),
+                                            onClick = { playLikedSongs() },
                                         )
-                                        IosListRow(
+                                        GlasmioListRow(
                                             title = stringResource(R.string.library_heart_mode),
                                             systemName = "heart.circle.fill",
                                             onClick = {
-                                                playerConnection?.fmStart(visibleLikedSongs.randomOrNull()?.id?.toString())
+                                                val seeds = if (isSearching) {
+                                                    likedSongs.itemSnapshotList.items.map { it.id }
+                                                } else likedSongIds
+                                                playerConnection?.fmStart(seeds.randomOrNull()?.toString())
                                             },
                                         )
                                     }
                                 }
+                                item(key = "liked-top-divider") {
+                                    HorizontalDivider(modifier = Modifier.padding(horizontal = if (isLandscape) 0.dp else 4.dp), thickness = 0.5.dp, color = songListDividerColor())
+                                }
                                 items(
-                                    visibleLikedSongs,
-                                    key = { "liked-${it.id}" },
+                                    count = likedSongs.itemCount,
+                                    key = likedSongs.itemKey { "liked-${it.id}" },
                                     contentType = { "liked-song" },
-                                ) { song ->
-                                    LibrarySongRow(
+                                ) { index ->
+                                    val song = likedSongs[index]
+                                    if (song != null) LibrarySongRow(
                                         song = song,
+                                        showDivider = index < likedSongs.itemCount - 1,
                                         onClick = {
-                                            val index = visibleLikedSongs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                                            playerConnection?.playQueue(
-                                                ListQueue(
-                                                    id = "library-liked",
-                                                    title = likedTitle,
-                                                    items = visibleLikedSongs.map { it.id.toString() to it.toMediaItem() },
-                                                    startIndex = index,
-                                                ),
-                                            )
+                                            playLikedSongs(song.id)
                                         },
                                         onMoreClick = {
                                             currentOverlay = OverlayState.TrackActionMenu(song, it)
@@ -472,11 +483,22 @@ fun LibraryMobileLayout(
                                     )
                                 }
                             }
+                            if (hasSongs && (likedSongsError != null || append is LoadState.Error ||
+                                    append is LoadState.Loading || likedSongSearchLoading)) {
+                                item(key = "liked-continuation-error") {
+                                    CollectionFooter(
+                                        loading = append is LoadState.Loading || likedSongSearchLoading,
+                                        failed = likedSongsError != null || append is LoadState.Error,
+                                    ) {
+                                        if (likedSongsError != null) onRetryLikedSongs() else likedSongs.retry()
+                                    }
+                                }
+                            }
                         }
 
                         LibraryPage.Playlists -> {
                             item(key = "playlist-filter") {
-                                GlassSegmentedControl(
+                                GlasmioSegmentedControl(
                                     items = listOf(
                                         LibraryPlaylistFilter.All to stringResource(R.string.library_filter_all),
                                         LibraryPlaylistFilter.Created to stringResource(R.string.library_filter_created),
@@ -484,13 +506,13 @@ fun LibraryMobileLayout(
                                     ),
                                     selected = playlistFilter,
                                     onSelected = { playlistFilter = it },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                                 )
                             }
                             if (!isSearching) {
                                 item(key = "playlist-rank") {
-                                    IosGroupedList {
-                                        IosListRow(
+                                    GlasmioGroupedList(modifier = Modifier.padding(bottom = 12.dp)) {
+                                        GlasmioListRow(
                                             title = stringResource(R.string.account_listening_rank),
                                             systemName = "chart.bar.xaxis",
                                             showTopSeparator = false,
@@ -516,8 +538,19 @@ fun LibraryMobileLayout(
                                     )
                                 }
                             }
+                            if (visiblePlaylists.isNotEmpty()) item(key = "playlist-top-divider") {
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = if (isLandscape) 0.dp else 4.dp), thickness = 0.5.dp, color = songListDividerColor())
+                            }
                             items(visiblePlaylists, key = { "playlist-${it.id}" }, contentType = { "playlist" }) { playlist ->
-                                LibraryPlaylistRow(playlist) { onPlaylistClick(playlist.id) }
+                                if (isLandscape) LandscapeMediaRow(
+                                    image = playlist.cover,
+                                    title = playlist.title,
+                                    artist = playlist.authorName,
+                                    detail = stringResource(R.string.playlist_song_count, playlist.count),
+                                    onClick = { onPlaylistClick(playlist.id) },
+                                    showDivider = playlist.id != visiblePlaylists.lastOrNull()?.id,
+                                    navigationArrow = true,
+                                ) else LibraryPlaylistRow(playlist, playlist.id != visiblePlaylists.lastOrNull()?.id) { onPlaylistClick(playlist.id) }
                             }
                             if (playlistState.isLoading || playlistState.isLoadingMore || playlistState.error != null || playlistState.hasMore) {
                                 item(key = "playlist-pagination") {
@@ -550,6 +583,8 @@ fun LibraryMobileLayout(
                                         row.forEach { album ->
                                             LibraryGridItem(
                                                 title = album.title,
+                                                captionSpacing = 8.dp,
+                                                titleStyle = IosTypography.body.copy(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium),
                                                 subtitle = album.artist.joinToString(" / ") { it.name },
                                                 cover = album.cover,
                                                 onClick = { onAlbumClick(album.id.toString()) },
@@ -583,18 +618,11 @@ fun LibraryMobileLayout(
                             }
                         }
 
-                        LibraryPage.Downloads -> libraryDownloadItems(
-                            tasks = downloadTasks,
-                            query = query,
-                            title = downloadsTitle,
-                            playerConnection = playerConnection,
-                            playableSongs = playableDownloadSongsById,
-                            onMoreClick = { selectedDownloadTaskId = it.songId },
-                        )
+                        LibraryPage.Downloads -> Unit
 
                         LibraryPage.Cloud -> {
                             cloudState?.let { state ->
-                                libraryCloudItems(state, playerConnection, query)
+                                libraryCloudItems(state, playerConnection, query) { cloudViewModel?.loadMore() }
                             }
                         }
 
@@ -610,104 +638,42 @@ fun LibraryMobileLayout(
         overlay = currentOverlay,
         onDismiss = { currentOverlay = OverlayState.None },
         onUpdateOverlay = { currentOverlay = it },
-        playlistViewModel = playlistViewModel,
         playerViewModel = playerViewModel,
     )
 
-    downloadTasks.firstOrNull { it.songId == selectedDownloadTaskId }?.let { task ->
-        val localSong = playableDownloadSongsById[task.songId]
-        val metadata = remember(task, localSong) { task.toMediaMetadataOrNull(localSong) }
-        val hasLocalFile = localSong != null
-        DownloadTaskActionSheet(
-            task = task,
-            hasTrackMetadata = metadata != null,
-            hasLocalFile = hasLocalFile,
-            canPlay = hasLocalFile && metadata != null && playerConnection != null,
-            onDismiss = { selectedDownloadTaskId = null },
-            onPlay = {
-                selectedDownloadTaskId = null
-                playDownloadedTask(
-                    task = task,
-                    tasks = filterDownloadTasks(downloadTasks, query),
-                    title = downloadsTitle,
-                    playerConnection = playerConnection,
-                    playableSongs = playableDownloadSongsById,
-                )
-            },
-            onPlayNext = {
-                selectedDownloadTaskId = null
-                metadata?.toMediaItem()?.let { playerConnection?.playNext(it) }
-                Toast.makeText(context, R.string.download_added_next, Toast.LENGTH_SHORT).show()
-            },
-            onAddToQueue = {
-                selectedDownloadTaskId = null
-                metadata?.toMediaItem()?.let { playerConnection?.addToQueue(it) }
-                Toast.makeText(context, R.string.download_added_to_queue, Toast.LENGTH_SHORT).show()
-            },
-            onAddToPlaylist = {
-                selectedDownloadTaskId = null
-                metadata?.let {
-                    playlistViewModel.getAllMePlaylist()
-                    currentOverlay = OverlayState.AddToPlaylist(it.id)
-                }
-            },
-            onPause = {
-                selectedDownloadTaskId = null
-                DownloadManager.pauseSong(context, task.songId)
-            },
-            onResume = {
-                selectedDownloadTaskId = null
-                scope.launch {
-                    DownloadManager.resumeSong(
-                        context = context,
-                        songId = task.songId,
-                        playlistName = context.getString(R.string.resumed_download),
-                    )
-                }
-            },
-            onRetry = {
-                selectedDownloadTaskId = null
-                metadata?.let { playerViewModel.downloadSong(it, context) }
-            },
-            onRemove = {
-                selectedDownloadTaskId = null
-                DownloadManager.deleteTask(context, task.songId)
-            },
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LibraryCollectionRefresh(
+internal fun LibraryCollectionRefresh(
     enabled: Boolean,
     isRefreshing: Boolean,
     topPadding: Dp,
     onRefresh: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    if (!enabled) {
-        content()
-        return
-    }
     val state = rememberPullToRefreshState()
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
-        state = state,
-        modifier = Modifier.fillMaxSize(),
-        indicator = {
+    Box(
+        modifier = Modifier.fillMaxSize().pullToRefresh(
+            isRefreshing = enabled && isRefreshing,
+            enabled = enabled,
+            onRefresh = onRefresh,
+            state = state,
+        ),
+    ) {
+        Box(Modifier.fillMaxSize().pullToRefreshRebound(state, isRefreshing, enabled)) { content() }
+        if (enabled) {
             PullToRefreshDefaults.Indicator(
                 isRefreshing = isRefreshing,
                 state = state,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = topPadding),
             )
-        },
-    ) { content() }
+        }
+    }
 }
 
 @Composable
-private fun LibraryCollectionHeading(title: String) {
+internal fun LibraryCollectionHeading(title: String) {
     Text(
         title,
         style = IosTypography.title2,
@@ -723,8 +689,8 @@ private fun CollectionFooter(loading: Boolean, failed: Boolean, onClick: () -> U
             CircularProgressIndicator(color = LocalGlassColors.current.accent)
         }
     } else {
-        IosGroupedList {
-            IosListRow(
+        GlasmioGroupedList {
+            GlasmioListRow(
                 title = stringResource(if (failed) R.string.retry else R.string.library_load_more),
                 subtitle = if (failed) stringResource(R.string.library_collection_load_failed) else null,
                 systemName = if (failed) "arrow.clockwise" else "chevron.down",
@@ -735,98 +701,70 @@ private fun CollectionFooter(loading: Boolean, failed: Boolean, onClick: () -> U
     }
 }
 
+/** Columns follow the available list width, including sidebar and split-window resizing. */
+@Composable
+internal fun LibraryLandscapeSongRow(
+    song: MediaMetadata,
+    onClick: () -> Unit,
+    onMoreClick: (Rect) -> Unit,
+    showDivider: Boolean = true,
+) {
+    LandscapeMediaRow(
+        landscape = true,
+        image = song.coverUrl,
+        title = song.title,
+        artist = song.artists.joinToString(" / ") { it.name },
+        detail = formatDuration(song.duration),
+        onClick = onClick,
+        album = song.album.title,
+        favorite = true,
+        showDivider = showDivider,
+        onMore = onMoreClick,
+    )
+}
+
 @Composable
 private fun LibrarySongRow(
     song: MediaMetadata,
     onClick: () -> Unit,
     onMoreClick: (Rect) -> Unit,
+    showDivider: Boolean = true,
 ) {
-    var menuAnchor by remember { mutableStateOf(Rect.Zero) }
-    LibraryMediaRow(
+    LandscapeMediaRow(
+        modifier = Modifier.padding(horizontal = if (rememberDeviceInfo().isLandscape) 0.dp else 4.dp),
         image = song.coverUrl,
         title = song.title,
-        subtitle = song.artists.joinToString(" / ") { it.name },
+        artist = song.artists.joinToString(" / ") { it.name },
+        detail = if (rememberDeviceInfo().isLandscape) formatDuration(song.duration) else "",
         onClick = onClick,
-        trailing = {
-            Box(
-                Modifier.size(44.dp).onGloballyPositioned { menuAnchor = it.boundsInWindow() }
-                    .clip(ContinuousRoundedRectangle(22.dp)).clickable(
-                    interactionSource = null,
-                    indication = null,
-                    onClick = { onMoreClick(menuAnchor) },
-                ),
-                contentAlignment = Alignment.Center,
-            ) {
-                SfIcon(
-                    "ellipsis",
-                    stringResource(R.string.more_actions_title),
-                    size = 18.dp,
-                )
-            }
-        },
+        album = song.album.title,
+        favorite = true,
+        showDivider = showDivider,
+        onMore = onMoreClick,
     )
 }
 
 @Composable
-private fun LibraryPlaylistRow(playlist: Playlist, onClick: () -> Unit) {
-    LibraryMediaRow(
-        playlist.cover,
-        playlist.title,
-        stringResource(R.string.playlist_song_count, playlist.count),
-        onClick,
+private fun LibraryPlaylistRow(playlist: Playlist, showDivider: Boolean, onClick: () -> Unit) {
+    LandscapeMediaRow(
+        modifier = Modifier.padding(horizontal = if (rememberDeviceInfo().isLandscape) 0.dp else 4.dp),
+        image = playlist.cover,
+        title = playlist.title,
+        artist = playlist.authorName,
+        detail = stringResource(R.string.playlist_song_count, playlist.count),
+        onClick = onClick,
+        navigationArrow = true,
+        showDivider = showDivider,
     )
 }
 
-@Composable
-private fun LibraryMediaRow(
-    image: String,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    val colors = LocalGlassColors.current
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AsyncImage(
-            image,
-            null,
-            Modifier.size(54.dp).clip(ContinuousRoundedRectangle(9.dp)),
-            contentScale = ContentScale.Crop,
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = IosTypography.body,
-                color = colors.content,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                subtitle,
-                style = IosTypography.caption,
-                color = colors.secondaryContent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        trailing?.let { trailingContent ->
-            CompositionLocalProvider(LocalGroupedListIconColor provides colors.content) {
-                trailingContent()
-            }
-        } ?: SfIcon("chevron.forward", null, size = 12.dp, tint = colors.separator)
-    }
-}
-
-private fun LazyListScope.libraryPodcastItems(
+internal fun LazyListScope.libraryPodcastItems(
     navController: com.ljyh.mei.ui.navigation.MeiNavigator,
     state: PodcastUiState,
     viewModel: PodcastViewModel,
     query: String,
     columns: Int,
+    rowSpacing: Dp = 0.dp,
 ) {
     val podcasts = state.subscribedPodcasts.filterIfSearching(query) { podcast ->
         podcast.name.containsQuery(query) ||
@@ -836,14 +774,17 @@ private fun LazyListScope.libraryPodcastItems(
             podcast.recommendation.containsQuery(query)
     }
     items(podcasts.chunked(columns), key = { "podcasts-${it.first().id}" }) { row ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.fillMaxWidth().padding(bottom = rowSpacing), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             row.forEach { podcast ->
                 LibraryGridItem(
                     title = podcast.name,
                     subtitle = podcast.host?.nickname ?: podcast.category.orEmpty(),
                     cover = podcast.picUrl.orEmpty(),
                     onClick = {
-                        Screen.PodcastDetail.navigate(navController) { addPath(podcast.id.toString()) }
+                        Screen.PodcastDetail.navigate(navController) {
+                            addPath(android.net.Uri.encode(podcast.id))
+                            addQuery("providerId", android.net.Uri.encode(podcast.providerId))
+                        }
                     },
                     modifier = Modifier.weight(1f),
                 )
@@ -874,280 +815,11 @@ private fun LazyListScope.libraryPodcastItems(
     }
 }
 
-private fun LazyListScope.libraryDownloadItems(
-    tasks: List<DownloadTask>,
-    query: String,
-    title: String,
-    playerConnection: PlayerConnection?,
-    playableSongs: Map<String, Song>,
-    onMoreClick: (DownloadTask) -> Unit,
-) {
-    val visibleTasks = filterDownloadTasks(tasks, query)
-    val playableTasks = visibleTasks.filter { task ->
-        task.status == DownloadStatus.COMPLETED &&
-            task.songId in playableSongs &&
-            task.toMediaMetadataOrNull(playableSongs[task.songId]) != null
-    }
-    if (visibleTasks.isEmpty()) {
-        item(key = "library-download-empty") {
-            EmptyState(
-                if (query.isNotEmpty()) stringResource(R.string.no_search_results)
-                else stringResource(R.string.no_download_tasks, stringResource(R.string.download_filter_all)),
-                SfSymbol.Download,
-            )
-        }
-    } else {
-        groupedLazyItems(
-            items = visibleTasks,
-            key = { "download-${it.songId}" },
-            contentType = "download-task",
-        ) { task, index ->
-            val detail = when (task.status) {
-                DownloadStatus.DOWNLOADING -> "${task.progress}%"
-                DownloadStatus.PAUSED -> stringResource(R.string.download_paused)
-                DownloadStatus.COMPLETED -> stringResource(
-                    if (task.songId in playableSongs) R.string.download_completed
-                    else R.string.download_file_unavailable,
-                )
-                DownloadStatus.FAILED -> stringResource(R.string.download_failed)
-                DownloadStatus.PENDING -> stringResource(R.string.download_waiting)
-            }
-            IosListRow(
-                title = task.songTitle.ifBlank { task.songId },
-                subtitle = task.songArtist,
-                detail = detail,
-                showTopSeparator = index > 0,
-                leading = {
-                    AsyncImage(
-                        task.songCover.ifBlank { null },
-                        null,
-                        Modifier.size(44.dp).clip(ContinuousRoundedRectangle(10.dp)),
-                        contentScale = ContentScale.Crop,
-                    )
-                },
-                onClick = if (task in playableTasks) {
-                    {
-                        playDownloadedTask(
-                            task = task,
-                            tasks = playableTasks,
-                            title = title,
-                            playerConnection = playerConnection,
-                            playableSongs = playableSongs,
-                        )
-                    }
-                } else {
-                    null
-                },
-                trailing = {
-                    Box(
-                        Modifier
-                            .size(44.dp)
-                            .clip(ContinuousRoundedRectangle(22.dp))
-                            .clickable(
-                                interactionSource = null,
-                                indication = null,
-                                onClick = { onMoreClick(task) },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        SfIcon(
-                            "ellipsis",
-                            stringResource(R.string.more_actions_title),
-                            size = 18.dp,
-                        )
-                    }
-                },
-            )
-        }
-    }
-}
-
-private fun filterDownloadTasks(tasks: List<DownloadTask>, query: String): List<DownloadTask> =
-    tasks.filterIfSearching(query) { task ->
-        task.songTitle.containsQuery(query) ||
-            task.songArtist.containsQuery(query) ||
-            task.songAlbum.containsQuery(query)
-    }
-
-private fun playDownloadedTask(
-    task: DownloadTask,
-    tasks: List<DownloadTask>,
-    title: String,
-    playerConnection: PlayerConnection?,
-    playableSongs: Map<String, Song>,
-) {
-    val playable = tasks.mapNotNull { candidate ->
-        val localSong = playableSongs[candidate.songId] ?: return@mapNotNull null
-        candidate.toMediaMetadataOrNull(localSong)
-            ?.takeIf { candidate.status == DownloadStatus.COMPLETED }
-            ?.let { candidate to it }
-    }
-    val startIndex = playable.indexOfFirst { (candidate) -> candidate.songId == task.songId }
-    if (startIndex < 0) return
-    playerConnection?.playQueue(
-        ListQueue(
-            id = "library-downloads",
-            title = title,
-            items = playable.map { (candidate, metadata) ->
-                candidate.songId to metadata.toMediaItem()
-            },
-            startIndex = startIndex,
-        ),
-    )
-}
-
-private fun DownloadTask.toMediaMetadataOrNull(localSong: Song?): MediaMetadata? {
-    val id = songId.toLongOrNull() ?: return null
-    val artistNames = localSong?.artist.orEmpty().ifEmpty {
-        songArtist
-        .split(Regex("[/、,;]"))
-        .map(String::trim)
-        .filter(String::isNotBlank)
-        .ifEmpty { listOf(songArtist.ifBlank { "Unknown artist" }) }
-    }
-    val albumTitle = localSong?.album?.ifBlank { null } ?: songAlbum
-    return MediaMetadata(
-        id = id,
-        title = localSong?.title?.ifBlank { null } ?: songTitle.ifBlank { songId },
-        coverUrl = localSong?.cover?.ifBlank { null } ?: songCover,
-        artists = artistNames.map { name ->
-            MediaMetadata.Artist(name.hashCode().toUInt().toLong(), name)
-        },
-        duration = localSong?.duration ?: 0,
-        album = MediaMetadata.Album(
-            id = albumTitle.hashCode().toUInt().toLong(),
-            title = albumTitle,
-        ),
-    )
-}
-
-@Composable
-private fun DownloadTaskActionSheet(
-    task: DownloadTask,
-    hasTrackMetadata: Boolean,
-    hasLocalFile: Boolean,
-    canPlay: Boolean,
-    onDismiss: () -> Unit,
-    onPlay: () -> Unit,
-    onPlayNext: () -> Unit,
-    onAddToQueue: () -> Unit,
-    onAddToPlaylist: () -> Unit,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
-    onRetry: () -> Unit,
-    onRemove: () -> Unit,
-) {
-    IosModalSheet(onDismissRequest = onDismiss) {
-        IosActionSheetContent(
-            title = task.songTitle.ifBlank { task.songId },
-            message = task.songArtist.ifBlank { task.songAlbum },
-        ) {
-            when (task.status) {
-                DownloadStatus.COMPLETED -> {
-                    if (hasLocalFile && canPlay) {
-                        IosListRow(
-                            title = stringResource(R.string.player_play),
-                            systemName = "play.fill",
-                            showTopSeparator = false,
-                            onClick = onPlay,
-                        )
-                        IosListRow(
-                            title = stringResource(R.string.download_play_next),
-                            systemName = "text.line.first.and.arrowtriangle.forward",
-                            onClick = onPlayNext,
-                        )
-                        IosListRow(
-                            title = stringResource(R.string.download_add_to_queue),
-                            systemName = "text.badge.plus",
-                            onClick = onAddToQueue,
-                        )
-                    }
-                    if (hasLocalFile && hasTrackMetadata) {
-                        IosListRow(
-                            title = stringResource(R.string.track_action_add_playlist),
-                            systemName = "plus.circle",
-                            showTopSeparator = canPlay,
-                            onClick = onAddToPlaylist,
-                        )
-                    }
-                    if (hasLocalFile) {
-                        IosListRow(
-                            title = stringResource(R.string.download_delete_local_file),
-                            systemName = "trash",
-                            showTopSeparator = canPlay || hasTrackMetadata,
-                            onClick = onRemove,
-                        )
-                    } else {
-                        if (hasTrackMetadata) {
-                            IosListRow(
-                                title = stringResource(R.string.retry),
-                                systemName = "arrow.clockwise",
-                                showTopSeparator = false,
-                                onClick = onRetry,
-                            )
-                        }
-                        IosListRow(
-                            title = stringResource(R.string.download_delete_record),
-                            systemName = "trash",
-                            showTopSeparator = hasTrackMetadata,
-                            onClick = onRemove,
-                        )
-                    }
-                }
-
-                DownloadStatus.PENDING, DownloadStatus.DOWNLOADING -> {
-                    IosListRow(
-                        title = stringResource(R.string.pause),
-                        systemName = "pause.circle",
-                        showTopSeparator = false,
-                        onClick = onPause,
-                    )
-                    IosListRow(
-                        title = stringResource(R.string.download_cancel),
-                        systemName = "xmark.circle",
-                        onClick = onRemove,
-                    )
-                }
-
-                DownloadStatus.PAUSED -> {
-                    IosListRow(
-                        title = stringResource(R.string.resume),
-                        systemName = "arrow.clockwise",
-                        showTopSeparator = false,
-                        onClick = onResume,
-                    )
-                    IosListRow(
-                        title = stringResource(R.string.download_cancel),
-                        systemName = "xmark.circle",
-                        onClick = onRemove,
-                    )
-                }
-
-                DownloadStatus.FAILED -> {
-                    if (hasTrackMetadata) {
-                        IosListRow(
-                            title = stringResource(R.string.retry),
-                            systemName = "arrow.clockwise",
-                            showTopSeparator = false,
-                            onClick = onRetry,
-                        )
-                    }
-                    IosListRow(
-                        title = stringResource(R.string.download_delete_record),
-                        systemName = "trash",
-                        showTopSeparator = hasTrackMetadata,
-                        onClick = onRemove,
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun LazyListScope.libraryCloudItems(
+internal fun LazyListScope.libraryCloudItems(
     state: CloudMusicUiState,
     playerConnection: PlayerConnection?,
     query: String,
+    onLoadMore: () -> Unit,
 ) {
     val songs = state.page?.songs.orEmpty().filterIfSearching(query) { song ->
         song.name.containsQuery(query) ||
@@ -1174,7 +846,7 @@ private fun LazyListScope.libraryCloudItems(
             key = { "cloud-${it.id}" },
             contentType = "cloud-song",
         ) { song, index ->
-            IosListRow(
+            GlasmioListRow(
                 title = song.name,
                 subtitle = listOf(song.artist, song.album).filter(String::isNotBlank).joinToString(" · "),
                 showTopSeparator = index > 0,
@@ -1188,14 +860,7 @@ private fun LazyListScope.libraryCloudItems(
                 },
                 onClick = {
                     val queue = songs.map { item ->
-                        val mediaItem = MediaMetadata(
-                            id = item.id,
-                            title = item.name,
-                            coverUrl = item.coverUrl.orEmpty(),
-                            artists = listOf(MediaMetadata.Artist(item.artist.hashCode().toLong(), item.artist)),
-                            duration = item.durationMs,
-                            album = MediaMetadata.Album(item.album.hashCode().toLong(), item.album),
-                        ).toMediaItem()
+                        val mediaItem = item.track.toMediaMetadata().toMediaItem()
                         mediaItem.mediaId to mediaItem
                     }
                     playerConnection?.playQueue(ListQueue("library-cloud", "Cloud", queue, index))
@@ -1203,9 +868,14 @@ private fun LazyListScope.libraryCloudItems(
             )
         }
     }
+    if (state.page?.hasMore == true || state.isLoadingMore || state.loadMoreError != null) {
+        item(key = "library-cloud-pagination") {
+            CloudMusicPaginationFooter(state, onLoadMore)
+        }
+    }
 }
 
-private fun LazyListScope.libraryHistoryItems(
+internal fun LazyListScope.libraryHistoryItems(
     state: HistoryUiState,
     playerConnection: PlayerConnection?,
     query: String,
@@ -1243,7 +913,7 @@ private fun LazyListScope.libraryHistoryItems(
             key = { it.key },
             contentType = "history-item",
         ) { item, index ->
-            IosListRow(
+            GlasmioListRow(
                 title = item.song.title,
                 subtitle = item.song.artists.joinToString(" / ") { it.name },
                 detail = item.playedAt?.let { DateUtils.getRelativeTimeSpanString(it).toString() },
@@ -1261,7 +931,7 @@ private fun LazyListScope.libraryHistoryItems(
                         ListQueue(
                             id = "library-history",
                             title = "History",
-                            items = visibleHistory.map { it.song.id.toString() to null },
+                            items = visibleHistory.map { entry -> entry.song.toMediaItem().let { it.mediaId to it } },
                             startIndex = index,
                         ),
                     )
@@ -1285,7 +955,7 @@ private fun Playlist.matchesQuery(query: String): Boolean =
         description.containsQuery(query)
 
 @Composable
-private fun EmptyState(text: String, symbol: SfSymbol, description: String? = null) {
+internal fun EmptyState(text: String, symbol: SfSymbol, description: String? = null) {
     Column(
         Modifier.fillMaxWidth().padding(vertical = 52.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

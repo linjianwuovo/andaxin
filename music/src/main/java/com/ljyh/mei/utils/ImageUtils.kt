@@ -2,41 +2,64 @@ package com.ljyh.mei.utils
 
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Paint
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import coil3.ImageLoader
+import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
-import androidx.core.graphics.createBitmap
 import com.ljyh.mei.playback.DownloadWorker
+import com.ljyh.mei.playback.readDownloadResponse
+import kotlinx.coroutines.CancellationException
+import okhttp3.ResponseBody
+import timber.log.Timber
 
 fun String.smallImage(): String {
-    if (this.startsWith("/")) return this
+    if (!isNeteaseArtwork()) return this
     return "$this?param=100y100"
 }
 
+/** Remove server-added playlist labels/logos while retaining the underlying artwork operations. */
+internal fun playlistCoverWithoutOverlays(cover: String): String {
+    var changed = false
+    val operations = cover.split(Regex("(?i)%7c|\\|"))
+    val artwork = operations.mapIndexedNotNull { index, operation ->
+        val queryStart = if (index == 0) operation.indexOf('?') else -1
+        val processor = if (index == 0) {
+            if (queryStart < 0) return@mapIndexedNotNull operation
+            operation.substring(queryStart + 1)
+        } else operation
+        val parameters = processor.split('&')
+        val watermark = parameters.indexOfFirst {
+            it.substringBefore('=').equals("watermark", ignoreCase = true)
+        }
+        if (watermark < 0) return@mapIndexedNotNull operation
+        changed = true
+        if (index > 0) return@mapIndexedNotNull null
+        val retained = parameters.take(watermark).joinToString("&")
+        operation.substring(0, queryStart) + if (retained.isEmpty()) "" else "?$retained"
+    }
+    return if (changed) artwork.joinToString("%7C") else cover
+}
+
 fun String.middleImage(): String {
-    if (this.startsWith("/")) return this
+    if (!isNeteaseArtwork()) return this
     return "$this?param=300y300"
 }
 
 fun String.largeImage(): String {
-    if (this.startsWith("/")) return this
+    if (!isNeteaseArtwork()) return this
     return "$this?param=500y500"
 }
 
 fun String.size1600():String{
+    if (!isNeteaseArtwork()) return this
     return "$this?param=1600y1600"
 }
 
@@ -44,7 +67,7 @@ class CoilImageLoader {
     companion object {
         suspend fun loadImageDrawable(context: Context, imageUrl: String): ImageBitmap? =
             withContext(Dispatchers.IO) {
-                val loader = ImageLoader(context)
+                val loader = context.imageLoader
                 val request = ImageRequest.Builder(context)
                     .data(imageUrl)
                     .allowHardware(false) // 避免返回硬件加速的 Bitmap
@@ -55,64 +78,58 @@ class CoilImageLoader {
 }
 
 object ImageUtils {
+    internal const val MAX_COVER_BYTES = 8L * 1024 * 1024
     private val httpClient = DownloadWorker.getDownloadClient().newBuilder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    suspend fun downloadImageBytes(imageUrl: String): ByteArray? = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(imageUrl)
-            .build()
+    suspend fun downloadImageBytes(imageUrl: String): ByteArray? = downloadImageBytes(imageUrl, httpClient)
 
+    internal suspend fun downloadImageBytes(imageUrl: String, client: OkHttpClient): ByteArray? = withContext(Dispatchers.IO) {
         try {
-            val result = httpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val bytes = response.body.bytes()
-                    if (bytes[1].toInt() == 80) {
-                        pngToJpg(bytes)
-                    } else {
-                        bytes
+            if (com.ljyh.mei.source.script.SourceArtworkRegistry.owns(imageUrl)) {
+                val local = com.ljyh.mei.source.script.SourceArtworkRegistry.resolve(imageUrl)
+                val file = java.io.File(java.net.URI(local))
+                if (!file.isFile || file.length() > MAX_COVER_BYTES) return@withContext null
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                return@withContext file.inputStream().use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(65_536)
+                    while (true) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (output.size().toLong() + count > MAX_COVER_BYTES) return@withContext null
+                        output.write(buffer, 0, count)
                     }
-                } else {
-                    null
+                    output.toByteArray()
                 }
             }
-            result
+            val request = Request.Builder().url(imageUrl).build()
+            readDownloadResponse(client, request) { response ->
+                if (response.isSuccessful) readCoverBytes(response.body) else null
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.w(e, "Cover download failed")
             null
         }
     }
 
-
-    fun pngToJpg(pngBytes: ByteArray): ByteArray? {
-        return try {
-            // 将PNG字节数组解码为Bitmap
-            val bitmap = BitmapFactory.decodeByteArray(pngBytes, 0, pngBytes.size)
-            if (bitmap != null) {
-                // 创建一个空白的JPEG格式的Bitmap
-                val jpegBitmap =
-                    createBitmap(bitmap.width, bitmap.height, Bitmap.Config.RGB_565)
-
-                // 将PNG内容绘制到JPEG Bitmap上
-                val canvas = Canvas(jpegBitmap)
-                canvas.drawColor(android.graphics.Color.WHITE) // 设置背景为白色
-                val zero = 0
-                canvas.drawBitmap(bitmap, zero.toFloat(), zero.toFloat(), Paint())
-
-                // 将JPEG Bitmap压缩为字节数组
-                val outputStream = ByteArrayOutputStream()
-                jpegBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-                outputStream.toByteArray()
-            } else {
-                // 解码失败
-                ByteArray(0)
-            }
-        } catch (e: java.lang.Exception) {
-            e.printStackTrace()
-            // 处理异常
-            ByteArray(0)
-        }
+    internal fun readCoverBytes(body: ResponseBody): ByteArray? {
+        if (body.contentLength() > MAX_COVER_BYTES) return null
+        val source = body.source()
+        source.request(MAX_COVER_BYTES + 1)
+        val size = source.buffer.size
+        return if (size in 1..MAX_COVER_BYTES) source.buffer.readByteArray() else null
     }
+}
+
+/** Platform resize parameters must not alter plugin files or another provider's signed URL. */
+private fun String.isNeteaseArtwork(): Boolean {
+    val host = runCatching { java.net.URI(this).host }.getOrNull() ?: return false
+    return host.equals("music.126.net", ignoreCase = true) || host.endsWith(".music.126.net", ignoreCase = true)
 }

@@ -17,6 +17,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.ljyh.mei.source.api.Track
+import com.ljyh.mei.source.api.SourceArtist
+import com.ljyh.mei.source.api.SourceAlbum
+import com.ljyh.mei.data.model.toMediaMetadata
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -37,21 +42,22 @@ import com.ljyh.mei.data.model.melox.RecognizedSong
 import com.ljyh.mei.data.model.toMediaItem
 import com.ljyh.mei.playback.queue.ListQueue
 import com.ljyh.mei.recognition.RecognitionDuration
-import com.ljyh.mei.ui.glass.GlassButton
-import com.ljyh.mei.ui.glass.GlassCard
-import com.ljyh.mei.ui.glass.GlassEmphasis
-import com.ljyh.mei.ui.glass.GlassIconButton
-import com.ljyh.mei.ui.glass.GlassSegmentedControl
-import com.ljyh.mei.ui.glass.IosPinnedListPage
-import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.SfIcon
-import com.ljyh.mei.ui.glass.SfSymbol
+import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.ui.GlasmioCard
+import io.github.neoruaa.glasmio.glass.GlassEmphasis
+import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
+import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.icons.SfIcon
+import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 
 @Composable
-fun SongRecognitionScreen(viewModel: SongRecognitionViewModel = hiltViewModel()) {
+fun SongRecognitionScreen(viewModel: SongRecognitionViewModel = hiltViewModel(), providerId: String? = null) {
+    LaunchedEffect(providerId) { viewModel.open(providerId) }
     val state by viewModel.state.collectAsState()
     val navController = LocalNavController.current
     val playerConnection = LocalPlayerConnection.current
@@ -61,13 +67,13 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel = hiltViewModel())
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) viewModel.start() }
 
-    IosPinnedListPage(
+    MeiloXPinnedListPage(
         title = recognitionTitle,
         onNavigateBack = navController::navigateUp,
         bottomPadding = insets.calculateBottomPadding(),
     ) {
         item {
-            GlassSegmentedControl(
+            GlasmioSegmentedControl(
                 items = RecognitionDuration.entries.map { duration ->
                     duration to stringResource(duration.titleResource())
                 },
@@ -77,7 +83,7 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel = hiltViewModel())
             )
         }
         item {
-            GlassCard(Modifier.fillMaxWidth()) {
+            GlasmioCard(Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -101,11 +107,12 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel = hiltViewModel())
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
-                    GlassButton(
+                    GlasmioButton(
                         onClick = {
                             if (state.isWorking) viewModel.stop()
                             else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         },
+                        enabled = state.isAvailable,
                         emphasis = GlassEmphasis.Prominent,
                     ) {
                         Text(stringResource(if (state.isWorking) R.string.recognition_stop else R.string.recognition_start))
@@ -114,12 +121,18 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel = hiltViewModel())
             }
         }
         state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
-        items(state.results, key = { it.id }) { song ->
-            GlassCard(
+        items(state.results, key = { it.ref.toString() }) { song ->
+            GlasmioCard(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    val media = song.asMediaMetadata().toMediaItem()
-                    playerConnection?.playQueue(ListQueue("recognition", recognitionTitle, listOf(media.mediaId to media)))
+                    viewModel.media(song) { media ->
+                    val lastPosition = song.durationMs.takeIf { it > 0 }?.minus(1) ?: Int.MAX_VALUE.toLong()
+                    playerConnection?.playQueue(ListQueue(
+                        "recognition", recognitionTitle, listOf(media.mediaId to media),
+                        position = (song.startTimeMs ?: 0L)
+                            .coerceIn(0L, minOf(lastPosition, Int.MAX_VALUE.toLong())).toInt(),
+                    ))
+                    }
                 },
             ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -167,12 +180,3 @@ private fun RecognitionPhase.textResource(): Int = when (this) {
     RecognitionPhase.NoMatch -> R.string.recognition_no_match
     RecognitionPhase.Failed -> R.string.recognition_failed
 }
-
-private fun RecognizedSong.asMediaMetadata() = MediaMetadata(
-    id = id,
-    title = name,
-    coverUrl = coverUrl.orEmpty(),
-    artists = artists.map { MediaMetadata.Artist(it.hashCode().toLong(), it) },
-    duration = durationMs,
-    album = MediaMetadata.Album(album.hashCode().toLong(), album),
-)

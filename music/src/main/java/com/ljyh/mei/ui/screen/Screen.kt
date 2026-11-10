@@ -2,7 +2,7 @@ package com.ljyh.mei.ui.screen
 
 import androidx.annotation.StringRes
 import com.ljyh.mei.R
-import com.ljyh.mei.ui.glass.SfSymbol
+import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.navigation.MeiNavigator
 import com.ljyh.mei.ui.navigation.ContentFeature
 
@@ -20,7 +20,15 @@ sealed class Screen(val route:String) {
     data object NeteaseWebLogin:Screen("account/web_login")
     data object PcQrLogin:Screen("account/pc_qr_login")
     data object AccountHome:Screen("account/home")
+    data object NeteaseMusician:Screen("account/musician")
+    data object AccountSecurity:Screen("account/security")
+    data object AccountBindings:Screen("account/security/bindings")
+    data object AccountDevices:Screen("account/security/devices")
+    data object AccountAuthorizations:Screen("account/security/authorizations")
+    data object AccountWeb:Screen("account/security/web")
+    data object AccountConnections:Screen("account/connections")
     data object AccountListeningRank:Screen("account/listening_rank")
+    data object ListeningStats:Screen("account/listening_stats")
     data object AppearanceSettings:Screen("setting/appearance")
     data object GeneralSettings:Screen("setting/general")
     data object LyricsSettings:Screen("setting/lyrics")
@@ -28,6 +36,16 @@ sealed class Screen(val route:String) {
     data object EqualizerSettings:Screen("setting/equalizer")
     data object DownloadSettings:Screen("setting/download")
     data object StorageManagement:Screen("setting/storage")
+    data object SourceManagement:Screen("setting/sources")
+    data object SourceMarket:Screen("setting/sources/market")
+    data object SourcePluginSettings:Screen("setting/sources/plugin")
+    data object SourceContent:Screen("source/content")
+    data object SourceArtistSongs:Screen("source/artist/songs")
+    data object SourceArtistAlbums:Screen("source/artist/albums")
+    data object SourceAccount:Screen("source/account")
+    data object SourcePlaylistCreate:Screen("source/playlist/create")
+    data object SourcePlaylistEdit:Screen("source/playlist/edit")
+    data object SourcePlaylistPicker:Screen("source/playlist/picker")
     data object DownloadManage:Screen("download_manage")
     data object LocalMusic:Screen("local_music")
     data object LocalSongList:Screen("local_songs")
@@ -43,6 +61,7 @@ sealed class Screen(val route:String) {
     data object CloudMusic: Screen("cloud_music")
     data object Search: Screen("search")
     data object PrivateMessages: Screen("private_messages")
+    data object OfficialMessages: Screen("official_messages")
     data object PrivateConversation: Screen("private_message")
     data object MessageContacts: Screen("message_contacts")
     data object ListenTogether: Screen("listen_together")

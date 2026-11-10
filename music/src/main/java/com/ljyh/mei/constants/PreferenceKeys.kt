@@ -32,6 +32,7 @@ val LyricLiftEnabledKey = booleanPreferencesKey("lyrics.liftEnabled")
 val LyricLongToneEnabledKey = booleanPreferencesKey("lyrics.longToneEnabled")
 val LyricAutoFollowEnabledKey = booleanPreferencesKey("lyrics.autoFollowEnabled")
 val SystemLyricsEnabledKey = booleanPreferencesKey("lyrics.systemEnabled")
+val BluetoothLyricsEnabledKey = booleanPreferencesKey("lyrics.bluetoothEnabled")
 val FloatingLyricsTranslationKey = booleanPreferencesKey("floatingLyrics.showsTranslation")
 val FloatingLyricsNextLineKey = booleanPreferencesKey("floatingLyrics.showsNextLine")
 val FloatingLyricsFontScaleKey = floatPreferencesKey("floatingLyrics.fontScale")
@@ -51,7 +52,8 @@ val CoverStyleKey = stringPreferencesKey("coverStyle")
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
 const val DefaultAccentColorArgb = 0xFFFF3B30L
 val AccentColorKey = longPreferencesKey("accentColor")
-const val DefaultInterfaceLetterSpacing = 1f
+const val DefaultInterfaceLetterSpacing = 0.4f
+const val MaxInterfaceLetterSpacing = 1.4f
 val InterfaceLetterSpacingKey = floatPreferencesKey("interfaceLetterSpacing")
 val PlayerActionKey = stringPreferencesKey("playerBottomAction")
 
@@ -62,12 +64,18 @@ val AccompanimentLyricTextSizeKey = stringPreferencesKey("accompanimentLyricText
 val AccompanimentLyricTextBoldKey = booleanPreferencesKey("accompanimentLyricTextBold")
 
 val LoopPlaybackKey = booleanPreferencesKey("loopPlayback")
+val AllowConcurrentPlaybackKey = booleanPreferencesKey("playback.allowConcurrentPlayback")
+val AudioOutputModeKey = stringPreferencesKey("playback.audioOutputMode")
 val PreviousPlaybackKey = booleanPreferencesKey("previousPlayback")
 val NoAudioSourceKey = booleanPreferencesKey("noAudioSource")
 val IsShuffleModeKey = booleanPreferencesKey("shuffleMode")
 val CloudShuffleEnabledKey = booleanPreferencesKey("playback.cloudShuffleEnabled")
 val RepeatModeKey = intPreferencesKey("repeatMode")
 val PlaybackSnapshotKey = stringPreferencesKey("playback.snapshot")
+val RestorePlaybackPositionKey = booleanPreferencesKey("playback.restorePosition")
+val RestorePlaybackStateKey = booleanPreferencesKey("playback.restoreState")
+val NotificationLeftActionKey = stringPreferencesKey("notification.leftAction")
+val NotificationRightActionKey = stringPreferencesKey("notification.rightAction")
 val AutoMixEnabledKey = booleanPreferencesKey("autoMix.enabled")
 val AutoMixModeKey = stringPreferencesKey("autoMix.mode")
 val AutoMixDurationKey = floatPreferencesKey("autoMix.fixedDuration")
@@ -108,8 +116,14 @@ val MeshSubdivisionKey = intPreferencesKey("meshSubdivision")
 val LibraryStyleKey = stringPreferencesKey("libraryStyle")
 val LibraryDefaultPageKey = stringPreferencesKey("libraryDefaultPage")
 val KeepBottomBarExpandedKey = booleanPreferencesKey("appearance.keepBottomBarExpanded")
+val BottomFloatingContentExtraSpacingKey = intPreferencesKey("appearance.bottomFloatingContentExtraSpacing")
+const val DefaultBottomFloatingContentExtraSpacing = 8
+const val MaxBottomFloatingContentExtraSpacing = 64
 val LiquidGlassEnabledKey = booleanPreferencesKey("appearance.liquidGlassEnabled")
+val GlassHdrEffectsKey = booleanPreferencesKey("appearance.glassHdrEffects")
 val ReduceTransparencyKey = booleanPreferencesKey("appearance.reduceTransparency")
+val ColorfulDetailBackgroundsKey = booleanPreferencesKey("appearance.colorfulDetailBackgrounds")
+val PredictiveBackAnimationEnabledKey = booleanPreferencesKey("appearance.predictiveBackAnimationEnabled")
 
 val PlayerStyleKey = stringPreferencesKey("playerStyle")
 val PlayerKeepScreenOnKey = booleanPreferencesKey("player.keepScreenOn")
@@ -122,6 +136,10 @@ val DownloadQualityKey = stringPreferencesKey("downloadQuality")
 val AutoCacheEnabledKey = booleanPreferencesKey("automaticCache.enabled")
 val AutoCachePlaybackThresholdKey = intPreferencesKey("automaticCache.playbackThreshold")
 val AutoCacheQualityKey = stringPreferencesKey("automaticCache.quality")
+val ImageCacheLimitMbKey = intPreferencesKey("imageCacheLimitMb")
+val MusicCacheLimitMbKey = intPreferencesKey("musicCacheLimitMb")
+const val DefaultImageCacheLimitMb = 250
+const val DefaultMusicCacheLimitMb = 10 * 1024
 val PodcastsEnabledKey = booleanPreferencesKey("content.podcastsEnabled")
 val DownloadsEnabledKey = booleanPreferencesKey("content.downloadsEnabled")
 val CloudMusicEnabledKey = booleanPreferencesKey("content.cloudMusicEnabled")
@@ -158,6 +176,8 @@ enum class PlayerStyle {
 }
 
 enum class AppAppearance { System, Light, Dark }
+
+enum class AudioOutputMode { AudioTrack, AAudio, OpenSLES, UsbBitPerfect }
 
 enum class AutoMixMode { Smart, Fixed }
 enum class AutoMixFadeCurve { EqualPower, Smooth, Linear }
@@ -211,14 +231,39 @@ enum class DownloadQuality(val text: String, val label: String, val description:
 }
 
 enum class LyricTextSize(val text: Int) {
+    Size16(16),
+    Size17(17),
     Size18(18),
+    Size19(19),
     Size20(20),
+    Size21(21),
     Size22(22),
+    Size23(23),
     Size24(24),
+    Size25(25),
     Size26(26),
+    Size27(27),
     Size28(28),
+    Size29(29),
     Size30(30),
-    Size32(32)
+    Size31(31),
+    Size32(32),
+    Size33(33),
+    Size34(34),
+    Size35(35),
+    Size36(36),
+    Size37(37),
+    Size38(38),
+    Size39(39),
+    Size40(40),
+    Size41(41),
+    Size42(42),
+    Size43(43),
+    Size44(44),
+    Size45(45),
+    Size46(46),
+    Size47(47),
+    Size48(48)
 }
 
 enum class ProgressBarStyle(val label: String) {
@@ -232,3 +277,7 @@ enum class TabletAnimationStyle(val label: String) {
     ZOOM("缩放"),
     FLIP_3D("3D翻转")
 }
+
+val FlymeStatusBarLyricsEnabledKey = booleanPreferencesKey("lyrics.flymeStatusBarEnabled")
+val PrivateFmModeKey = stringPreferencesKey("privateFm.mode")
+val PrivateFmSceneKey = stringPreferencesKey("privateFm.scene")

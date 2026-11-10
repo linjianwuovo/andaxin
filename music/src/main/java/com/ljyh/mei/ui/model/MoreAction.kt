@@ -2,6 +2,8 @@ package com.ljyh.mei.ui.model
 
 import androidx.annotation.StringRes
 import com.ljyh.mei.R
+import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.source.api.*
 
 enum class MoreAction(
     val id: String,
@@ -34,7 +36,7 @@ enum class MoreAction(
     SONG_WIKI("song_wiki", R.string.song_wiki, "book.pages", 5, 1),
 
     // --- 评论 ---
-    COMMENT("comment", R.string.more_action_comments, "bubble.left", 7, 1);
+    COMMENT("comment", R.string.more_action_comments, "bubble.left.and.bubble.right", 7, 1);
 
     companion object {
         // 简单工厂方法
@@ -47,4 +49,28 @@ enum class MoreAction(
 enum class SortOrder {
     FREQUENCY, // 常用的靠前
     RISK, // 低风险的靠前
+    CUSTOM,
+}
+
+internal fun MoreAction.availableFor(metadata: MediaMetadata?, provider: MusicProvider? = null): Boolean {
+    val online = metadata != null && !metadata.isLocal && !metadata.isPodcast
+    val owner = provider?.takeIf { it.id == metadata?.trackRef?.providerId && it.status == SourceStatus.READY }
+    val features = (owner as? SourceFeatureCapability)?.features.orEmpty()
+    return when (this) {
+        MoreAction.ADD_TO_PLAYLIST -> online && SourceCapability.PLAYLIST_EDIT in owner?.capabilities.orEmpty() &&
+            PlaylistEditAction.ADD_TRACKS in (owner as? PlaylistEditCapability)?.playlistEditActions.orEmpty()
+        MoreAction.SHARE -> online
+        MoreAction.SONG_WIKI -> online && "songWiki" in features["social"].orEmpty()
+        MoreAction.COMMENT -> online && "comments" in features["social"].orEmpty()
+        else -> true
+    }
+}
+
+internal fun resolveMoreActionOrder(order: SortOrder, savedIds: List<String>): List<MoreAction> = when (order) {
+    SortOrder.FREQUENCY -> MoreAction.entries.sortedByDescending { it.frequency }
+    SortOrder.RISK -> MoreAction.entries.sortedBy { it.riskLevel }
+    SortOrder.CUSTOM -> {
+        val known = savedIds.mapNotNull(MoreAction::fromId).distinct()
+        known + MoreAction.entries.filterNot(known::contains)
+    }
 }

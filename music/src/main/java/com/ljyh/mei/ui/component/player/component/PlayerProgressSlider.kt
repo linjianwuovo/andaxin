@@ -23,14 +23,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -38,14 +42,21 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ljyh.mei.source.api.TrackRefCodec
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
 import com.ljyh.mei.ui.component.utils.rememberLifecycleStarted
 import com.ljyh.mei.utils.TimeUtils.makeTimeString
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlin.math.sin
 
@@ -57,12 +68,19 @@ fun PlayerProgressSlider(
     duration: Long,
     isPlaying: Boolean, // 新增：需要根据播放状态控制波浪滚动
     onPositionChange: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onQualityMenuVisibilityChanged: (Boolean) -> Unit = {},
+    onTrackTopChanged: ((Float) -> Unit)? = null,
+    viewportBounds: Rect? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current
+    val qualityMediaId = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value?.trackRef
+        ?.let(TrackRefCodec::mediaId)
     val musicQuality = playerConnection?.currentMusicQuality?.collectAsStateWithLifecycle()?.value
     val availableQualities = playerConnection?.availableMusicQualities?.collectAsStateWithLifecycle()?.value.orEmpty()
     val isLoadingQualities = playerConnection?.isLoadingMusicQualities?.collectAsStateWithLifecycle()?.value ?: false
+    val localPlaybackInfo = playerConnection?.localPlaybackInfo?.collectAsStateWithLifecycle()?.value
+    val isPlayingLocalSource = playerConnection?.isPlayingLocalSource?.collectAsStateWithLifecycle()?.value ?: false
     val isDurationValid = remember(duration) { duration > 0 }
     val valueRange = remember(duration) { 0f..(duration.takeIf { it > 0 } ?: 1).toFloat() }
 
@@ -112,6 +130,20 @@ fun PlayerProgressSlider(
         animationSpec = tween(300),
         label = "amplitude"
     )
+    val density = LocalDensity.current
+    var trackCenterInRoot by remember { mutableStateOf<Float?>(null) }
+    val trackTopListener by rememberUpdatedState(onTrackTopChanged)
+    val hasProgress by rememberUpdatedState(progressFraction > 0f)
+    if (onTrackTopChanged != null) LaunchedEffect(density) {
+        snapshotFlow {
+            trackCenterInRoot?.let { center ->
+                // Reserve the waveform envelope, including its moving endpoint.
+                // The phase changes within that envelope without moving the fade.
+                val radius = with(density) { if (hasProgress) 6.dp.toPx() else 1.dp.toPx() }
+                center - radius - if (hasProgress) abs(amplitude) else 0f
+            }
+        }.filterNotNull().distinctUntilChanged().collect { trackTopListener?.invoke(it) }
+    }
 
     Column(modifier = modifier) {
         // 自定义 Slider
@@ -147,6 +179,9 @@ fun PlayerProgressSlider(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(24.dp) // 确保有足够空间画波峰波谷
+                        .onGloballyPositioned {
+                            trackCenterInRoot = it.localToRoot(Offset(0f, it.size.height / 2f)).y
+                        }
                 ) {
                     val width = size.width
                     val height = size.height
@@ -232,6 +267,7 @@ fun PlayerProgressSlider(
 
             Text(
                 text = makeTimeString(sliderPosition.toLong()),
+                modifier = Modifier.weight(1f),
                 style = timeTextStyle,
                 color = Color.White.copy(alpha = 0.9f), // 使用白色，微透
                 maxLines = 1,
@@ -240,10 +276,16 @@ fun PlayerProgressSlider(
 
             PlayerQualityDropdown(
                 quality = musicQuality,
+                mediaId = qualityMediaId,
                 availableQualities = availableQualities,
                 isLoading = isLoadingQualities,
+                localPlaybackInfo = localPlaybackInfo,
+                isPlayingLocalSource = isPlayingLocalSource,
                 onMenuOpened = { playerConnection?.refreshAvailableMusicQualities() },
                 onQualitySelected = { playerConnection?.changeQuality(it) },
+                onLocalSourceSelected = { playerConnection?.useLocalSource() },
+                onMenuVisibilityChanged = onQualityMenuVisibilityChanged,
+                viewportBounds = viewportBounds,
                 style = timeTextStyle,
                 color = Color.White.copy(alpha = 0.8f),
             )
@@ -251,6 +293,8 @@ fun PlayerProgressSlider(
 
             Text(
                 text = if (duration > 0) makeTimeString(duration) else "-:--",
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End,
                 style = timeTextStyle,
                 color = Color.White.copy(alpha = 0.6f),
                 maxLines = 1,

@@ -34,7 +34,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.ljyh.mei.constants.SuggestionItemHeight
 import com.ljyh.mei.data.network.Resource
 import com.ljyh.mei.ui.component.SearchBarIconOffsetX
-import com.ljyh.mei.ui.glass.SfIcon
+import io.github.neoruaa.glasmio.icons.SfIcon
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import timber.log.Timber
@@ -47,122 +47,26 @@ fun SearchScreen(
     onSearch: (String, Int) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: SearchViewModel = hiltViewModel(),
+    sourceViewModel: SourceSearchViewModel = hiltViewModel(key = "source-search-choice"),
+    viewModel: SearchDiscoveryViewModel = hiltViewModel(),
 ) {
-    val searchSuggest by viewModel.searchSuggest.collectAsState()
-    val keyboardController = LocalSoftwareKeyboardController.current
-
+    val providerId by sourceViewModel.selectedProviderId.collectAsState()
+    val suggestions by viewModel.suggestions.collectAsState()
+    LaunchedEffect(sourceViewModel) { sourceViewModel.useSearchPreference() }
+    LaunchedEffect(query, providerId) { viewModel.updateInputQuery(query, providerId) }
+    androidx.compose.runtime.DisposableEffect(viewModel) { onDispose { viewModel.cancelSuggestions() } }
     val lazyListState = rememberLazyListState()
-
-    LaunchedEffect(Unit) {
-        snapshotFlow { lazyListState.isScrollInProgress }
-            .distinctUntilChanged()
-            .filter { it }
-            .collect {
-                keyboardController?.hide()
-            }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(lazyListState) {
+        snapshotFlow { lazyListState.isScrollInProgress }.distinctUntilChanged().filter { it }.collect { keyboard?.hide() }
     }
-
-    LaunchedEffect(query) {
-        viewModel.updateInputQuery( query)
-    }
-
-    LazyColumn(
-        modifier = modifier,
-        state = lazyListState,
-        contentPadding = WindowInsets.systemBars
-            .only(WindowInsetsSides.Bottom)
-            .asPaddingValues()
-    ) {
-
-        when (val result=searchSuggest) {
-            is Resource.Loading -> {}
-            is Resource.Success -> {
-                Timber.tag("SearchSuggest").d("result: ${result.data}")
-                result.data.result.songs?.let { songs->
-                    items(
-                        items = songs,
-                        key = { it.id }
-                    ) { query ->
-                        SuggestionItem(
-                            query = query.name,
-                            type = SearchType.Song,
-                            onClick = {
-                                onSearch(query.name, SearchType.Song.type)
-                                onDismiss()
-                            },
-                            onDelete = {
-                            },
-                            onFillTextField = {
-                                onQueryChange(
-                                    TextFieldValue(
-                                        text = query.name,
-                                        selection = TextRange(query.name.length)
-                                    )
-                                )
-                            },
-                            modifier = Modifier.animateItem()
-                        )
-                    }
-                }
-
-                result.data.result.artists?.let { artists->
-                    items(
-                        items = artists,
-                        key = { it.id }
-                    ) { query ->
-                        SuggestionItem(
-                            query = query.name,
-                            type = SearchType.Artist,
-                            onClick = {
-                                onSearch(query.name, SearchType.Artist.type)
-                                onDismiss()
-                            },
-                            onDelete = {
-                            },
-                            onFillTextField = {
-                                onQueryChange(
-                                    TextFieldValue(
-                                        text = query.name,
-                                        selection = TextRange(query.name.length)
-                                    )
-                                )
-                            },
-                            modifier = Modifier.animateItem()
-                        )
-                    }
-                }
-
-                result.data.result.albums?.let { albums->
-                    items(
-                        items = albums,
-                        key = { it.id }
-                    ) { query ->
-                        SuggestionItem(
-                            query = query.name,
-                            type = SearchType.Album,
-                            onClick = {
-                                onSearch(query.name, SearchType.Album.type)
-                                onDismiss()
-                            },
-                            onDelete = {
-                            },
-                            onFillTextField = {
-                                onQueryChange(
-                                    TextFieldValue(
-                                        text = query.name,
-                                        selection = TextRange(query.name.length)
-                                    )
-                                )
-                            },
-                            modifier = Modifier.animateItem()
-                        )
-                    }
-                }
-
-            }
-
-            is Resource.Error -> {}
+    LazyColumn(modifier = modifier, state = lazyListState,
+        contentPadding = WindowInsets.systemBars.only(WindowInsetsSides.Bottom).asPaddingValues()) {
+        items(suggestions, key = { "${it.type.name}:${it.id}" }) { suggestion ->
+            SuggestionItem(query = suggestion.name, type = suggestion.type,
+                onClick = { onSearch(suggestion.name, suggestion.type.type); onDismiss() },
+                onFillTextField = { onQueryChange(TextFieldValue(suggestion.name, selection = TextRange(suggestion.name.length))) },
+                modifier = Modifier.animateItem())
         }
     }
 }

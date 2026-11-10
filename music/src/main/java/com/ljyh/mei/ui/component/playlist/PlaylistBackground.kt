@@ -21,7 +21,8 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.ljyh.mei.ui.glass.LocalGlassColors
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import com.ljyh.mei.ui.local.LocalColorfulPageBackgrounds
 import com.ljyh.mei.utils.color.ColorExtractionUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -32,6 +33,7 @@ data class CoverBackground(
     val color: Color,
     val endColor: Color,
     val brush: Brush,
+    val seedColor: Color? = null,
 )
 
 @Composable
@@ -42,6 +44,16 @@ fun rememberCoverBackground(
     ownerKey: Any? = Unit,
 ): CoverBackground {
     val colors = LocalGlassColors.current
+    val colorfulBackgrounds = LocalColorfulPageBackgrounds.current
+    if (!colorfulBackgrounds) {
+        return remember(colors.groupedBackground) {
+            CoverBackground(
+                color = colors.groupedBackground,
+                endColor = colors.groupedBackground,
+                brush = Brush.verticalGradient(listOf(colors.groupedBackground, colors.groupedBackground)),
+            )
+        }
+    }
     val currentGetCachedColor by rememberUpdatedState(getCachedColor)
     val currentGetOrExtractColor by rememberUpdatedState(getOrExtractColor)
     var coverColor by remember(ownerKey, coverUrl) {
@@ -89,7 +101,7 @@ fun rememberCoverBackground(
     val brush = remember(pageBackground, pageBackgroundEnd) {
         Brush.verticalGradient(listOf(pageBackground, pageBackgroundEnd))
     }
-    return CoverBackground(pageBackground, pageBackgroundEnd, brush)
+    return CoverBackground(pageBackground, pageBackgroundEnd, brush, coverColor)
 }
 
 @Composable

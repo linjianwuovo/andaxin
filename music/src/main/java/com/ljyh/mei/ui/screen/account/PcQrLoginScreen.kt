@@ -5,6 +5,15 @@
  */
 package com.ljyh.mei.ui.screen.account
 
+import com.ljyh.mei.ui.component.sheet.MeiloXBottomSheet
+import io.github.neoruaa.glasmio.ui.GlasmioButtonSize
+import com.ljyh.mei.ui.component.sheet.rememberMeiloXSheetScrollEdge
+import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
+import io.github.neoruaa.glasmio.ui.GlasmioSheetToolbarButton
+import io.github.neoruaa.glasmio.ui.GlasmioSheetTopToolbar
+import io.github.neoruaa.glasmio.ui.GlasmioSheetValue
+import com.ljyh.mei.ui.component.sheet.rememberMeiloXSheetDismissal
+import com.ljyh.mei.ui.component.utils.rememberAlertContent
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
@@ -46,7 +55,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -55,10 +63,11 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,7 +75,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,26 +103,21 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.R
-import com.ljyh.mei.constants.CookieKey
-import com.ljyh.mei.constants.UserIdKey
 import com.ljyh.mei.data.network.NeteaseSessionType
-import com.ljyh.mei.data.network.NeteaseUrsUpSmsChallenge
-import com.ljyh.mei.data.network.NeteaseUrsUpSmsRequiredException
-import com.ljyh.mei.ui.glass.GlassButton
-import com.ljyh.mei.ui.glass.GlassCard
-import com.ljyh.mei.ui.glass.GlassEmphasis
-import com.ljyh.mei.ui.glass.GlassIconButton
-import com.ljyh.mei.ui.glass.GlassSegmentedControl
-import com.ljyh.mei.ui.glass.IosAlertButtonRole
-import com.ljyh.mei.ui.glass.IosAlertButtonSpec
-import com.ljyh.mei.ui.glass.IosAlertDialog
-import com.ljyh.mei.ui.glass.IosGroupedList
-import com.ljyh.mei.ui.glass.IosModalSheet
-import com.ljyh.mei.ui.glass.IosPinnedListPage
-import com.ljyh.mei.ui.glass.IosTextField
-import com.ljyh.mei.ui.glass.IosTypography
-import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.SfIcon
+import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.ui.GlasmioCard
+import io.github.neoruaa.glasmio.glass.GlassEmphasis
+import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import io.github.neoruaa.glasmio.ui.GlasmioSegmentedControl
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonRole
+import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
+import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
+import io.github.neoruaa.glasmio.ui.GlasmioTextField
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.icons.SfIcon
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.utils.rememberPreference
@@ -137,11 +140,8 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val insets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
-    val cookie by rememberPreference(CookieKey, "")
-    val userId by rememberPreference(UserIdKey, "")
-    val sessionType = rememberNeteaseSessionType()
-    val isSignedIn = sessionType == NeteaseSessionType.Mobile &&
-        cookie.isNotBlank() && userId.toLongOrNull()?.let { it > 0 } == true
+    val sourceSession by viewModel.sourceSession.collectAsStateWithLifecycle()
+    val isSignedIn = sourceSession.authenticated && sourceSession.kind == com.ljyh.mei.source.shared.OnlineSessionKind.Mobile
     val hasCamera = remember(context) {
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
     }
@@ -161,11 +161,11 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
             imageScope.launch {
                 readingQrImage = true
                 try {
-                    val rawValue = readPcQrImage(context, uri)
-                    if (rawValue == null) {
+                    val rawValues = readPcQrValues(context, uri)
+                    if (rawValues.isEmpty()) {
                         viewModel.reportImageError(imageNoQrMessage)
                     } else {
-                        viewModel.onQrValue(rawValue)
+                        viewModel.onQrValues(rawValues)
                     }
                 } catch (error: CancellationException) {
                     throw error
@@ -223,14 +223,14 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
 
     BackHandler(onBack = viewModel::requestExit)
 
-    IosPinnedListPage(
+    MeiloXPinnedListPage(
         title = stringResource(R.string.pc_qr_login),
         onNavigateBack = viewModel::requestExit,
         bottomPadding = insets.calculateBottomPadding(),
     ) {
         item {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                GlassCard(
+                GlasmioCard(
                     Modifier
                         .fillMaxWidth()
                         .widthIn(max = 520.dp)
@@ -239,7 +239,7 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
                     when {
                         !isSignedIn -> AccountRequiredContent(
                             onLogin = { showMobileLoginSheet = true },
-                            hasWebSession = sessionType == NeteaseSessionType.Web,
+                            hasWebSession = sourceSession.authenticated && sourceSession.kind == com.ljyh.mei.source.shared.OnlineSessionKind.Web,
                         )
                         !hasCamera -> UnavailableCameraContent()
                         !permissionGranted -> CameraPermissionContent(
@@ -258,7 +258,7 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
                         else -> key(cameraRetryKey) {
                             PcQrCameraPreview(
                                 analysisEnabled = state.isAnalyzing && !readingQrImage,
-                                onQrValue = viewModel::onQrValue,
+                                onQrValues = viewModel::onQrValues,
                                 onCameraError = viewModel::reportCameraError,
                             )
                         }
@@ -294,7 +294,7 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
 
         if (isSignedIn) {
             item {
-                GlassButton(
+                GlasmioButton(
                     onClick = { imagePicker.launch("image/*") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = state.isAnalyzing && !readingQrImage,
@@ -322,7 +322,7 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
                         textAlign = TextAlign.Center,
                     )
                     if (error.kind in setOf(PcQrLoginErrorKind.Request, PcQrLoginErrorKind.Camera)) {
-                        GlassButton(
+                        GlasmioButton(
                             onClick = {
                                 if (error.kind == PcQrLoginErrorKind.Camera) {
                                     cameraRetryKey++
@@ -340,22 +340,23 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
         }
     }
 
-    if (state.isDialogVisible) {
-        val session = state.session ?: return
-        val busy = state.phase != PcQrLoginPhase.AwaitingConfirmation
+    rememberAlertContent(state.takeIf { it.isDialogVisible && it.session != null })?.let { dialogState ->
+        val session = dialogState.session ?: return@let
+        val busy = dialogState.phase != PcQrLoginPhase.AwaitingConfirmation
         val platform = session.platform.ifBlank { stringResource(R.string.pc_qr_login_generic_platform) }
-        IosAlertDialog(
+        GlasmioAlertDialog(
+            visible = state.isDialogVisible && state.session != null,
             onDismissRequest = {},
             title = stringResource(R.string.pc_qr_login_confirm_title),
             message = stringResource(R.string.pc_qr_login_confirm_message, platform),
             buttons = listOf(
-                IosAlertButtonSpec(
+                GlasmioAlertButtonSpec(
                     label = stringResource(R.string.cancel),
                     onClick = viewModel::cancel,
-                    role = IosAlertButtonRole.Cancel,
+                    role = GlasmioAlertButtonRole.Cancel,
                     enabled = !busy,
                 ),
-                IosAlertButtonSpec(
+                GlasmioAlertButtonSpec(
                     label = stringResource(R.string.pc_qr_login_confirm),
                     onClick = viewModel::authorize,
                     enabled = !busy,
@@ -372,7 +373,7 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 12.dp),
                 )
             }
-            state.error?.takeIf { it.kind == PcQrLoginErrorKind.Request }?.let { error ->
+            dialogState.error?.takeIf { it.kind == PcQrLoginErrorKind.Request }?.let { error ->
                 Text(
                     text = error.localizedMessage(),
                     modifier = Modifier.padding(bottom = 12.dp),
@@ -390,7 +391,6 @@ fun PcQrLoginScreen(viewModel: PcQrLoginViewModel = hiltViewModel()) {
             onSubmitPassword = viewModel::loginWithMobilePassword,
             onRequestSmsCode = viewModel::requestMobileSmsCode,
             onSubmitSms = viewModel::loginWithMobileSms,
-            onSubmitUpSms = viewModel::loginWithUpSms,
             onLoginSuccess = { showMobileLoginSheet = false },
         )
     }
@@ -422,9 +422,8 @@ internal fun NeteaseMobileLoginSheet(
         activity: Activity,
         phone: String,
         countryCode: String,
-    ) -> Unit,
+    ) -> Boolean,
     onSubmitSms: suspend (phone: String, countryCode: String, code: String) -> Unit,
-    onSubmitUpSms: suspend (challenge: NeteaseUrsUpSmsChallenge) -> Unit,
     onLoginSuccess: () -> Unit,
 ) {
     var loginMethod by rememberSaveable { mutableStateOf(NeteaseMobileLoginMethod.Sms) }
@@ -433,14 +432,18 @@ internal fun NeteaseMobileLoginSheet(
     var password by rememberSaveable { mutableStateOf("") }
     var smsCode by rememberSaveable { mutableStateOf("") }
     var smsCountdown by rememberSaveable { mutableIntStateOf(0) }
-    var upSmsChallenge by remember { mutableStateOf<NeteaseUrsUpSmsChallenge?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
     var isSendingCode by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val colors = LocalGlassColors.current
+    val dismissal = rememberMeiloXSheetDismissal(
+        onDismiss,
+        confirmValueChange = { !isSubmitting && !isSendingCode || it != GlasmioSheetValue.Hidden },
+    )
+    val scrollState = rememberScrollState()
+    val scrollProgress = rememberMeiloXSheetScrollEdge(scrollState)
     val invalidInputMessage = stringResource(R.string.netease_mobile_login_invalid_input)
     val loginFailedMessage = stringResource(R.string.netease_mobile_login_failed)
     val smsRequestFailedMessage = stringResource(R.string.netease_mobile_login_sms_request_failed)
@@ -480,34 +483,27 @@ internal fun NeteaseMobileLoginSheet(
             return@request
         }
         errorMessage = null
-        upSmsChallenge = null
         focusManager.clearFocus()
         scope.launch {
             isSendingCode = true
             runCatching {
                 onRequestSmsCode(activity, normalizedPhone, normalizedCountryCode)
-            }.onSuccess {
-                smsCountdown = 60
+            }.onSuccess { authenticated ->
                 isSendingCode = false
+                if (authenticated) dismissal.requestDismiss(onLoginSuccess) else smsCountdown = 60
             }.onFailure { error ->
-                if (error is NeteaseUrsUpSmsRequiredException) {
-                    upSmsChallenge = error.challenge
-                    smsCode = ""
-                } else {
-                    errorMessage = error.message?.takeIf(String::isNotBlank) ?: smsRequestFailedMessage
-                }
                 isSendingCode = false
+                if (error is CancellationException) throw error
+                errorMessage = error.message?.takeIf(String::isNotBlank) ?: smsRequestFailedMessage
             }
         }
     }
 
     val submit = submit@{
         val (normalizedPhone, normalizedCountryCode) = normalizedInput() ?: return@submit
-        val outgoingChallenge = upSmsChallenge
         val credentialsValid = when (loginMethod) {
             NeteaseMobileLoginMethod.Sms ->
-                outgoingChallenge != null ||
-                    (smsCode.trim().length in 4..8 && smsCode.trim().all(Char::isDigit))
+                smsCode.trim().length in 4..8 && smsCode.trim().all(Char::isDigit)
             NeteaseMobileLoginMethod.Password -> password.isNotEmpty()
         }
         if (!credentialsValid) {
@@ -520,11 +516,7 @@ internal fun NeteaseMobileLoginSheet(
             isSubmitting = true
             runCatching {
                 when (loginMethod) {
-                    NeteaseMobileLoginMethod.Sms -> if (outgoingChallenge != null) {
-                        onSubmitUpSms(outgoingChallenge)
-                    } else {
-                        onSubmitSms(normalizedPhone, normalizedCountryCode, smsCode.trim())
-                    }
+                    NeteaseMobileLoginMethod.Sms -> onSubmitSms(normalizedPhone, normalizedCountryCode, smsCode.trim())
                     NeteaseMobileLoginMethod.Password -> onSubmitPassword(
                         normalizedPhone,
                         normalizedCountryCode,
@@ -532,32 +524,43 @@ internal fun NeteaseMobileLoginSheet(
                     )
                 }
             }.onSuccess {
-                onLoginSuccess()
-            }.onFailure { error ->
-                errorMessage = error.message?.takeIf(String::isNotBlank) ?: loginFailedMessage
                 isSubmitting = false
+                dismissal.requestDismiss(onLoginSuccess)
+            }.onFailure { error ->
+                isSubmitting = false
+                if (error is CancellationException) throw error
+                errorMessage = error.message?.takeIf(String::isNotBlank) ?: loginFailedMessage
             }
         }
     }
 
-    IosModalSheet(
-        onDismissRequest = { if (!isBusy) onDismiss() },
+    MeiloXBottomSheet(
+        onDismissRequest = dismissal::onDismissed,
+        sheetState = dismissal.state,
+        skipPartiallyExpanded = false,
+        fitContent = false,
+        title = stringResource(R.string.netease_mobile_login),
         contentWindowInsets = { WindowInsets.statusBars.union(WindowInsets.ime) },
+        topBarBlurProgress = scrollProgress,
+        topBar = {
+            GlasmioSheetTopToolbar(stringResource(R.string.netease_mobile_login), actions = {
+                GlasmioSheetToolbarButton(
+                    onClick = { dismissal.requestDismiss() },
+                    enabled = !isSubmitting && !isSendingCode,
+                ) { SfIcon("xmark", stringResource(R.string.cancel)) }
+            })
+        },
     ) {
+        val colors = LocalGlassColors.current
+        val padding = LocalGlasmioSheetContentPadding.current
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 22.dp),
+                .fillMaxWidth().weight(1f)
+                .verticalScroll(scrollState)
+                .padding(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = stringResource(R.string.netease_mobile_login),
-                style = IosTypography.title2,
-                fontWeight = FontWeight.Bold,
-            )
-
-            GlassSegmentedControl(
+            GlasmioSegmentedControl(
                 items = listOf(
                     NeteaseMobileLoginMethod.Sms to
                         stringResource(R.string.netease_mobile_login_method_sms),
@@ -568,7 +571,6 @@ internal fun NeteaseMobileLoginSheet(
                 onSelected = { method ->
                     if (!isBusy) {
                         loginMethod = method
-                        upSmsChallenge = null
                         errorMessage = null
                         focusManager.clearFocus()
                     }
@@ -576,12 +578,11 @@ internal fun NeteaseMobileLoginSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            IosGroupedList {
-                IosTextField(
+            GlasmioGroupedList {
+                GlasmioTextField(
                     value = countryCode,
                     onValueChange = {
                         countryCode = it
-                        upSmsChallenge = null
                         errorMessage = null
                     },
                     placeholder = stringResource(R.string.netease_mobile_login_country_code),
@@ -591,11 +592,10 @@ internal fun NeteaseMobileLoginSheet(
                         imeAction = ImeAction.Next,
                     ),
                 )
-                IosTextField(
+                GlasmioTextField(
                     value = phone,
                     onValueChange = {
                         phone = it
-                        upSmsChallenge = null
                         errorMessage = null
                     },
                     placeholder = stringResource(R.string.netease_mobile_login_phone),
@@ -607,10 +607,10 @@ internal fun NeteaseMobileLoginSheet(
                 )
                 when (loginMethod) {
                     NeteaseMobileLoginMethod.Sms -> {
-                        if (upSmsChallenge == null) {
+                        run {
                             val canRequestCode = countryCode.isNotBlank() && phone.isNotBlank() &&
                                 !isBusy && smsCountdown == 0
-                            IosTextField(
+                            GlasmioTextField(
                                 value = smsCode,
                                 onValueChange = {
                                     smsCode = it.filter(Char::isDigit).take(8)
@@ -637,7 +637,7 @@ internal fun NeteaseMobileLoginSheet(
                                     Text(
                                         text = label,
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .clip(ContinuousRoundedRectangle(12.dp))
                                             .clickable(
                                                 enabled = canRequestCode,
                                                 onClick = requestSmsCode,
@@ -652,7 +652,7 @@ internal fun NeteaseMobileLoginSheet(
                             )
                         }
                     }
-                    NeteaseMobileLoginMethod.Password -> IosTextField(
+                    NeteaseMobileLoginMethod.Password -> GlasmioTextField(
                         value = password,
                         onValueChange = {
                             password = it
@@ -670,14 +670,7 @@ internal fun NeteaseMobileLoginSheet(
                 }
             }
 
-            if (upSmsChallenge != null && loginMethod == NeteaseMobileLoginMethod.Sms) {
-                NeteaseUpSmsInstructions(
-                    challenge = upSmsChallenge!!,
-                    enabled = !isBusy,
-                    onRetry = requestSmsCode,
-                    onSmsAppUnavailable = { errorMessage = it },
-                )
-            } else IosGroupedList {
+            GlasmioGroupedList {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -711,12 +704,15 @@ internal fun NeteaseMobileLoginSheet(
                 )
             }
 
-            GlassButton(
+        }
+        Box(Modifier.fillMaxWidth().padding(bottom = padding.calculateBottomPadding()).padding(16.dp)) {
+            GlasmioButton(
                 onClick = submit,
                 modifier = Modifier.fillMaxWidth(),
+                size = GlasmioButtonSize.Large,
                 enabled = countryCode.isNotBlank() && phone.isNotBlank() &&
                     when (loginMethod) {
-                        NeteaseMobileLoginMethod.Sms -> upSmsChallenge != null || smsCode.length in 4..8
+                        NeteaseMobileLoginMethod.Sms -> smsCode.length in 4..8
                         NeteaseMobileLoginMethod.Password -> password.isNotEmpty()
                     } && !isBusy,
                 emphasis = GlassEmphasis.Prominent,
@@ -733,7 +729,6 @@ internal fun NeteaseMobileLoginSheet(
                     stringResource(
                         when {
                             isSubmitting -> R.string.netease_mobile_login_signing_in
-                            upSmsChallenge != null -> R.string.netease_sms_up_continue
                             else -> R.string.netease_mobile_login_submit
                         },
                     ),
@@ -745,8 +740,9 @@ internal fun NeteaseMobileLoginSheet(
 }
 
 @Composable
-private fun NeteaseUpSmsInstructions(
-    challenge: NeteaseUrsUpSmsChallenge,
+internal fun SourceSmsInstructions(
+    destination: String,
+    body: String,
     enabled: Boolean,
     onRetry: () -> Unit,
     onSmsAppUnavailable: (String) -> Unit,
@@ -758,7 +754,7 @@ private fun NeteaseUpSmsInstructions(
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             .setPrimaryClip(ClipData.newPlainText("SMS verification", value))
     }
-    IosGroupedList {
+    GlasmioGroupedList {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -768,17 +764,17 @@ private fun NeteaseUpSmsInstructions(
                 color = colors.secondaryContent)
             SelectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(stringResource(R.string.netease_sms_up_destination, challenge.destination),
+                    Text(stringResource(R.string.netease_sms_up_destination, destination),
                         style = IosTypography.subheadline)
-                    Text(stringResource(R.string.netease_sms_up_content, challenge.content),
+                    Text(stringResource(R.string.netease_sms_up_content, body),
                         style = IosTypography.subheadline)
                 }
             }
             androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(stringResource(R.string.netease_sms_up_copy_number), color = colors.accent,
-                    modifier = Modifier.clickable(enabled = enabled) { copy(challenge.destination) }.padding(vertical = 8.dp))
+                    modifier = Modifier.clickable(enabled = enabled) { copy(destination) }.padding(vertical = 8.dp))
                 Text(stringResource(R.string.netease_sms_up_copy_content), color = colors.accent,
-                    modifier = Modifier.clickable(enabled = enabled) { copy(challenge.content) }.padding(vertical = 8.dp))
+                    modifier = Modifier.clickable(enabled = enabled) { copy(body) }.padding(vertical = 8.dp))
                 Text(stringResource(R.string.netease_sms_up_retry), color = colors.accent,
                     modifier = Modifier.clickable(enabled = enabled, onClick = onRetry).padding(vertical = 8.dp))
             }
@@ -787,8 +783,8 @@ private fun NeteaseUpSmsInstructions(
                     try {
                         // Open a draft; the user sends it from their SMS application.
                         context.startActivity(Intent(Intent.ACTION_SENDTO,
-                            Uri.fromParts("smsto", challenge.destination, null))
-                            .putExtra("sms_body", challenge.content))
+                            Uri.fromParts("smsto", destination, null))
+                            .putExtra("sms_body", body))
                     } catch (_: android.content.ActivityNotFoundException) {
                         onSmsAppUnavailable(unavailableMessage)
                     }
@@ -846,7 +842,7 @@ private fun PlaceholderContent(
             textAlign = TextAlign.Center,
         )
         if (actionLabel != null && onAction != null) {
-            GlassButton(
+            GlasmioButton(
                 onClick = onAction,
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
                 emphasis = GlassEmphasis.Prominent,
@@ -866,7 +862,7 @@ private fun ScannerReticle() {
                 .border(
                     width = 3.dp,
                     color = Color.White.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = ContinuousRoundedRectangle(24.dp),
                 ),
         )
     }
@@ -890,15 +886,15 @@ private fun BusyCameraOverlay(label: String) {
 }
 
 @Composable
-private fun PcQrCameraPreview(
+internal fun PcQrCameraPreview(
     analysisEnabled: Boolean,
-    onQrValue: (String) -> Unit,
+    onQrValues: (List<String>) -> Unit,
     onCameraError: (String?) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestAnalysisEnabled by rememberUpdatedState(analysisEnabled)
-    val latestOnQrValue by rememberUpdatedState(onQrValue)
+    val latestOnQrValues by rememberUpdatedState(onQrValues)
     val latestOnCameraError by rememberUpdatedState(onCameraError)
     val previewView = remember(context) {
         PreviewView(context).apply {
@@ -912,7 +908,7 @@ private fun PcQrCameraPreview(
             lifecycleOwner = lifecycleOwner,
             previewView = previewView,
             isAnalysisEnabled = { latestAnalysisEnabled },
-            onQrValue = { latestOnQrValue(it) },
+            onQrValues = { latestOnQrValues(it) },
             onCameraError = { latestOnCameraError(it) },
         )
     }
@@ -941,7 +937,7 @@ private fun PcQrCameraPreview(
             modifier = Modifier.fillMaxSize().clip(ContinuousRoundedRectangle(28.dp)),
         )
         if (controller.hasFlashUnit) {
-            GlassIconButton(
+            GlasmioIconButton(
                 onClick = controller::toggleTorch,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 emphasis = if (controller.torchEnabled) GlassEmphasis.Prominent else GlassEmphasis.Regular,
@@ -962,7 +958,7 @@ private class PcQrCameraController(
     private val lifecycleOwner: androidx.lifecycle.LifecycleOwner,
     previewView: PreviewView,
     private val isAnalysisEnabled: () -> Boolean,
-    private val onQrValue: (String) -> Unit,
+    private val onQrValues: (List<String>) -> Unit,
     private val onCameraError: (String?) -> Unit,
 ) {
     private val appContext = context.applicationContext
@@ -1060,8 +1056,8 @@ private class PcQrCameraController(
         )
         scanner.process(inputImage)
             .addOnSuccessListener { barcodes ->
-                selectNeteaseLoginQr(barcodes.mapNotNull { it.rawValue })
-                    ?.let(onQrValue)
+                decodedQrCandidates(barcodes.mapNotNull { it.rawValue }).takeIf { it.isNotEmpty() }
+                    ?.let(onQrValues)
             }
             .addOnFailureListener { error ->
                 Timber.w(error, "PC login QR analysis failed")

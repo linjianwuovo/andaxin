@@ -13,6 +13,14 @@ import com.ljyh.mei.data.model.melox.PodcastProgram
 import com.ljyh.mei.data.model.weapi.EveryDaySongs
 import androidx.core.net.toUri
 import com.ljyh.mei.utils.netease.NeteaseUtils.getResourceLink
+import com.ljyh.mei.source.api.AlbumRef
+import com.ljyh.mei.source.api.ArtistRef
+import com.ljyh.mei.source.api.ProviderIds
+import com.ljyh.mei.source.api.TrackRef
+import com.ljyh.mei.source.api.TrackRefCodec
+import com.ljyh.mei.source.api.Track
+import com.ljyh.mei.source.api.SourceAlbum
+import com.ljyh.mei.source.api.SourceArtist
 
 
 @Immutable
@@ -27,17 +35,23 @@ data class MediaMetadata(
     val tns:String?=null,
     val isPodcast: Boolean = false,
     val isLocal: Boolean = false,
+    val trackRef: TrackRef = TrackRefCodec.decode(id.toString(), isLocal, isPodcast)
+        ?: TrackRef(ProviderIds.NETEASE, id.toString()),
+    val isrc: String? = null,
+    val recordingVersion: String? = null,
 ) {
     data class Artist(
         val id: Long,
         val name: String,
         val picUrl: String? = null,
-        val alias: List<String>? = null
+        val alias: List<String>? = null,
+        val ref: ArtistRef? = null,
     )
 
     data class Album(
         val id: Long,
-        val title: String
+        val title: String,
+        val ref: AlbumRef? = null,
     )
 
     fun toSongEntity() = SongEntity(
@@ -48,7 +62,8 @@ data class MediaMetadata(
         albumName = album.title,
         artistId = artists.firstOrNull()?.id ?: 0,
         artistName = artists.firstOrNull()?.name ?: "",
-        coverUrl = coverUrl
+        coverUrl = coverUrl,
+        trackRef = trackRef,
     )
 }
 
@@ -80,7 +95,7 @@ fun PlaylistDetail.Playlist.Track.toMediaMetadata() = MediaMetadata(
         id = al.Id,
         title = al.name?:"",
     ),
-    tns= tns?.get(0)
+    tns= tns?.firstOrNull()
 )
 
 
@@ -97,8 +112,8 @@ fun AlbumDetail.Song.toMediaMetadata() = MediaMetadata(
     },
     duration = dt,
     album = MediaMetadata.Album(
-        id = id,
-        title = name
+        id = al.id,
+        title = al.name
     )
 )
 
@@ -120,7 +135,7 @@ fun EveryDaySongs.Data.DailySong.toMediaMetadata() = MediaMetadata(
         id = al.id,
         title = al.name
     ),
-    tns= tns?.get(0)
+    tns= tns?.firstOrNull()
 )
 
 
@@ -214,9 +229,9 @@ fun createPlaceholder(id: String): MediaItem {
 
 @OptIn(UnstableApi::class)
 fun MediaMetadata.toMediaItem() = MediaItem.Builder()
-    .setMediaId(id.toString())
-    .setUri(id.toString())
-    .setCustomCacheKey(id.toString())
+    .setMediaId(TrackRefCodec.mediaId(trackRef))
+    .setUri(TrackRefCodec.mediaId(trackRef))
+    .setCustomCacheKey(TrackRefCodec.mediaId(trackRef))
     .setTag(this)
     .setMediaMetadata(
         androidx.media3.common.MediaMetadata.Builder()
@@ -226,6 +241,10 @@ fun MediaMetadata.toMediaItem() = MediaItem.Builder()
             .setAlbumTitle(album.title)
             .setMediaType(MEDIA_TYPE_MUSIC)
             .setArtworkUri(coverUrl.toUri())
+            .setExtras(Bundle().apply {
+                putLong("duration", duration)
+                putStringArrayList("artist_list", ArrayList(artists.map { it.name }))
+            })
             .build()
     )
     .build()
@@ -235,21 +254,76 @@ fun MediaMetadata.toMediaItem() = MediaItem.Builder()
 val MediaItem.metadata: MediaMetadata?
     get() = localConfiguration?.tag as? MediaMetadata
 
+fun Track.toMediaMetadata() = MediaMetadata(
+    id = if (ref.providerId == ProviderIds.NETEASE) ref.trackId.toLongOrNull() ?: 0L else 0L,
+    title = title,
+    coverUrl = artworkUrl,
+    artists = artists.map {
+        MediaMetadata.Artist(
+            id = if (it.ref?.providerId == ProviderIds.NETEASE) it.ref.artistId.toLongOrNull() ?: 0L else 0L,
+            name = it.name,
+            ref = it.ref,
+        )
+    },
+    duration = durationMs,
+    album = MediaMetadata.Album(
+        id = if (album.ref?.providerId == ProviderIds.NETEASE) album.ref.albumId.toLongOrNull() ?: 0L else 0L,
+        title = album.title,
+        ref = album.ref,
+    ),
+    explicit = explicit,
+    isLocal = ref.providerId == ProviderIds.LOCAL,
+    trackRef = ref,
+    isrc = isrc,
+    recordingVersion = version,
+)
+
+fun MediaMetadata.toSourceTrack() = Track(
+    ref = trackRef,
+    title = title,
+    artists = artists.map { SourceArtist(it.name, it.ref) },
+    album = SourceAlbum(album.title, album.ref),
+    durationMs = duration,
+    artworkUrl = coverUrl,
+    explicit = explicit,
+    isrc = isrc,
+    version = recordingVersion,
+)
+
+val MediaMetadata.supportsNeteaseSongActions: Boolean
+    get() = trackRef.providerId == ProviderIds.NETEASE && !isLocal && !isPodcast &&
+        trackRef.trackId.toLongOrNull()?.let { it > 0L } == true
+
+val MediaMetadata.mediaId: String get() = TrackRefCodec.mediaId(trackRef)
+
 
 fun com.ljyh.mei.data.model.room.Song.toMediaMetadata(): MediaMetadata {
-    val songId = id.removePrefix("local_").removePrefix("-").let { sid ->
-        sid.toLongOrNull() ?: sid.hashCode().toLong().let { if (it < 0) -it else it }
+    val ref = TrackRef(providerId, providerTrackId.ifEmpty { id })
+    val songId = when (ref.providerId) {
+        ProviderIds.LOCAL -> ref.trackId.removePrefix("local_").toLongOrNull()
+            ?.takeIf { it > 0L }?.let { -it } ?: 0L
+        ProviderIds.NETEASE -> ref.trackId.toLongOrNull() ?: 0L
+        else -> 0L
     }
     return MediaMetadata(
         id = songId,
         title = title,
         coverUrl = cover,
         artists = artist.map { name ->
-            MediaMetadata.Artist(id = name.hashCode().toLong().let { if (it < 0) -it else it }, name = name)
+            MediaMetadata.Artist(
+                id = if (ref.providerId == ProviderIds.NETEASE || ref.providerId == ProviderIds.LOCAL)
+                    name.hashCode().toLong().let { if (it < 0) -it else it } else 0L,
+                name = name,
+            )
         },
-        duration = duration * 1000,
-        album = MediaMetadata.Album(id = album.hashCode().toLong().let { if (it < 0) -it else it }, title = album),
+        duration = duration,
+        album = MediaMetadata.Album(
+            id = if (ref.providerId == ProviderIds.NETEASE || ref.providerId == ProviderIds.LOCAL)
+                album.hashCode().toLong().let { if (it < 0) -it else it } else 0L,
+            title = album,
+        ),
         isLocal = sourceType == com.ljyh.mei.data.model.room.SourceType.LOCAL,
+        trackRef = ref,
     )
 }
 
@@ -263,12 +337,14 @@ data class SongEntity(
     val artistName: String,
     val coverUrl: String,
     val prepare: Boolean = false,
+    val trackRef: TrackRef = TrackRefCodec.decode(id.toString())
+        ?: TrackRef(ProviderIds.NETEASE, id.toString()),
 ){
     @OptIn(UnstableApi::class)
     fun toMediaItem() = MediaItem.Builder()
-        .setMediaId(id.toString())
-        .setUri(id.toString())
-        .setCustomCacheKey(id.toString())
+        .setMediaId(TrackRefCodec.mediaId(trackRef))
+        .setUri(TrackRefCodec.mediaId(trackRef))
+        .setCustomCacheKey(TrackRefCodec.mediaId(trackRef))
         .setTag(this)
         .setMediaMetadata(
             androidx.media3.common.MediaMetadata.Builder()

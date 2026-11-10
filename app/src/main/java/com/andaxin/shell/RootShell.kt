@@ -101,13 +101,6 @@ import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationOperation
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationScaffold
 import com.ljyh.mei.constants.NavigationBarHeight
-import com.ljyh.mei.ui.glass.GlassAppearance
-import com.ljyh.mei.ui.glass.LocalBlurBackdrop
-import com.ljyh.mei.ui.glass.LocalGlassAppearance
-import com.ljyh.mei.ui.glass.LocalGlassBackdrop
-import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.rememberSharedGlassBackdrop
-import com.ljyh.mei.ui.glass.trackBackdropPosition
 import com.kyant.backdrop.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.core.GlassAppearance as GlasmioGlassAppearance
 import io.github.neoruaa.glasmio.core.LocalGlassAppearance as LocalGlasmioGlassAppearance
@@ -589,12 +582,8 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     //    它用的是 layerBackdrop(reuseContent = true)，我们不再自己往上面加 modifier）。
     val pageBackdrop = rememberLayerBackdrop()
     val pageTint = MaterialTheme.colorScheme.background
-    // 底栏（Kyant0 那套）自己也要一份 backdrop，和上面 glasmio 的分开：
-    // 两个库的 Backdrop/LayerBackdrop 类型不通用，喂错了编译就过不去。
-    // 同样是"静态色当 base、录下来的页面当 source"，两条禁忌照旧（见上）。
-    val barSource = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
-    val barBase = com.kyant.backdrop.backdrops.rememberCanvasBackdrop { drawRect(pageTint) }
-    val barBackdrop = rememberSharedGlassBackdrop(barBase, barSource)
+    // 播放条（MusicBar/MiniPlayerBar）用的也是 glasmio 那套玻璃，故与底栏共用同一条
+    // shopBackdrop —— 早先它自己走 Kyant0 门面才需要再录一条，门面删掉后不必了。
 
     // 底栏（glasmio 那套）自己的一条：上游 MainActivity_main.kt:585-625 的写法 ——
     // 静态 groupedBackground 当 base、页面录成的 layer 当 source，再 rememberSharedGlassBackdrop 合起来。
@@ -661,8 +650,6 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .layerBackdrop(barSource)
-                        .trackBackdropPosition(barSource)
                         // 同一次录制，再报给 glasmio 那条 shared backdrop（底栏用）。
                         // 录制层上依旧只挂录制修饰符，绝不加 Offscreen 合成。
                         .glasmioLayerBackdrop(shelfSource)
@@ -703,16 +690,16 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 androidx.compose.runtime.CompositionLocalProvider(
                     // 播放条那一块仍是音乐模块那份 Kyant 玻璃，配色也取它自己那套
                     // （与本屏底栏的 glasmio 配色互不影响）。
-                    LocalGlassColors provides com.ljyh.mei.ui.glass.defaultGlassColors(
+                    LocalGlasmioGlassColors provides glasmioDefaultGlassColors(
                         isDark = dark,
                         accent = MaterialTheme.colorScheme.primary,
                     ),
-                    LocalGlassAppearance provides GlassAppearance(
+                    LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
                         liquidGlassEnabled = true,
                         reduceTransparency = false,
                     ),
-                    LocalGlassBackdrop provides barBackdrop,
-                    LocalBlurBackdrop provides barBackdrop,
+                    LocalGlasmioGlassBackdrop provides shelfBackdrop,
+                    LocalGlasmioBlurBackdrop provides shelfBackdrop,
                 ) {
                     com.andaxin.feature.music.MusicBar(
                         // 封面不开新页面：Navigation 的转场会把上一页拆掉，涨封面的过程中

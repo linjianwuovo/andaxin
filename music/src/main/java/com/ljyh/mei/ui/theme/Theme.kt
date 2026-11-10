@@ -2,32 +2,48 @@ package com.ljyh.mei.ui.theme
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.res.ResourcesCompat
 import com.kyant.capsule.ContinuousRoundedRectangle
+import com.ljyh.mei.R
 import com.ljyh.mei.constants.DefaultInterfaceLetterSpacing
 import com.ljyh.mei.constants.InterfaceLetterSpacingKey
+import com.ljyh.mei.constants.MaxInterfaceLetterSpacing
+import com.ljyh.mei.utils.color.ColorExtractionUtils
 import com.ljyh.mei.utils.rememberPreference
+import io.github.neoruaa.glasmio.core.GlasmioShapes
+import io.github.neoruaa.glasmio.core.GlasmioTheme
+import io.github.neoruaa.glasmio.core.LocalGlassAppearance
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.core.LocalGlassContentColor
+import io.github.neoruaa.glasmio.core.LocalGlassDimensions
+import io.github.neoruaa.glasmio.core.LocalGroupedListIconColor
+import io.github.neoruaa.glasmio.icons.GlasmioIconProvider
+import io.github.neoruaa.glasmio.scaffold.LocalPageOverscrollFactory
+import top.yukonga.miuix.kmp.utils.MiuixOverscrollFactory
 
 /** Raw custom or dynamic accent; null selects the current mode's default accent. */
 val LocalAccentSeedColor = staticCompositionLocalOf<Color?> { null }
+private val LocalDynamicAccent = staticCompositionLocalOf { false }
 val LocalInterfaceLetterSpacing = compositionLocalOf { DefaultInterfaceLetterSpacing.sp }
 
-private val AppShapes = Shapes(
+private val AppShapes = GlasmioShapes(
     extraSmall = ContinuousRoundedRectangle(2.dp),
     small = ContinuousRoundedRectangle(4.dp),
     medium = ContinuousRoundedRectangle(8.dp),
@@ -40,17 +56,26 @@ private val AppShapes = Shapes(
 fun MusicTheme(
     seedColor: Color,
     isDark: Boolean = isSystemInDarkTheme(),
+    dynamicAccent: Boolean = LocalDynamicAccent.current,
     content: @Composable () -> Unit,
 ) {
     val savedLetterSpacing by rememberPreference(InterfaceLetterSpacingKey, LocalInterfaceLetterSpacing.current.value)
     val letterSpacing = (savedLetterSpacing.takeIf { it.isFinite() }
-        ?: DefaultInterfaceLetterSpacing).coerceIn(0f, 3f).sp
+        ?: DefaultInterfaceLetterSpacing).coerceIn(0f, MaxInterfaceLetterSpacing).sp
     val typography = remember(letterSpacing) { appTypography(letterSpacing) }
-    val accent by animateColorAsState(seedColor, tween(600), label = "iOS accent")
+    // A source change must not expose an uncorrected frame of the previous cover color.
+    val animatedSeed by key(dynamicAccent) {
+        animateColorAsState(seedColor, tween(600), label = "iOS accent")
+    }
+    // Only artwork-derived colors need correction. Preserve default and user-selected colors.
+    val accent = remember(animatedSeed, isDark, dynamicAccent) {
+        if (dynamicAccent) ColorExtractionUtils.themeAccentColor(animatedSeed, isDark) else animatedSeed
+    }
+    val onAccent = if (dynamicAccent) ColorExtractionUtils.accentContentColor(accent) else Color.White
     val colorScheme = if (isDark) {
         darkColorScheme(
             primary = accent,
-            onPrimary = Color.White,
+            onPrimary = onAccent,
             primaryContainer = accent.copy(alpha = 0.26f),
             background = Color.Black,
             onBackground = Color.White,
@@ -73,7 +98,7 @@ fun MusicTheme(
         val groupedBackground = Color(0xFFF2F2F7)
         lightColorScheme(
             primary = accent,
-            onPrimary = Color.White,
+            onPrimary = onAccent,
             primaryContainer = accent.copy(alpha = 0.16f),
             background = groupedBackground,
             onBackground = Color.Black,
@@ -85,16 +110,35 @@ fun MusicTheme(
             error = Color(0xFFFF383C),
         )
     }
-    MaterialTheme(
+    val context = LocalContext.current
+    val symbolTypeface = remember(context) {
+        ResourcesCompat.getFont(context.applicationContext, R.font.sf_pro)
+    }
+    GlasmioTheme(
+        isDark = isDark,
         colorScheme = colorScheme,
         typography = typography,
+        appearance = LocalGlassAppearance.current,
+        dimensions = LocalGlassDimensions.current,
         shapes = AppShapes,
+        letterSpacing = letterSpacing,
     ) {
-        CompositionLocalProvider(
-            LocalInterfaceLetterSpacing provides letterSpacing,
-            LocalContentColor provides colorScheme.onBackground,
-            LocalTextStyle provides typography.bodyLarge,
-            content = content,
-        )
+        GlasmioIconProvider(
+            symbolTypeface = symbolTypeface,
+            defaultTint = {
+                LocalGroupedListIconColor.current
+                    ?: LocalGlassContentColor.current
+                    ?: LocalGlassColors.current.content
+            },
+        ) {
+            CompositionLocalProvider(
+                LocalOverscrollFactory provides (LocalPageOverscrollFactory.current ?: MiuixOverscrollFactory),
+                LocalDynamicAccent provides dynamicAccent,
+                LocalInterfaceLetterSpacing provides letterSpacing,
+                LocalContentColor provides colorScheme.onBackground,
+                LocalTextStyle provides typography.bodyLarge,
+                content = content,
+            )
+        }
     }
 }

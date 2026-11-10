@@ -146,11 +146,7 @@ fun LyricScreen(
     val layoutDirection = LocalLayoutDirection.current
     val sheet = LocalPlayerSheet.current
     val expanded by remember(sheet) { derivedStateOf { sheet == null || sheet.state.isExpanded } }
-    // 上游用的是 glasmio 的 GlasmioBottomSheetState.isContentVisible（glasmio-scaffold/BottomSheetState.kt:69
-    // = isExpanded || isTransitioning）；宿主这份 BottomSheetState 没有该属性，按同一定义展开。
-    val contentVisible by remember(sheet) {
-        derivedStateOf { sheet == null || sheet.state.isExpanded || sheet.state.isTransitioning }
-    }
+    val contentVisible by remember(sheet) { derivedStateOf { sheet == null || sheet.state.isContentVisible } }
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val (normalLyricTextSize, _) = rememberEnumPreference(
         NormalLyricTextSizeKey,
@@ -731,8 +727,7 @@ private fun LyricSourceBadge(
         Icon(
             painter = painterResource(
                 when (source) {
-                    // 宿主 LyricSource 没有上游的 Provider 分支（ui/model/LyricData.kt 只有 Empty/Loading/NetEaseCloudMusic/QQMusic/AM）
-                    LyricSource.Empty, LyricSource.Loading -> R.drawable.empty
+                    LyricSource.Empty, LyricSource.Loading, LyricSource.Provider -> R.drawable.empty
                     LyricSource.NetEaseCloudMusic -> R.drawable.netease
                     LyricSource.QQMusic -> R.drawable.qq
                     LyricSource.AM -> R.drawable.am

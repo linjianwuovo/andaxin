@@ -1,34 +1,46 @@
 package com.ljyh.mei.ui.component.player.component.applemusic
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import com.ljyh.mei.R
-import com.ljyh.mei.ui.glass.SfIcon
-import com.ljyh.mei.ui.glass.SfSymbol
+import com.ljyh.mei.ui.component.player.LocalPlayerRoamingModeLabel
+import io.github.neoruaa.glasmio.icons.SfIcon
+import io.github.neoruaa.glasmio.icons.SfSymbol
 
 @Composable
 fun Title(
@@ -42,94 +54,186 @@ fun Title(
     titleStyle: TextStyle = MaterialTheme.typography.headlineSmall,
     subTitleStyle: TextStyle = MaterialTheme.typography.titleMedium,
     needShadow: Boolean = true,
-    iconColor: Color = Color.White // 新增：控制图标颜色，方便在不同背景下调整
+    iconColor: Color = Color.White, // 新增：控制图标颜色，方便在不同背景下调整
+    onMoreButtonPositioned: (LayoutCoordinates) -> Unit = {},
+    enabled: Boolean = true,
+    textModifier: Modifier = Modifier,
+    actionsModifier: Modifier = Modifier,
+    onTextSizeChanged: (IntSize) -> Unit = {},
+    onTextPositioned: (LayoutCoordinates) -> Unit = {},
+    onRowPositioned: (LayoutCoordinates) -> Unit = {},
+    onActionsSizeChanged: (IntSize) -> Unit = {},
+    marqueeEdgeWidth: Dp = AppleMusicDimensions.albumMarqueeEdgeWidth,
+    marqueeEnabled: Boolean = true,
+    showLikeButton: Boolean = true,
+    modeLabel: String? = LocalPlayerRoamingModeLabel.current,
 ) {
     val shadowStyle = if (needShadow) Shadow(
         color = Color.Black.copy(alpha = 0.3f),
         offset = Offset(2f, 2f),
         blurRadius = 12f
     ) else null
+    val artistStyle = subTitleStyle.copy(shadow = shadowStyle)
+    val artistColor = Color.White.copy(alpha = 0.4f)
 
     Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically, // 垂直居中
+        modifier = modifier.onGloballyPositioned(onRowPositioned),
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // 1. 文字区域：使用 weight(1f) 占据剩余空间
         Column(
             modifier = Modifier.weight(1f)
-                .clickable(onClick = onTitleClick),
+                .padding(end = if (showLikeButton) 0.dp else 2.dp)
+                .onSizeChanged(onTextSizeChanged)
+                .then(textModifier)
+                .onGloballyPositioned(onTextPositioned)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onTitleClick,
+                ),
             horizontalAlignment = Alignment.Start
         ) {
-            Text(
-                text = title,
-                style = titleStyle.copy(
-                    shadow = shadowStyle,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
+            PlayerTitleWithMode(modeLabel, artistStyle, artistColor) { titleModifier ->
+                AppleMusicMarqueeText(
+                    text = title,
+                    style = titleStyle.copy(
+                        shadow = shadowStyle,
+                        fontWeight = titleStyle.fontWeight ?: FontWeight.Medium,
+                    ),
+                    color = Color.White,
+                    edgeWidth = marqueeEdgeWidth,
+                    enabled = marqueeEnabled,
+                    modifier = titleModifier,
+                )
+            }
+            AppleMusicMarqueeText(
                 text = subTitle,
-                style = subTitleStyle.copy(
-                    shadow = shadowStyle,
-                    color = Color.White.copy(alpha = 0.7f)
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                style = artistStyle,
+                color = artistColor,
+                edgeWidth = marqueeEdgeWidth,
+                enabled = marqueeEnabled,
             )
         }
 
-        // 2. 按钮区域
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = 10.dp)
+            modifier = Modifier.padding(start = 0.dp)
+                .onSizeChanged(onActionsSizeChanged)
+                .then(actionsModifier)
         ) {
-            // Like Button
-            IconButton(
-                onClick = onLikeClick,
-                modifier = Modifier
-                    .size(34.dp),
-            ) {
+            if (showLikeButton) {
+                // Like Button
                 Box(
                     modifier = Modifier
-                        .requiredSize(34.dp)
-                        .background(Color.White.copy(alpha = 0.15f), CircleShape),
+                        .size(34.dp)
+                        // Half the icon's size increase keeps its left edge fixed.
+                        .absoluteOffset(x = 1.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = enabled,
+                            role = Role.Button,
+                            onClick = onLikeClick,
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (isLiked) {
+                        SfIcon(
+                            symbol = SfSymbol.StarFilled,
+                            contentDescription = null,
+                            modifier = Modifier.blur(2.dp, BlurredEdgeTreatment.Unbounded),
+                            tint = iconColor.copy(alpha = 0.28f),
+                            size = 24.dp,
+                            weight = FontWeight.Bold,
+                        )
+                    }
                     SfIcon(
                         symbol = if (isLiked) SfSymbol.StarFilled else SfSymbol.Star,
                         contentDescription = stringResource(R.string.app_tab_library_songs),
                         tint = iconColor.copy(alpha = 0.8f),
-                        size = 22.dp,
+                        size = 24.dp,
                         weight = FontWeight.Bold
                     )
                 }
             }
 
             // More Button
-            IconButton(
-                onClick = onMoreClick,
+            Box(
                 modifier = Modifier
-                    .size(34.dp),
+                    .size(34.dp)
+                    .onGloballyPositioned(onMoreButtonPositioned)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = enabled,
+                        role = Role.Button,
+                        onClick = onMoreClick,
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .requiredSize(34.dp)
-                        .background(Color.White.copy(alpha = 0.15f), CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    SfIcon(
-                        symbol = SfSymbol.Ellipsis,
-                        contentDescription = stringResource(R.string.more_actions_title),
-                        tint = iconColor.copy(alpha = 0.8f),
-                        size = 22.dp,
-                    )
-                }
+                SfIcon(
+                    symbol = SfSymbol.Ellipsis,
+                    contentDescription = stringResource(R.string.more_actions_title),
+                    tint = iconColor.copy(alpha = 0.8f),
+                    size = 22.dp,
+                )
             }
         }
+    }
+}
+
+@Composable
+internal fun PlayerTitleWithMode(
+    modeLabel: String?,
+    modeStyle: TextStyle,
+    modeColor: Color,
+    title: @Composable (Modifier) -> Unit,
+) {
+    if (modeLabel.isNullOrBlank()) {
+        title(Modifier)
+        return
+    }
+    Row {
+        title(Modifier.weight(1f, fill = false).width(IntrinsicSize.Max).alignByBaseline())
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = modeLabel,
+            style = modeStyle,
+            color = modeColor,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.alignByBaseline().layout { measurable, constraints ->
+                // Keep a readable title viewport even for long scene names and large text.
+                val maxModeWidth = if (constraints.hasBoundedWidth) {
+                    (constraints.maxWidth * 0.45f).toInt()
+                } else constraints.maxWidth
+                val placeable = measurable.measure(
+                    constraints.copy(
+                        minWidth = constraints.minWidth.coerceAtMost(maxModeWidth),
+                        maxWidth = maxModeWidth,
+                    ),
+                )
+                layout(placeable.width, placeable.height) {
+                    placeable.placeRelative(0, 0)
+                }
+            },
+        )
+    }
+}
+
+internal fun playerMetadataAnchorBounds(
+    textCoordinates: LayoutCoordinates?,
+    rowCoordinates: LayoutCoordinates?,
+): Rect? {
+    val textBounds = textCoordinates?.takeIf { it.isAttached }?.boundsInWindow()
+    val rowBounds = rowCoordinates?.takeIf { it.isAttached }?.boundsInWindow()
+    return when {
+        textBounds == null -> rowBounds
+        rowBounds == null -> textBounds
+        else -> Rect(rowBounds.left, textBounds.top, rowBounds.right, textBounds.bottom)
     }
 }

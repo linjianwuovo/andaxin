@@ -8,14 +8,25 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
+import com.ljyh.mei.source.api.CachePolicy
+import com.ljyh.mei.source.script.ScriptAudioDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.ljyh.mei.constants.UserAgent
+import com.ljyh.mei.constants.DefaultMusicCacheLimitMb
+import com.ljyh.mei.constants.MusicCacheLimitMbKey
+import com.ljyh.mei.utils.dataStore
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.File
@@ -24,15 +35,24 @@ import java.io.File
 @UnstableApi
 object CacheManager {
 
-    // 缓存大小常量，设置为 5 GB，这是一个比较合理的值
-    private const val CACHE_SIZE_BYTES = 1024 * 1024 * 1024L * 10 // 5 GB
-
     // 使用 @Volatile 注解确保多线程环境下的可见性
     @Volatile
     private var simpleCache: SimpleCache? = null
 
     // 锁对象，用于同步
     private val LOCK = Any()
+
+    // Foreground decks and background readers reuse connections and TLS sessions.
+    private val mediaHttpClient by lazy {
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val request = chain.request()
+                chain.proceed(if (request.header("User-Agent") == null) {
+                    request.newBuilder().header("User-Agent", UserAgent).build()
+                } else request)
+            }
+            .build()
+    }
 
     /**
      * 获取 SimpleCache 的单例。
@@ -54,7 +74,10 @@ object CacheManager {
      */
     @OptIn(UnstableApi::class)
     private fun createSimpleCache(context: Context): SimpleCache {
-        val evictor = LeastRecentlyUsedCacheEvictor(CACHE_SIZE_BYTES)
+        val limitMb = runBlocking {
+            context.dataStore.data.first()[MusicCacheLimitMbKey] ?: DefaultMusicCacheLimitMb
+        }
+        val evictor = LeastRecentlyUsedCacheEvictor(limitMb.coerceIn(256, 20 * 1024) * 1024L * 1024L)
         val databaseProvider: DatabaseProvider = StandaloneDatabaseProvider(context)
         val cacheDir = File(context.cacheDir, "media")
         return SimpleCache(cacheDir, evictor, databaseProvider)
@@ -62,32 +85,65 @@ object CacheManager {
 
 
     @OptIn(UnstableApi::class)
-    fun getCacheDataSourceFactory(context: Context): CacheDataSource.Factory {
+    fun getCacheDataSourceFactory(
+        context: Context,
+        cache: Cache = getSimpleCache(context),
+        fragmentSize: Long = 512 * 1024L,
+    ): CacheDataSource.Factory {
         Timber.tag("SimpleCache").d("Creating CacheDataSource instance")
-        val simpleCache = CacheManager.getSimpleCache(context)
 
-        // 1. 先配置你的 OkHttp (负责处理网络流)
-        val okHttpClient = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                chain.proceed(
-                    chain.request().newBuilder()
-                        .addHeader("User-Agent", UserAgent)
-                        .build()
-                )
-            }
-            .build()
-        val okHttpDataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
-
-        // 2. 【关键修复】使用 DefaultDataSource.Factory 包装 OkHttp
-        // 它能自动处理 file://, http://, https://, content:// 等所有协议
-        val defaultDataSourceFactory = DefaultDataSource.Factory(context, okHttpDataSourceFactory)
+        val defaultDataSourceFactory = getUpstreamDataSourceFactory(context)
 
         // 3. 将包装后的工厂设为 CacheDataSource 的上游
         return CacheDataSource.Factory()
-            .setCache(simpleCache)
+            .setCache(cache)
+            // Publish high-bitrate buffer fragments before a prepared deck pauses its loader.
+            .setCacheWriteDataSinkFactory(CacheDataSink.Factory().setCache(cache).setFragmentSize(fragmentSize))
             .setUpstreamDataSourceFactory(defaultDataSourceFactory) // 改为 defaultDataSourceFactory
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
     }
+    /** Script resources remain opaque and use the plugin's restricted network transport. */
+    fun getUpstreamDataSourceFactory(context: Context): DataSource.Factory = DataSource.Factory {
+        val regular = DefaultDataSource.Factory(context, OkHttpDataSource.Factory(mediaHttpClient)).createDataSource()
+        val script = ScriptAudioDataSource.Factory(context).createDataSource()
+        object : DataSource {
+            private var active: DataSource = regular
+            override fun addTransferListener(listener: TransferListener) {
+                regular.addTransferListener(listener)
+                script.addTransferListener(listener)
+            }
+            override fun open(dataSpec: DataSpec): Long {
+                active = if (ScriptAudioDataSource.accepts(dataSpec.uri)) script else regular
+                return active.open(dataSpec)
+            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = active.read(buffer, offset, length)
+            override fun getUri() = active.uri
+            override fun getResponseHeaders() = active.responseHeaders
+            override fun close() = active.close()
+        }
+    }
+
+    /** Cache permission belongs to the resolved resource, including analysis and preloading. */
+    fun getPlaybackDataSourceFactory(context: Context, cache: Cache = getSimpleCache(context)): DataSource.Factory = DataSource.Factory {
+        val cached = getCacheDataSourceFactory(context, cache).createDataSource()
+        val direct = getUpstreamDataSourceFactory(context).createDataSource()
+        object : DataSource {
+            private var active: DataSource = cached
+            override fun addTransferListener(listener: TransferListener) {
+                cached.addTransferListener(listener)
+                direct.addTransferListener(listener)
+            }
+            override fun open(dataSpec: DataSpec): Long {
+                active = if (dataSpec.customData == CachePolicy.NO_STORE) direct else cached
+                return active.open(dataSpec)
+            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = active.read(buffer, offset, length)
+            override fun getUri() = active.uri
+            override fun getResponseHeaders() = active.responseHeaders
+            override fun close() = active.close()
+        }
+    }
+
     @OptIn(UnstableApi::class)
     fun isContentFullyCached(cache: Cache, key: String): Boolean {
         // 获取缓存元数据
@@ -104,16 +160,17 @@ object CacheManager {
 
     @OptIn(UnstableApi::class)
     fun findFullyCachedPlaybackKey(cache: Cache, mediaId: String, quality: String): String? {
-        val prefix = playbackCacheKeyPrefix(mediaId, quality)
+        val prefixes = listOfNotNull(resolvedPlaybackCacheKeyPrefix(mediaId, quality), playbackCacheKeyPrefix(mediaId, quality))
         return cache.keys
             .asSequence()
-            .filter { it.startsWith(prefix) }
+            .filter { key -> prefixes.any(key::startsWith) }
             .firstOrNull { isContentFullyCached(cache, it) }
     }
 
     @OptIn(UnstableApi::class)
     fun removePlaybackEntries(cache: Cache, mediaId: String): Int {
-        val keys = cache.keys.filter { it.startsWith(playbackCacheKeyPrefix(mediaId)) }
+        val prefixes = listOfNotNull(resolvedPlaybackCacheKeyPrefix(mediaId), playbackCacheKeyPrefix(mediaId))
+        val keys = cache.keys.filter { key -> prefixes.any(key::startsWith) }
         keys.forEach(cache::removeResource)
         return keys.size
     }

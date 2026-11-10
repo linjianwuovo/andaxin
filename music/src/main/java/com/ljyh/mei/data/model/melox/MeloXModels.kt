@@ -56,12 +56,14 @@ data class PodcastPage(
     val podcasts: List<Podcast>,
     val hasMore: Boolean,
     val totalCount: Int,
+    val fetchedCount: Int = podcasts.size,
 )
 
 data class PodcastProgramPage(
     val programs: List<PodcastProgram>,
     val hasMore: Boolean,
     val totalCount: Int,
+    val fetchedCount: Int = programs.size,
 )
 
 data class PodcastDetail(
@@ -69,6 +71,7 @@ data class PodcastDetail(
     val programs: List<PodcastProgram>,
     val hasMore: Boolean,
     val totalCount: Int,
+    val nextOffset: Int = programs.size,
 )
 
 data class CloudSong(
@@ -89,6 +92,7 @@ data class CloudMusicPage(
     val usedSize: Long,
     val maxSize: Long,
     val hasMore: Boolean,
+    val nextOffset: Int = songs.size,
 )
 
 data class MessageContact(
@@ -97,6 +101,7 @@ data class MessageContact(
     val avatarUrl: String?,
     val signature: String?,
     val remarkName: String?,
+    val avatarBadgeUrl: String? = null,
 ) {
     val displayName: String get() = remarkName?.takeIf(String::isNotBlank) ?: nickname
 }
@@ -127,6 +132,20 @@ data class PrivateConversation(
     val lastMessageTime: Long,
     val summary: String,
     val unreadCount: Int,
+    val isOfficialGroup: Boolean = false,
+) {
+    fun participant(currentUserId: Long): MessageContact =
+        fromUser?.takeIf { it.id != currentUserId }
+            ?: toUser?.takeIf { it.id != currentUserId }
+            ?: fromUser
+            ?: toUser
+            ?: MessageContact(0, "NetEase user", null, null, null)
+}
+
+data class PrivateConversationPage(
+    val conversations: List<PrivateConversation>,
+    val hasMore: Boolean,
+    val nextTime: Long,
 )
 
 data class PrivateMessage(
@@ -151,34 +170,12 @@ data class ListenTogetherRoom(
     val effectiveDurationMs: Long?,
 )
 
+/** Legacy serialized invitation shape; live source invitations use provider-scoped string refs. */
 data class ListenTogetherInvitation(
     val roomId: String,
     val inviterId: String,
     val songId: Long?,
-) {
-    companion object {
-        fun parse(text: String): ListenTogetherInvitation? {
-            val normalized = text.trim().replace("&amp;", "&")
-            if (normalized.isEmpty()) return null
-            val candidate = normalized
-                .split(Regex("\\s+"))
-                .firstOrNull { it.contains("roomId=", ignoreCase = true) }
-                ?: normalized
-            val values = Regex("(?:[?&#]|^)([A-Za-z][A-Za-z0-9]*)=([^&#\\s]+)")
-                .findAll(candidate)
-                .associate { match ->
-                    match.groupValues[1].lowercase() to java.net.URLDecoder.decode(
-                        match.groupValues[2],
-                        Charsets.UTF_8.name(),
-                    ).trim()
-                }
-            val roomId = values["roomid"]?.takeIf(String::isNotBlank) ?: return null
-            val inviterId = (values["inviterid"] ?: values["inviteruid"])
-                ?.takeIf(String::isNotBlank) ?: return null
-            return ListenTogetherInvitation(roomId, inviterId, values["songid"]?.toLongOrNull())
-        }
-    }
-}
+)
 
 data class ListenTogetherStatus(
     val isInRoom: Boolean,
@@ -207,14 +204,18 @@ data class ListenTogetherPlaybackSnapshot(
 )
 
 data class RecognizedSong(
-    val id: Long,
+    val ref: com.ljyh.mei.source.api.TrackRef,
     val name: String,
     val artists: List<String>,
     val album: String,
     val coverUrl: String?,
     val durationMs: Long,
     val startTimeMs: Long?,
-)
+) {
+    val id: String get() = ref.trackId
+    constructor(id: Long, name: String, artists: List<String>, album: String, coverUrl: String?, durationMs: Long, startTimeMs: Long?) :
+        this(com.ljyh.mei.source.api.TrackRef(com.ljyh.mei.source.api.ProviderIds.NETEASE, id.toString()), name, artists, album, coverUrl, durationMs, startTimeMs)
+}
 
 enum class SongWikiMemoryKind { FirstListen, TotalPlay }
 
@@ -282,6 +283,14 @@ data class SearchDiscoveryPlaylist(
     val creatorNickname: String?,
 )
 
+enum class AccountConnectionType { Following, Followers }
+
+data class AccountConnectionPage(
+    val users: List<AccountProfile>,
+    val hasMore: Boolean,
+    val nextOffset: Int,
+)
+
 data class AccountProfile(
     val id: Long,
     val nickname: String,
@@ -293,6 +302,8 @@ data class AccountProfile(
     val eventCount: Int?,
     val playlistCount: Int?,
     val playlistSubscribedCount: Int?,
+    val artistId: Long? = null,
+    val hasVerifiedIdentity: Boolean = false,
 )
 
 data class AccountDetail(

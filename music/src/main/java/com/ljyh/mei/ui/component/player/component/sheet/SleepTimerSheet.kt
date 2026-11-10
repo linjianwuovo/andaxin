@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.component.player.component.sheet
 
+import com.ljyh.mei.ui.component.sheet.MeiloXBottomSheet
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -17,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -37,23 +40,23 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import com.kyant.backdrop.backdrops.emptyBackdrop
 import com.ljyh.mei.R
 import com.ljyh.mei.playback.PlayerConnection
 import com.ljyh.mei.playback.SleepTimer
 import com.ljyh.mei.playback.SleepTimerNotification
 import com.ljyh.mei.playback.SleepTimerState
-import com.ljyh.mei.ui.glass.GlassButton
-import com.ljyh.mei.ui.glass.GlassEmphasis
-import com.ljyh.mei.ui.glass.IosGroupedList
-import com.ljyh.mei.ui.glass.IosListRow
-import com.ljyh.mei.ui.glass.IosModalSheet
-import com.ljyh.mei.ui.glass.IosSheetTopToolbar
-import com.ljyh.mei.ui.glass.IosSheetTopToolbarButton
-import com.ljyh.mei.ui.glass.IosTypography
-import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.LocalGroupedListBackgroundAlpha
-import com.ljyh.mei.ui.glass.SfIcon
+import io.github.neoruaa.glasmio.ui.GlasmioButtonSize
+import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.glass.GlassEmphasis
+import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
+import io.github.neoruaa.glasmio.ui.GlasmioListRow
+import io.github.neoruaa.glasmio.ui.LocalGlasmioSheetContentPadding
+import io.github.neoruaa.glasmio.ui.GlasmioSheetTopToolbar
+import io.github.neoruaa.glasmio.ui.GlasmioSheetToolbarButton
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.core.LocalGlassColors
+import com.ljyh.mei.ui.component.sheet.rememberMeiloXSheetDismissal
+import io.github.neoruaa.glasmio.icons.SfIcon
 import com.ljyh.mei.utils.TimeUtils.makeTimeString
 import java.util.Date
 
@@ -84,25 +87,43 @@ fun SleepTimerSheet(
         notification.update(timer.state)
     }
 
-    IosModalSheet(onDismissRequest = onDismiss) {
+    val scrollState = rememberScrollState()
+    val blurDistancePx = with(LocalDensity.current) { 56.dp.toPx() }
+    val scrollProgress by remember(scrollState, blurDistancePx) {
+        derivedStateOf { (scrollState.value / blurDistancePx).coerceIn(0f, 1f) }
+    }
+    val dismissal = rememberMeiloXSheetDismissal(onDismiss)
+    MeiloXBottomSheet(
+        onDismissRequest = dismissal::onDismissed,
+        sheetState = dismissal.state,
+        skipPartiallyExpanded = false,
+        fitContent = false,
+        title = stringResource(R.string.more_action_sleep_timer),
+        topBarBlurProgress = scrollProgress,
+        topBar = {
+            GlasmioSheetTopToolbar(
+                title = stringResource(R.string.more_action_sleep_timer),
+                actions = {
+                    GlasmioSheetToolbarButton(onClick = { dismissal.requestDismiss() }) {
+                        SfIcon("xmark", stringResource(R.string.sleep_timer_close), size = 18.dp)
+                    }
+                },
+            )
+        },
+    ) {
         val colors = LocalGlassColors.current
-        val buttonTint = colors.elevatedBackground.copy(alpha = LocalGroupedListBackgroundAlpha.current)
-        IosSheetTopToolbar(
-            title = stringResource(R.string.more_action_sleep_timer),
-            actions = {
-                IosSheetTopToolbarButton(onClick = onDismiss) {
-                    SfIcon("xmark", stringResource(R.string.sleep_timer_close), size = 18.dp)
-                }
-            },
-        )
+        val sheetPadding = LocalGlasmioSheetContentPadding.current
         Column(
             Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .weight(1f)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp)
+                .padding(
+                    top = sheetPadding.calculateTopPadding() + 8.dp,
+                    bottom = 8.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             SleepTimerStatus(timer, selectedOption, mediaMetadata?.title)
             Text(
@@ -116,11 +137,9 @@ fun SleepTimerSheet(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         options.forEach { minutes ->
                             val selected = selectedOption == minutes
-                            GlassButton(
+                            GlasmioButton(
                                 onClick = { selectedOption = minutes },
                                 modifier = Modifier.weight(1f).semantics { this.selected = selected },
-                                backdrop = emptyBackdrop(),
-                                navigationSurfaceColor = if (selected) colors.accent else buttonTint,
                                 emphasis = if (selected) GlassEmphasis.Prominent else GlassEmphasis.Regular,
                             ) {
                                 Text(
@@ -132,9 +151,9 @@ fun SleepTimerSheet(
                         }
                     }
                 }
-                IosGroupedList {
+                GlasmioGroupedList {
                     val selected = selectedOption == SleepTimer.END_OF_TRACK
-                    IosListRow(
+                    GlasmioListRow(
                         title = stringResource(R.string.sleep_timer_end_of_track),
                         systemName = "music.note",
                         modifier = Modifier.semantics { this.selected = selected },
@@ -151,45 +170,9 @@ fun SleepTimerSheet(
                     )
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                GlassButton(
-                    onClick = {
-                        timer.start(selectedOption)
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                            PackageManager.PERMISSION_GRANTED
-                        ) {
-                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                    },
-                    enabled = !active || selectedOption != activeOption,
-                    modifier = Modifier.fillMaxWidth(),
-                    backdrop = emptyBackdrop(),
-                    navigationSurfaceColor = colors.accent,
-                    emphasis = GlassEmphasis.Prominent,
-                ) {
-                    Text(
-                        stringResource(when {
-                            !active -> R.string.sleep_timer_start
-                            selectedOption == activeOption -> R.string.sleep_timer_running
-                            else -> R.string.sleep_timer_update
-                        }),
-                        style = IosTypography.headline,
-                    )
-                }
-                if (active) {
-                    GlassButton(
-                        onClick = timer::clear,
-                        modifier = Modifier.fillMaxWidth(),
-                        backdrop = emptyBackdrop(),
-                        navigationSurfaceColor = buttonTint,
-                    ) {
-                        Text(stringResource(R.string.sleep_timer_cancel), style = IosTypography.body)
-                    }
-                }
-            }
             if (active && !notificationsEnabled) {
-                IosGroupedList {
-                    IosListRow(
+                GlasmioGroupedList {
+                    GlasmioListRow(
                         title = stringResource(R.string.sleep_timer_notification_disabled),
                         subtitle = stringResource(R.string.sleep_timer_notification_hint),
                         systemName = "bell.slash",
@@ -208,6 +191,43 @@ fun SleepTimerSheet(
                             context.startActivity(settings.putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
                         },
                     )
+                }
+            }
+        }
+        Column(
+            Modifier.fillMaxWidth().padding(bottom = sheetPadding.calculateBottomPadding()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            GlasmioButton(
+                onClick = {
+                    timer.start(selectedOption)
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED
+                    ) {
+                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
+                enabled = !active || selectedOption != activeOption,
+                modifier = Modifier.fillMaxWidth(),
+                size = GlasmioButtonSize.Large,
+                emphasis = GlassEmphasis.Prominent,
+            ) {
+                Text(
+                    stringResource(when {
+                        !active -> R.string.sleep_timer_start
+                        selectedOption == activeOption -> R.string.sleep_timer_running
+                        else -> R.string.sleep_timer_update
+                    }),
+                    style = IosTypography.headline,
+                )
+            }
+            if (active) {
+                GlasmioButton(
+                    onClick = timer::clear,
+                    modifier = Modifier.fillMaxWidth(),
+                    size = GlasmioButtonSize.Large,
+                ) {
+                    Text(stringResource(R.string.sleep_timer_cancel), style = IosTypography.body)
                 }
             }
         }

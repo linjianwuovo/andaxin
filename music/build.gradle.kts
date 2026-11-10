@@ -22,6 +22,13 @@ android {
         minSdk = 33
         manifestPlaceholders["mei_build_id"] = "number=16;sha=;dirty=false;ci=false"
         ndk { abiFilters += "arm64-v8a" }
+        // 上游 app/build.gradle.kts:112-116 同样一行：oboe 只给 c++_shared，静态 STL 会
+        // 报 "User is using a static STL but library requires a shared STL"。
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
 
         // 库模块没有 versionName/versionCode，源码里读的那几个字段只能自己补；
         // 音乐仓那套从 git 现算的 SourceBuildMetadata 在这里没有意义（版本号归宿主管）。
@@ -51,6 +58,10 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+        // source/script 那两个 aidl：跨进程 JS 沙箱要它
+        aidl = true
+        // oboe 是 prefab 发布的原生库，CMake 里 find_package(oboe) 靠它
+        prefab = true
     }
 }
 
@@ -154,6 +165,19 @@ dependencies {
     implementation(musiclibs.backdrop)
     implementation(musiclibs.shapes)
     implementation(musiclibs.capsule)
+
+    // 上游 main 的界面直接建在 glasmio 上，宿主 app 模块用的是同一套（libs 目录里 0.1.2）。
+    // icons 由 core/glass 传递带出，preference 全仓 0 处引用，都不显式加。
+    implementation(libs.glasmio.core)
+    implementation(libs.glasmio.glass)
+    implementation(libs.glasmio.ui)
+    implementation(libs.glasmio.scaffold)
+
+    // 上游 main 相对 1.55.1 新增的依赖：字节码 USB 输出、JS 插件引擎、网页特效宿主、Miuix 过卷动
+    implementation(musiclibs.oboe)
+    implementation(musiclibs.quickjs.kt)
+    implementation(musiclibs.webkit)
+    implementation(musiclibs.miuix.ui.android)
 }
 
 // 网易那套 SDK 的 assets 里混进可执行 dex 就会被 Play/部分厂商商店拒收，这里在打包前拦住。

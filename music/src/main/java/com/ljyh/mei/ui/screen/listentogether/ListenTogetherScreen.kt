@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,19 +33,21 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.R
 import com.ljyh.mei.playback.ListenTogetherStore
-import com.ljyh.mei.ui.glass.GlassButton
-import com.ljyh.mei.ui.glass.GlassCard
-import com.ljyh.mei.ui.glass.GlassEmphasis
-import com.ljyh.mei.ui.glass.GlassIconButton
-import com.ljyh.mei.ui.glass.GlassSurface
-import com.ljyh.mei.ui.glass.IosPinnedListPage
-import com.ljyh.mei.ui.glass.SfIcon
-import com.ljyh.mei.ui.glass.SfSymbol
+import io.github.neoruaa.glasmio.ui.GlasmioButton
+import io.github.neoruaa.glasmio.ui.GlasmioCard
+import io.github.neoruaa.glasmio.glass.GlassEmphasis
+import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import io.github.neoruaa.glasmio.glass.GlassSurface
+import com.ljyh.mei.ui.navigation.meiloxHeaderAction
+import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
+import io.github.neoruaa.glasmio.icons.SfIcon
+import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 
 @Composable
-fun ListenTogetherScreen(store: ListenTogetherStore = hiltViewModel<ListenTogetherStoreHolder>().store) {
+fun ListenTogetherScreen(store: ListenTogetherStore = hiltViewModel<ListenTogetherStoreHolder>().store, providerId: String? = null) {
+    DisposableEffect(store, providerId) { store.open(providerId); onDispose { store.closeScreen() } }
     val state by store.state.collectAsState()
     val navController = LocalNavController.current
     val context = LocalContext.current
@@ -54,26 +57,26 @@ fun ListenTogetherScreen(store: ListenTogetherStore = hiltViewModel<ListenTogeth
     }
     var invitationText by remember(initialInvitation) { mutableStateOf(initialInvitation) }
 
-    IosPinnedListPage(
+    MeiloXPinnedListPage(
         title = stringResource(R.string.listen_together),
         onNavigateBack = navController::navigateUp,
         bottomPadding = insets.calculateBottomPadding(),
         actions = {
-            GlassIconButton(store::refresh) {
-                SfIcon(SfSymbol.ArrowClockwise, stringResource(R.string.refresh))
-            }
+            listOf(meiloxHeaderAction("refresh", stringResource(R.string.refresh), store::refresh) {
+                SfIcon(SfSymbol.ArrowClockwise, null)
+            })
         },
     ) {
         state.error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         state.room?.let { room ->
             item {
-                GlassCard(Modifier.fillMaxWidth()) {
+                GlasmioCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.listen_room_id, room.id), fontWeight = FontWeight.SemiBold)
                         Text(stringResource(R.string.listen_members, room.users.size))
                         room.users.forEach { Text("• ${it.nickname}") }
                         state.invitationUrl?.let { invitationUrl ->
-                            GlassButton(
+                            GlasmioButton(
                                 onClick = {
                                     context.startActivity(
                                         Intent.createChooser(
@@ -92,7 +95,7 @@ fun ListenTogetherScreen(store: ListenTogetherStore = hiltViewModel<ListenTogeth
                                 Text(stringResource(R.string.listen_invite), modifier = Modifier.padding(start = 8.dp))
                             }
                         }
-                        GlassButton(onClick = store::end, emphasis = GlassEmphasis.Prominent) {
+                        GlasmioButton(onClick = store::end, emphasis = GlassEmphasis.Prominent) {
                             Text(stringResource(R.string.listen_end))
                         }
                     }
@@ -100,19 +103,19 @@ fun ListenTogetherScreen(store: ListenTogetherStore = hiltViewModel<ListenTogeth
             }
         } ?: run {
             item {
-                GlassButton(onClick = store::create, modifier = Modifier.fillMaxWidth(), emphasis = GlassEmphasis.Prominent) {
+                GlasmioButton(onClick = store::create, modifier = Modifier.fillMaxWidth(), emphasis = GlassEmphasis.Prominent) {
                     Text(stringResource(R.string.listen_create))
                 }
             }
             item {
-                GlassCard(Modifier.fillMaxWidth()) {
+                GlasmioCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         ListenTextField(
                             invitationText,
                             { invitationText = it },
                             stringResource(R.string.listen_invitation_placeholder),
                         )
-                        GlassButton(
+                        GlasmioButton(
                             onClick = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 invitationText = clipboard.primaryClip
@@ -126,7 +129,7 @@ fun ListenTogetherScreen(store: ListenTogetherStore = hiltViewModel<ListenTogeth
                             SfIcon("document.on.clipboard", null, size = 18.dp)
                             Text(stringResource(R.string.listen_paste_invitation), modifier = Modifier.padding(start = 8.dp))
                         }
-                        GlassButton(
+                        GlasmioButton(
                             onClick = { store.joinInvitation(invitationText) },
                             enabled = invitationText.isNotBlank(),
                             emphasis = GlassEmphasis.Prominent,

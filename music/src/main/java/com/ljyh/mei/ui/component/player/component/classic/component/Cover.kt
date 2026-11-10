@@ -31,11 +31,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
 import com.ljyh.mei.ui.component.sheet.playerArtwork
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -55,7 +55,10 @@ import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.constants.CoverStyle
 import com.ljyh.mei.constants.CoverStyleKey
 import com.ljyh.mei.constants.OriginalCoverKey
+import com.ljyh.mei.constants.PlayerStyle
+import com.ljyh.mei.constants.PlayerStyleKey
 import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.ui.component.player.component.applemusic.rememberAppleMusicPlaybackScale
 import com.ljyh.mei.playback.PlayerConnection
 import com.ljyh.mei.utils.image.saveImageToGallery
 import com.ljyh.mei.utils.rememberEnumPreference
@@ -80,8 +83,10 @@ fun Cover(
     val sheetExpanded by remember(sheet) {
         derivedStateOf { sheet == null || sheet.state.isExpanded }
     }
-    // 获取当前的封面样式设置
-    val coverStyle by rememberEnumPreference(CoverStyleKey, defaultValue = CoverStyle.Square)
+    val playerStyle by rememberEnumPreference(PlayerStyleKey, defaultValue = PlayerStyle.AppleMusic)
+    val savedCoverStyle by rememberEnumPreference(CoverStyleKey, defaultValue = CoverStyle.Square)
+    // AppleMusic reuses this cover in landscape but keeps its rounded-square shape.
+    val coverStyle = if (playerStyle == PlayerStyle.Classic) savedCoverStyle else CoverStyle.Square
     val originalCover by rememberPreference(
         OriginalCoverKey,
         defaultValue = false
@@ -93,7 +98,9 @@ fun Cover(
         ContinuousRoundedRectangle(12.dp)
     }
 
-    val animatedCoverScale by animateFloatAsState(
+    val animatedCoverScale by if (playerStyle == PlayerStyle.AppleMusic) {
+        rememberAppleMusicPlaybackScale(isPlaying, sheetExpanded)
+    } else animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0.9f,
         animationSpec = if (sheetExpanded) spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -102,7 +109,9 @@ fun Cover(
         label = "CoverScale"
     )
 
-    val coverScale = if (sheetExpanded) animatedCoverScale else if (isPlaying) 1f else 0.9f
+    val coverScale = rememberUpdatedState(
+        if (sheetExpanded) animatedCoverScale else if (isPlaying) 1f else if (playerStyle == PlayerStyle.AppleMusic) 0.75f else 0.9f,
+    )
 
     var showFullImage by remember { mutableStateOf(false) }
     Box(
@@ -117,10 +126,13 @@ fun Cover(
             },
             label = "CoverTransition",
             modifier = Modifier.graphicsLayer {
-                scaleX = coverScale
-                scaleY = coverScale
+                scaleX = coverScale.value
+                scaleY = coverScale.value
             }.playerArtwork(
                 circle = coverStyle == CoverStyle.Circle,
+                shadowElevation = { 12.dp },
+                backgroundColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                playbackScale = { coverScale.value },
             )
         ) { url ->
 
@@ -128,8 +140,7 @@ fun Cover(
                 modifier = Modifier
                     .fillMaxSize()
                     .aspectRatio(1f)
-                    .shadow(if (sheet?.state?.isTransitioning == true) 0.dp else 12.dp,
-                        if (sheet?.state?.isTransitioning == true) RectangleShape else coverShape)
+                    .shadow(12.dp, coverShape)
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onDoubleTap = { offset ->
@@ -140,7 +151,7 @@ fun Cover(
                             }
                         )
                     },
-                shape = if (sheet?.state?.isTransitioning == true) RectangleShape else coverShape,
+                shape = coverShape,
                 color = MaterialTheme.colorScheme.surfaceContainerHighest
             ) {
                 AsyncImage(

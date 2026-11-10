@@ -14,8 +14,8 @@ import com.ljyh.mei.R
 import com.ljyh.mei.constants.MusicQuality
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.data.model.toMediaItem
-import com.ljyh.mei.ui.glass.IosCascadingMenu
-import com.ljyh.mei.ui.glass.IosCascadingMenuItem
+import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenu
+import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.ljyh.mei.ui.component.player.PlayerViewModel
@@ -30,24 +30,26 @@ fun TrackActionMenu(
     onDismiss: () -> Unit,
     onAddToPlaylist: (() -> Unit)? = null,
     onDownloadTrack: ((MusicQuality) -> Unit)? = null,
-    onDelete: () -> Unit? = {},
+    onDelete: () -> Unit = {},
     onCopyId: () -> Unit,
     onCopyName: () -> Unit,
     anchorBounds: Rect? = null,
-    onShare: () -> Unit,
+    onShare: (() -> Unit)? = null,
+    deleteEnabled: Boolean = true,
+    playerViewModel: PlayerViewModel? = null,
 ) {
     if (targetTrack == null) return
     val context = LocalContext.current
     val connection = LocalPlayerConnection.current
     val canDownload = onDownloadTrack != null && !targetTrack.isLocal && !targetTrack.isPodcast
-    val downloadViewModel = if (canDownload) hiltViewModel<PlayerViewModel>() else null
-    var downloadQualities by remember(targetTrack.id, downloadViewModel) {
+    val downloadViewModel = if (canDownload) playerViewModel ?: hiltViewModel<PlayerViewModel>() else null
+    var downloadQualities by remember(targetTrack.trackRef, downloadViewModel) {
         mutableStateOf<List<MusicQuality>?>(null)
     }
-    LaunchedEffect(targetTrack.id, downloadViewModel) {
+    LaunchedEffect(targetTrack.trackRef, downloadViewModel) {
         if (downloadViewModel == null) return@LaunchedEffect
         val qualities = try {
-            downloadViewModel.getAvailableDownloadQualities(targetTrack.id)
+            downloadViewModel.getAvailableDownloadQualities(targetTrack)
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
@@ -56,9 +58,9 @@ fun TrackActionMenu(
         currentCoroutineContext().ensureActive()
         downloadQualities = qualities
     }
-    val items = mutableListOf<IosCascadingMenuItem>()
+    val items = mutableListOf<GlasmioCascadingMenuItem>()
     if (connection != null) {
-        items += IosCascadingMenuItem(
+        items += GlasmioCascadingMenuItem(
             title = stringResource(R.string.download_play_next),
             systemName = "text.line.first.and.arrowtriangle.forward",
             onClick = {
@@ -66,7 +68,7 @@ fun TrackActionMenu(
                 Toast.makeText(context, R.string.download_added_next, Toast.LENGTH_SHORT).show()
             },
         )
-        items += IosCascadingMenuItem(
+        items += GlasmioCascadingMenuItem(
             title = stringResource(R.string.download_add_to_queue),
             systemName = "text.badge.plus",
             onClick = {
@@ -75,24 +77,26 @@ fun TrackActionMenu(
             },
         )
     }
-    val headerActions = mutableListOf<IosCascadingMenuItem>()
+    val headerActions = mutableListOf<GlasmioCascadingMenuItem>()
     onAddToPlaylist?.let {
-        headerActions += IosCascadingMenuItem(
+        headerActions += GlasmioCascadingMenuItem(
             title = stringResource(R.string.track_action_add_playlist),
             systemName = "plus.circle.fill",
             onClick = it,
         )
     }
-    headerActions += IosCascadingMenuItem(
-        title = stringResource(R.string.track_action_share),
-        systemName = "square.and.arrow.up.fill",
-        onClick = onShare,
-    )
+    onShare?.let {
+        headerActions += GlasmioCascadingMenuItem(
+            title = stringResource(R.string.track_action_share),
+            systemName = "square.and.arrow.up.fill",
+            onClick = it,
+        )
+    }
 
     onDownloadTrack?.takeIf { canDownload }?.let { download ->
         val qualityOptions = downloadQualities
         val children = if (qualityOptions.isNullOrEmpty()) {
-            listOf(IosCascadingMenuItem(
+            listOf(GlasmioCascadingMenuItem(
                 title = stringResource(
                     if (qualityOptions == null) R.string.track_quality_loading
                     else R.string.track_quality_unavailable,
@@ -101,34 +105,35 @@ fun TrackActionMenu(
             ))
         } else {
             qualityOptions.map { quality ->
-                IosCascadingMenuItem(stringResource(quality.labelRes), onClick = { download(quality) })
+                GlasmioCascadingMenuItem(stringResource(quality.labelRes), onClick = { download(quality) })
             }
         }
-        items += IosCascadingMenuItem(
+        items += GlasmioCascadingMenuItem(
             title = stringResource(R.string.track_action_download_song),
             systemName = "arrow.down.circle",
             children = children,
         )
     }
     if (isCreator) {
-        items += IosCascadingMenuItem(
+        items += GlasmioCascadingMenuItem(
             title = stringResource(R.string.track_action_delete),
             systemName = "trash",
             destructive = true,
+            enabled = deleteEnabled,
             onClick = { onDelete() },
         )
     }
-    items += IosCascadingMenuItem(
+    items += GlasmioCascadingMenuItem(
         title = stringResource(R.string.track_action_copy_name),
         systemName = "square.on.square",
         onClick = onCopyName,
     )
-    items += IosCascadingMenuItem(
+    items += GlasmioCascadingMenuItem(
         title = stringResource(R.string.track_action_copy_id),
         systemName = "info.circle",
         onClick = onCopyId,
     )
-    IosCascadingMenu(
+    GlasmioCascadingMenu(
         anchorBounds = anchorBounds,
         items = items,
         headerActions = headerActions,
