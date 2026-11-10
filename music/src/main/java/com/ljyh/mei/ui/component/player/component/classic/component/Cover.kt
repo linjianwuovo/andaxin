@@ -1,0 +1,259 @@
+package com.ljyh.mei.ui.component.player.component.classic.component
+
+import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
+import com.ljyh.mei.ui.component.sheet.playerArtwork
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.media3.common.util.UnstableApi
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import com.kyant.capsule.ContinuousRoundedRectangle
+import com.ljyh.mei.constants.CoverStyle
+import com.ljyh.mei.constants.CoverStyleKey
+import com.ljyh.mei.constants.OriginalCoverKey
+import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.playback.PlayerConnection
+import com.ljyh.mei.utils.image.saveImageToGallery
+import com.ljyh.mei.utils.rememberEnumPreference
+import com.ljyh.mei.utils.rememberPreference
+import com.ljyh.mei.utils.smallImage
+import com.ljyh.mei.utils.size1600
+import kotlinx.coroutines.launch
+import net.engawapg.lib.zoomable.rememberZoomState
+import net.engawapg.lib.zoomable.zoomable
+
+@OptIn(UnstableApi::class)
+@Composable
+fun Cover(
+    playerConnection: PlayerConnection,
+    mediaMetadata: MediaMetadata,
+    isPlaying: Boolean,
+    modifier: Modifier,
+    onDoubleClick: (Offset, Int) -> Unit = { _, _ ->}
+) {
+    val context = LocalContext.current
+    val sheet = LocalPlayerSheet.current
+    val sheetExpanded by remember(sheet) {
+        derivedStateOf { sheet == null || sheet.state.isExpanded }
+    }
+    // 获取当前的封面样式设置
+    val coverStyle by rememberEnumPreference(CoverStyleKey, defaultValue = CoverStyle.Square)
+    val originalCover by rememberPreference(
+        OriginalCoverKey,
+        defaultValue = false
+    )
+
+    val coverShape = if (coverStyle == CoverStyle.Circle) {
+        CircleShape
+    } else {
+        ContinuousRoundedRectangle(12.dp)
+    }
+
+    val animatedCoverScale by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0.9f,
+        animationSpec = if (sheetExpanded) spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ) else androidx.compose.animation.core.snap(),
+        label = "CoverScale"
+    )
+
+    val coverScale = if (sheetExpanded) animatedCoverScale else if (isPlaying) 1f else 0.9f
+
+    var showFullImage by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+
+        AnimatedContent(
+            targetState = mediaMetadata.coverUrl,
+            transitionSpec = {
+                fadeIn(tween(500)) togetherWith fadeOut(tween(500))
+            },
+            label = "CoverTransition",
+            modifier = Modifier.graphicsLayer {
+                scaleX = coverScale
+                scaleY = coverScale
+            }.playerArtwork(
+                circle = coverStyle == CoverStyle.Circle,
+            )
+        ) { url ->
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .aspectRatio(1f)
+                    .shadow(if (sheet?.state?.isTransitioning == true) 0.dp else 12.dp,
+                        if (sheet?.state?.isTransitioning == true) RectangleShape else coverShape)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { offset ->
+                                onDoubleClick(offset, size.width)
+                            },
+                            onLongPress = {
+                                showFullImage = true
+                            }
+                        )
+                    },
+                shape = if (sheet?.state?.isTransitioning == true) RectangleShape else coverShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .placeholderMemoryCacheKey(url.smallImage())
+                        .data(if (originalCover) url else url.size1600())
+                        .crossfade(false)
+                        .build(),
+                    contentScale = ContentScale.Crop,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        if (showFullImage) {
+            FullScreenImageViewer(
+                imageUrl = mediaMetadata.coverUrl,
+                onDismiss = { showFullImage = false }
+            )
+        }
+    }
+
+
+}
+
+/**
+ * 全屏图片查看器组件
+ * 支持：双指缩放、拖拽、保存图片
+ */
+@Composable
+fun FullScreenImageViewer(
+    imageUrl: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false, // 全屏关键
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { onDismiss() })
+                }
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Full Screen Image",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zoomable(rememberZoomState())
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { onDismiss() })
+                    }
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .align(Alignment.TopCenter)
+            ) {
+                // 关闭按钮
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = Color.White
+                    )
+                }
+            }
+
+
+            Box(
+                modifier =  Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .align(Alignment.BottomCenter)
+            ){
+                // 保存按钮
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            saveImageToGallery(context, imageUrl)
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SaveAlt,
+                        contentDescription = "Save",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+    }
+}

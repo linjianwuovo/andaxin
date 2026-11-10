@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 并进安大信之后这里只剩"音乐这一块自己要用什么"：
+         Application、启动图标、进程名、主题、backup 策略全部归宿主所有，
+         这一层一个 application 属性都不写，合并时不会跟宿主抢。 -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+    <application>
+        <!-- 登录风控里用 MockPackageManager 顶掉真机 PackageManager -->
+        <uses-library
+            android:name="android.test.mock"
+            android:required="false" />
+
+        <meta-data
+            android:name="${applicationId}.BUILD_ID"
+            android:value="${mei_build_id}" />
+        <meta-data
+            android:name="lyricon_module"
+            android:value="true" />
+        <meta-data
+            android:name="lyricon_module_author"
+            android:value="NEORUAA" />
+        <meta-data
+            android:name="lyricon_module_description"
+            android:value="@string/system_lyrics_description" />
+        <meta-data
+            android:name="lyricon_module_tags"
+            android:resource="@array/lyricon_module_tags" />
+        <meta-data
+            android:name="io.github.andrealtb.lockscreenlyrics.OPLUS_MEDIA_HISTORY"
+            android:value="true" />
+
+        <!-- 由安大信内部拉起，不进桌面：没有 LAUNCHER / APP_MUSIC 两条 category，
+             否则装完会多出第二个图标。 -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:theme="@style/Theme.Music"
+            tools:ignore="MissingClass" />
+
+        <!-- 播放服务必须 exported：锁屏歌词、车机、系统媒体面板都靠它连 -->
+        <service
+            android:name=".playback.MusicService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>

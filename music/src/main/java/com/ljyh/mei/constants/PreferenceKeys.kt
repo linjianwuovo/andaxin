@@ -1,0 +1,234 @@
+package com.ljyh.mei.constants
+
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.ljyh.mei.R
+import com.ljyh.mei.playback.PlayMode
+import com.materialkolor.scheme.DynamicScheme
+
+val LastHomePageTime = longPreferencesKey("lastHomePageTime")
+val LastHomePageData_1 = stringPreferencesKey("lastHomePageData_1")
+val LastHomePageData_2 = stringPreferencesKey("lastHomePageData_2")
+val HideExplicitKey = booleanPreferencesKey("hideExplicit")
+val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
+val DarkModeKey = stringPreferencesKey("darkMode")
+val PureBlackKey = booleanPreferencesKey("pureBlack")
+val PlayerTextAlignmentKey = stringPreferencesKey("playerTextAlignment")
+val SliderStyleKey = stringPreferencesKey("sliderStyle")
+
+val UserIdKey = stringPreferencesKey("userId")
+val UserNicknameKey = stringPreferencesKey("userNickname")
+val UserAvatarUrlKey = stringPreferencesKey("userAvatarUrl")
+val UserPhotoKey = stringPreferencesKey("userPhoto")
+val ShowLyricsKey = booleanPreferencesKey("showLyrics")
+val LyricVisualStyleKey = stringPreferencesKey("lyrics.visualStyle")
+val LyricTranslationEnabledKey = booleanPreferencesKey("lyrics.translationEnabled")
+val LyricRomanizationEnabledKey = booleanPreferencesKey("lyrics.romanizationEnabled")
+val LyricGlowEnabledKey = booleanPreferencesKey("lyrics.glowEnabled")
+val LyricLiftEnabledKey = booleanPreferencesKey("lyrics.liftEnabled")
+val LyricLongToneEnabledKey = booleanPreferencesKey("lyrics.longToneEnabled")
+val LyricAutoFollowEnabledKey = booleanPreferencesKey("lyrics.autoFollowEnabled")
+val SystemLyricsEnabledKey = booleanPreferencesKey("lyrics.systemEnabled")
+val FloatingLyricsTranslationKey = booleanPreferencesKey("floatingLyrics.showsTranslation")
+val FloatingLyricsNextLineKey = booleanPreferencesKey("floatingLyrics.showsNextLine")
+val FloatingLyricsFontScaleKey = floatPreferencesKey("floatingLyrics.fontScale")
+
+
+val CookieKey = stringPreferencesKey("cookie")
+val NeteaseCsrfKey = stringPreferencesKey("neteaseCsrf")
+val NeteaseMusicAKey = stringPreferencesKey("neteaseMusicA")
+val NeteaseRefreshTokenKey = stringPreferencesKey("neteaseRefreshToken")
+val NeteaseUrsAppIdKey = stringPreferencesKey("neteaseUrsAppId")
+val NeteaseSessionTypeKey = stringPreferencesKey("neteaseSessionType")
+val NeteaseWebSessionNoticeDismissedKey = booleanPreferencesKey("neteaseWebSessionNoticeDismissed")
+val MusicQualityKey = stringPreferencesKey("musicQuality")
+
+
+val CoverStyleKey = stringPreferencesKey("coverStyle")
+val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
+const val DefaultAccentColorArgb = 0xFFFF3B30L
+val AccentColorKey = longPreferencesKey("accentColor")
+const val DefaultInterfaceLetterSpacing = 1f
+val InterfaceLetterSpacingKey = floatPreferencesKey("interfaceLetterSpacing")
+val PlayerActionKey = stringPreferencesKey("playerBottomAction")
+
+val NormalLyricTextSizeKey = stringPreferencesKey("lyricTextSize")
+val NormalLyricTextBoldKey = booleanPreferencesKey("lyricTextBold")
+
+val AccompanimentLyricTextSizeKey = stringPreferencesKey("accompanimentLyricTextSize")
+val AccompanimentLyricTextBoldKey = booleanPreferencesKey("accompanimentLyricTextBold")
+
+val LoopPlaybackKey = booleanPreferencesKey("loopPlayback")
+val PreviousPlaybackKey = booleanPreferencesKey("previousPlayback")
+val NoAudioSourceKey = booleanPreferencesKey("noAudioSource")
+val IsShuffleModeKey = booleanPreferencesKey("shuffleMode")
+val CloudShuffleEnabledKey = booleanPreferencesKey("playback.cloudShuffleEnabled")
+val RepeatModeKey = intPreferencesKey("repeatMode")
+val PlaybackSnapshotKey = stringPreferencesKey("playback.snapshot")
+val AutoMixEnabledKey = booleanPreferencesKey("autoMix.enabled")
+val AutoMixModeKey = stringPreferencesKey("autoMix.mode")
+val AutoMixDurationKey = floatPreferencesKey("autoMix.fixedDuration")
+val AutoMixFadeCurveKey = stringPreferencesKey("autoMix.fadeCurve")
+val AutoMixTempoMatchingKey = booleanPreferencesKey("autoMix.tempoMatchingEnabled")
+val AutoMixMaxTempoAdjustmentKey = floatPreferencesKey("autoMix.maximumTempoAdjustmentPercent")
+val AutoMixTransitionBarsKey = intPreferencesKey("autoMix.transitionBars")
+val AutoMixTailCutBarsKey = intPreferencesKey("autoMix.tailCutBars")
+val EqualizerEnabledKey = booleanPreferencesKey("equalizer.enabled")
+val EqualizerPresetKey = stringPreferencesKey("equalizer.preset")
+val EqualizerPreampKey = floatPreferencesKey("equalizer.preamp")
+val EqualizerBandGainsKey = stringPreferencesKey("equalizer.bandGains")
+
+val DeviceIdKey = stringPreferencesKey("deviceId")
+val SDeviceIdKey = stringPreferencesKey("sDeviceId")
+val NeteaseSecurityIdentityKey = stringPreferencesKey("neteaseSecurityIdentity")
+val NeteaseLocalDeviceIdKey = stringPreferencesKey("neteaseLocalDeviceId")
+val NeteaseDeviceRegisteredModelKey = stringPreferencesKey("neteaseDeviceRegisteredModel")
+val NeteaseNmcidKey = stringPreferencesKey("neteaseNmcid")
+val NeteaseNmdiKey = stringPreferencesKey("neteaseNmdi")
+val NeteaseNmdiFinalKey = booleanPreferencesKey("neteaseNmdiFinal")
+val NeteaseNmtidKey = stringPreferencesKey("neteaseNmtid")
+val DebugKey = booleanPreferencesKey("debug")
+val DevModeKey = booleanPreferencesKey("dev_mode")
+val AndroidIdKey = stringPreferencesKey("androidId")
+
+// 原图封面
+val OriginalCoverKey = booleanPreferencesKey("originalCover")
+val ProgressBarStyleKey = stringPreferencesKey("progressBarStyle")
+
+val MeshFlowSpeedKey = floatPreferencesKey("meshFlowSpeed")
+val MeshRenderScaleKey = floatPreferencesKey("meshRenderScale")
+val MeshStaticModeKey = booleanPreferencesKey("meshStaticMode")
+val MeshPlayingKey = booleanPreferencesKey("meshPlaying")
+val MeshLowFreqVolumeKey = floatPreferencesKey("meshLowFreqVolume")
+val MeshSubdivisionKey = intPreferencesKey("meshSubdivision")
+
+val LibraryStyleKey = stringPreferencesKey("libraryStyle")
+val LibraryDefaultPageKey = stringPreferencesKey("libraryDefaultPage")
+val KeepBottomBarExpandedKey = booleanPreferencesKey("appearance.keepBottomBarExpanded")
+val LiquidGlassEnabledKey = booleanPreferencesKey("appearance.liquidGlassEnabled")
+val ReduceTransparencyKey = booleanPreferencesKey("appearance.reduceTransparency")
+
+val PlayerStyleKey = stringPreferencesKey("playerStyle")
+val PlayerKeepScreenOnKey = booleanPreferencesKey("player.keepScreenOn")
+val PlaylistCoverStyleKey = stringPreferencesKey("playlistCoverStyle")
+val PlaylistTrackTableHeaderKey = booleanPreferencesKey("playlistTrackTableHeader")
+val TabletAnimationStyleKey = stringPreferencesKey("tabletAnimationStyle")
+
+val DownloadPathKey = stringPreferencesKey("downloadPath")
+val DownloadQualityKey = stringPreferencesKey("downloadQuality")
+val AutoCacheEnabledKey = booleanPreferencesKey("automaticCache.enabled")
+val AutoCachePlaybackThresholdKey = intPreferencesKey("automaticCache.playbackThreshold")
+val AutoCacheQualityKey = stringPreferencesKey("automaticCache.quality")
+val PodcastsEnabledKey = booleanPreferencesKey("content.podcastsEnabled")
+val DownloadsEnabledKey = booleanPreferencesKey("content.downloadsEnabled")
+val CloudMusicEnabledKey = booleanPreferencesKey("content.cloudMusicEnabled")
+val ListeningHistoryEnabledKey = booleanPreferencesKey("content.listeningHistoryEnabled")
+val FindMusicTabEnabledKey = booleanPreferencesKey("navigation.findMusicTabEnabled")
+val LibraryTabEnabledKey = booleanPreferencesKey("navigation.libraryTabEnabled")
+val PodcastsTabEnabledKey = booleanPreferencesKey("navigation.podcastsTabEnabled")
+val DownloadsTabEnabledKey = booleanPreferencesKey("navigation.downloadsTabEnabled")
+val CloudMusicTabEnabledKey = booleanPreferencesKey("navigation.cloudMusicTabEnabled")
+val ListeningHistoryTabEnabledKey = booleanPreferencesKey("navigation.listeningHistoryTabEnabled")
+val NavigationTabOrderKey = stringPreferencesKey("navigation.tabOrder")
+val AppAppearanceKey = stringPreferencesKey("application.appearance")
+val LastSelectedTabKey = stringPreferencesKey("navigation.lastSelectedTab")
+val RecognizeClipboardLinksKey = booleanPreferencesKey("application.recognizeClipboardLinks")
+val BetaUpdatesEnabledKey = booleanPreferencesKey("application.betaUpdatesEnabled")
+val QqTimeoutKey = stringPreferencesKey("qq_timeout")
+
+enum class QqTimeout(val seconds: Int, val label: String) {
+    Sec3(3, "3秒"),
+    Sec5(5, "5秒"),
+    Sec8(8, "8秒"),
+    Sec10(10, "10秒"),
+    Sec15(15, "15秒")
+}
+
+enum class LibraryStyle {
+    AppleMusic,
+    Default,
+}
+
+enum class PlayerStyle {
+    AppleMusic,
+    Classic
+}
+
+enum class AppAppearance { System, Light, Dark }
+
+enum class AutoMixMode { Smart, Fixed }
+enum class AutoMixFadeCurve { EqualPower, Smooth, Linear }
+
+
+enum class PlaylistCoverStyle {
+    Cover,
+    FirstSongImage,
+    Combination
+}
+enum class CoverStyle {
+    Circle,
+    Square
+}
+
+enum class LyricTextAlignment {
+    Left,
+    Center,
+    Right
+}
+
+enum class LyricVisualStyle { AppleMusic, EVA, TextPV, Skyline }
+
+
+enum class MusicQuality(val text: String, val explanation: String, val labelRes: Int) {
+    STANDARD("standard", "标准", R.string.track_quality_standard),
+    EXHIGH("exhigh", "极高", R.string.track_quality_high),
+    LOSSLESS("lossless", "无损", R.string.track_quality_lossless),
+    HIRES("hires", "Hi-Res", R.string.track_quality_hires),
+    JYEFFECT("jyeffect", "高清环绕声", R.string.track_quality_surround),
+    SKY("sky", "沉浸环绕声", R.string.track_quality_spatial),
+    JYMASTER("jymaster", "超清母带", R.string.track_quality_master),
+    DOLBY("dolby", "杜比全景声", R.string.track_quality_dolby)
+}
+
+
+enum class DownloadQuality(val text: String, val label: String, val description: String) {
+    STANDARD("standard", "标准", "标准音质, 文件较小"),
+    EXHIGH("exhigh", "极高", "极高音质, 推荐"),
+    LOSSLESS("lossless", "无损", "CD级无损音质"),
+    HIRES("hires", "Hi-Res", "高解析度无损"),
+    JYMASTER("jymaster", "超清母带", "母带级音质");
+
+    fun toMusicQuality(): MusicQuality = when (this) {
+        STANDARD -> MusicQuality.STANDARD
+        EXHIGH -> MusicQuality.EXHIGH
+        LOSSLESS -> MusicQuality.LOSSLESS
+        HIRES -> MusicQuality.HIRES
+        JYMASTER -> MusicQuality.JYMASTER
+    }
+}
+
+enum class LyricTextSize(val text: Int) {
+    Size18(18),
+    Size20(20),
+    Size22(22),
+    Size24(24),
+    Size26(26),
+    Size28(28),
+    Size30(30),
+    Size32(32)
+}
+
+enum class ProgressBarStyle(val label: String) {
+    WAVE("动态波浪"),       // 原来的波浪样式
+    LINEAR("正常样式")   // 新写的直线样式
+}
+
+enum class TabletAnimationStyle(val label: String) {
+    SLIDE("水平滑动"),
+    CROSSFADE("渐变"),
+    ZOOM("缩放"),
+    FLIP_3D("3D翻转")
+}

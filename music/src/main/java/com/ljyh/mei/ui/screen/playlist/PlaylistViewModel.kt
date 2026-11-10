@@ -1,0 +1,373 @@
+package com.ljyh.mei.ui.screen.playlist
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import androidx.paging.filter
+import com.ljyh.mei.AppContext
+import com.ljyh.mei.constants.MusicQuality
+import com.ljyh.mei.constants.UserIdKey
+import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.data.model.PlaylistDetail
+import com.ljyh.mei.data.model.Tracks
+import com.ljyh.mei.data.model.api.BaseMessageResponse
+import com.ljyh.mei.data.model.api.BaseResponse
+import com.ljyh.mei.data.model.api.CreatePlaylistResult
+import com.ljyh.mei.data.model.api.GetSongDetails
+import com.ljyh.mei.data.model.api.ManipulateTrackResult
+import com.ljyh.mei.data.model.room.Like
+import com.ljyh.mei.data.model.room.Playlist
+import com.ljyh.mei.data.model.toMediaMetadata
+import com.ljyh.mei.data.model.weapi.EveryDaySongs
+import com.ljyh.mei.data.network.Resource
+import com.ljyh.mei.data.network.api.ApiService
+import com.ljyh.mei.data.repository.PlaylistRepository
+import com.ljyh.mei.data.repository.UserRepository
+import com.ljyh.mei.di.repository.ColorRepository
+import com.ljyh.mei.di.repository.LikeRepository
+import com.ljyh.mei.utils.dataStore
+import com.ljyh.mei.utils.get
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+internal fun MediaMetadata.matchesPlaylistSearch(query: String): Boolean {
+    val keyword = query.trim()
+    return title.contains(keyword, ignoreCase = true) ||
+        album.title.contains(keyword, ignoreCase = true) ||
+        artists.any { artist ->
+            artist.name.contains(keyword, ignoreCase = true) ||
+                artist.alias.orEmpty().any { it.contains(keyword, ignoreCase = true) }
+        }
+}
+
+@HiltViewModel
+class PlaylistViewModel @Inject constructor(
+    private val repository: PlaylistRepository,
+    private val userRepository: UserRepository,
+    private val likeRepository: LikeRepository,
+    private val colorRepository: ColorRepository,
+    private val localPlaylistRepository: com.ljyh.mei.di.repository.LocalPlaylistRepository,
+    val apiService: ApiService
+) : ViewModel() {
+    val userId = AppContext.instance.dataStore[UserIdKey] ?: ""
+
+    fun getCachedColor(url: String) = colorRepository.getFromMemory(url)
+
+    suspend fun getOrExtractColor(url: String) =
+        colorRepository.getColorOrExtract(AppContext.instance, url)
+
+    private val _playlistDetail = MutableStateFlow<Resource<PlaylistDetail>>(Resource.Loading)
+    val playlistDetail: StateFlow<Resource<PlaylistDetail>> = _playlistDetail
+    private var playlistDetailRequestGeneration = 0
+    private var activePlaylistId: String? = null
+    private val _confirmedSubscription = MutableStateFlow<Boolean?>(null)
+    val confirmedSubscription: StateFlow<Boolean?> = _confirmedSubscription
+
+    private val _removedTrackIds = MutableStateFlow<Set<Long>>(emptySet())
+    val removedTrackIds: StateFlow<Set<Long>> = _removedTrackIds
+
+    private val _manipulateTracks =
+        MutableStateFlow<Resource<ManipulateTrackResult>>(Resource.Loading)
+    val manipulateTracks: StateFlow<Resource<ManipulateTrackResult>> = _manipulateTracks
+
+
+    private val _playlist = MutableStateFlow<List<Playlist>>(emptyList())
+    val playlist: StateFlow<List<Playlist>> = _playlist
+
+
+    private val _everyDay = MutableStateFlow<Resource<EveryDaySongs>>(Resource.Loading)
+    val everyDay: StateFlow<Resource<EveryDaySongs>> = _everyDay
+
+    // 创建歌单状态
+    private val _createPlaylist = MutableStateFlow<Resource<CreatePlaylistResult>>(Resource.Loading)
+    val createPlaylist: StateFlow<Resource<CreatePlaylistResult>> = _createPlaylist
+
+    // 收藏/取消收藏歌单状态
+    private val _subscribePlaylist = MutableStateFlow<Resource<BaseResponse>>(Resource.Loading)
+    val subscribePlaylist: StateFlow<Resource<BaseResponse>> = _subscribePlaylist
+
+    private val _unSubscribePlaylist = MutableStateFlow<Resource<BaseResponse>>(Resource.Loading)
+    val unSubscribePlaylist: StateFlow<Resource<BaseResponse>> = _unSubscribePlaylist
+
+    private val _subscriptionUpdating = MutableStateFlow(false)
+    val subscriptionUpdating: StateFlow<Boolean> = _subscriptionUpdating
+
+    // 删除歌单状态
+    private val _deletePlaylist = MutableStateFlow<Resource<BaseMessageResponse>>(Resource.Loading)
+    val deletePlaylist: StateFlow<Resource<BaseMessageResponse>> = _deletePlaylist
+
+    fun getPlaylistDetail(id: String) {
+        if (activePlaylistId != id) {
+            activePlaylistId = id
+            _confirmedSubscription.value = null
+        }
+        val generation = ++playlistDetailRequestGeneration
+        viewModelScope.launch {
+            _removedTrackIds.value = emptySet()
+            _playlistDetail.value = Resource.Loading
+            val result = repository.getPlaylistDetail(id)
+            if (generation != playlistDetailRequestGeneration) return@launch
+            _playlistDetail.value = result
+            if (result is Resource.Success) {
+                _confirmedSubscription.value = result.data.playlist.subscribed
+            }
+            localPlaylistRepository.touchPlaylist(id, System.currentTimeMillis())
+        }
+    }
+
+    // 分页加载，不是根据歌单id加载，而是根据歌曲id加载
+    fun getPlaylistTracks(
+        playlistDetailResource: Resource<PlaylistDetail>,
+        removedTrackIds: Set<Long> = emptySet()
+    ): Flow<PagingData<MediaMetadata>> {
+        return when (playlistDetailResource) {
+            is Resource.Success -> {
+                val playlist = playlistDetailResource.data.playlist
+
+                // 【本人歌单】直接全量，不分页
+                if (playlist.name.endsWith("喜欢的音乐")) {
+                    flowOf(
+                        PagingData.from(
+                            playlist.tracks
+                                .map { it.toMediaMetadata() }
+                                .filterNot { it.id in removedTrackIds }
+                        )
+                    )
+                } else {
+                    Pager(
+                        config = PagingConfig(pageSize = 20, enablePlaceholders = false),
+                        pagingSourceFactory = {
+                            PlaylistTrackSource(
+                                apiService = apiService,
+                                firstData = playlist.tracks,
+                                ids = playlist.trackIds.map { it.id.toString() }
+                            )
+                        }
+                    ).flow.map { pagingData ->
+                        pagingData.filter { track -> track.id !in removedTrackIds }
+                    }
+                }
+            }
+            else -> flowOf(PagingData.empty())
+        }.cachedIn(viewModelScope)
+    }
+
+
+    fun updateAllLike(likes: List<Like>) {
+        viewModelScope.launch {
+            likeRepository.updateAllLike(likes)
+        }
+    }
+
+    fun addSongToPlaylist(
+        pid: String,
+        trackIds: String,
+        previousTrackCount: Int = 0,
+        onComplete: (PlaylistTrackAddOutcome) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _manipulateTracks.value = Resource.Loading
+            val result = repository.manipulateTrack("add", pid, trackIds)
+            _manipulateTracks.value = result
+            onComplete(result.toPlaylistTrackAddOutcome(previousTrackCount))
+        }
+    }
+
+
+    fun deleteSongFromPlaylist(
+        pid: String,
+        trackIds: String,
+        onComplete: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _manipulateTracks.value = Resource.Loading
+            val result = repository.manipulateTrack("del", pid, trackIds)
+            _manipulateTracks.value = result
+            onComplete(result is Resource.Success && result.data.code == 200)
+        }
+    }
+
+    fun markTrackRemoved(trackId: Long) {
+        _removedTrackIds.value = _removedTrackIds.value + trackId
+    }
+    fun getAllMePlaylist(){
+        viewModelScope.launch {
+            _playlist.value = localPlaylistRepository.getPlaylistByAuthor(userId)
+            if (userId.isNotEmpty()) {
+                when (val result = userRepository.getUserPlaylist(userId, 100)) {
+                    is Resource.Success -> {
+                        val existingPlaylists = localPlaylistRepository.getPlaylistByAuthor(userId)
+                        val existingMap = existingPlaylists.associateBy { it.id }
+                        val playlistsToInsert = result.data.playlist.map {
+                            val existing = existingMap[it.id.toString()]
+                            Playlist(
+                                id = it.id.toString(),
+                                title = it.name,
+                                cover = it.coverImgUrl,
+                                author = it.creator.userId.toString(),
+                                authorName = it.creator.nickname,
+                                authorAvatar = it.creator.avatarUrl,
+                                count = it.trackCount,
+                                playCount = it.playCount,
+                                lastPlayTime = existing?.lastPlayTime ?: 0L,
+                                localPlayCount = existing?.localPlayCount ?: 0
+                            )
+                        }
+                        localPlaylistRepository.insertPlaylists(playlistsToInsert)
+                        _playlist.value = localPlaylistRepository.getPlaylistByAuthor(userId)
+                    }
+                    is Resource.Error -> {}
+                    Resource.Loading -> {}
+                }
+            }
+        }
+    }
+
+    fun getEveryDayRecommendSongs() {
+        viewModelScope.launch {
+            _everyDay.value = Resource.Loading
+            _everyDay.value = repository.getEveryDayRecommendSongs()
+        }
+
+    }
+
+    /*
+     * 创建歌单
+     */
+    fun createPlaylist(
+        name: String,
+        privacy: Boolean =  false, // 0 普通歌单, 10 隐私歌单
+        type: String = "NORMAL" // 默认 NORMAL, VIDEO 视频歌单, SHARED 共享歌单
+    ) {
+        viewModelScope.launch {
+            _createPlaylist.value = Resource.Loading
+            _createPlaylist.value = repository.createPlaylist(name, privacy, type)
+        }
+    }
+
+    /*
+     * 收藏歌单
+     */
+    fun subscribePlaylist(id: String) {
+        if (_subscriptionUpdating.value || activePlaylistId != id || _playlistDetail.value !is Resource.Success) return
+        _subscriptionUpdating.value = true
+        playlistDetailRequestGeneration++
+        viewModelScope.launch {
+            _subscribePlaylist.value = Resource.Loading
+            try {
+                val result = repository.subscribePlaylist(id)
+                if (result is Resource.Success && result.data.code == 200) {
+                    updateConfirmedSubscription(id, subscribed = true)
+                }
+                _subscribePlaylist.value = result
+            } finally {
+                _subscriptionUpdating.value = false
+            }
+        }
+    }
+
+    /*
+     * 取消收藏歌单
+     */
+    fun unsubscribePlaylist(id: String) {
+        if (_subscriptionUpdating.value || activePlaylistId != id || _playlistDetail.value !is Resource.Success) return
+        _subscriptionUpdating.value = true
+        playlistDetailRequestGeneration++
+        viewModelScope.launch {
+            _unSubscribePlaylist.value = Resource.Loading
+            try {
+                val result = repository.unSubscribePlaylist(id)
+                if (result is Resource.Success && result.data.code == 200) {
+                    updateConfirmedSubscription(id, subscribed = false)
+                }
+                _unSubscribePlaylist.value = result
+            } finally {
+                _subscriptionUpdating.value = false
+            }
+        }
+    }
+
+    private fun updateConfirmedSubscription(id: String, subscribed: Boolean) {
+        if (activePlaylistId == id) _confirmedSubscription.value = subscribed
+    }
+
+    /*
+     * 删除歌单
+     */
+    fun deletePlaylist(id: String) {
+        viewModelScope.launch {
+            _deletePlaylist.value = Resource.Loading
+            _deletePlaylist.value = repository.deletePlaylist(id)
+        }
+    }
+
+    suspend fun resolveSongUrls(ids: List<String>, quality: MusicQuality) =
+        repository.getSongUrlV1(ids, quality)
+
+    suspend fun getSongDetails(ids: List<String>): Tracks =
+        apiService.getSongDetail(GetSongDetails(c = ids.joinToString(",")))
+
+    /**
+     * Loads every track in a playlist before filtering it.  The playlist detail endpoint only
+     * includes an initial batch of tracks, so filtering that batch alone would miss results in
+     * larger playlists.
+     */
+    fun searchPlaylistTracks(
+        playlistDetailResource: Resource<PlaylistDetail>,
+        query: String,
+        removedTrackIds: Set<Long> = emptySet()
+    ): Flow<PagingData<MediaMetadata>> {
+        if (playlistDetailResource !is Resource.Success || query.isBlank()) {
+            return getPlaylistTracks(playlistDetailResource, removedTrackIds)
+        }
+
+        val playlist = playlistDetailResource.data.playlist
+        return kotlinx.coroutines.flow.flow {
+            val tracksById = playlist.tracks.associateBy { it.id }.toMutableMap()
+            playlist.trackIds
+                .map { it.id }
+                .filterNot(tracksById::containsKey)
+                .chunked(200)
+                .forEach { ids ->
+                    apiService.getSongDetail(GetSongDetails(ids.joinToString(","))).songs.forEach { track ->
+                        tracksById[track.id] = track
+                    }
+                }
+
+            val matchingTracks = playlist.trackIds
+                .mapNotNull { tracksById[it.id] }
+                .map { it.toMediaMetadata() }
+                .filterNot { it.id in removedTrackIds }
+                .filter { it.matchesPlaylistSearch(query) }
+            emit(PagingData.from(matchingTracks))
+        }.cachedIn(viewModelScope)
+    }
+}
+
+enum class PlaylistTrackAddOutcome {
+    Added,
+    AlreadyExists,
+    Failed,
+}
+
+internal fun Resource<ManipulateTrackResult>.toPlaylistTrackAddOutcome(
+    previousTrackCount: Int
+): PlaylistTrackAddOutcome = when (this) {
+    is Resource.Success -> when {
+        data.code == 502 && data.message == "歌单内歌曲重复" -> PlaylistTrackAddOutcome.AlreadyExists
+        data.code != 200 -> PlaylistTrackAddOutcome.Failed
+        data.count > previousTrackCount -> PlaylistTrackAddOutcome.Added
+        data.count == previousTrackCount -> PlaylistTrackAddOutcome.AlreadyExists
+        else -> PlaylistTrackAddOutcome.Failed
+    }
+    else -> PlaylistTrackAddOutcome.Failed
+}

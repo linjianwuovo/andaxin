@@ -1,0 +1,158 @@
+package com.ljyh.mei.ui.screen.setting
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.kyant.capsule.ContinuousRoundedRectangle
+import com.ljyh.mei.R
+import com.ljyh.mei.constants.AutoCacheEnabledKey
+import com.ljyh.mei.constants.AutoCachePlaybackThresholdKey
+import com.ljyh.mei.constants.AutoCacheQualityKey
+import com.ljyh.mei.constants.DownloadPathKey
+import com.ljyh.mei.constants.DownloadQuality
+import com.ljyh.mei.constants.DownloadQualityKey
+import com.ljyh.mei.ui.glass.GlassCard
+import com.ljyh.mei.ui.glass.GlassEmphasis
+import com.ljyh.mei.ui.glass.GlassIconButton
+import com.ljyh.mei.ui.glass.GlassSegmentedControl
+import com.ljyh.mei.ui.glass.GlassSurface
+import com.ljyh.mei.ui.glass.GlassToggle
+import com.ljyh.mei.ui.glass.IosPinnedListPage
+import com.ljyh.mei.ui.glass.IosStepper
+import com.ljyh.mei.ui.glass.SfIcon
+import com.ljyh.mei.ui.glass.SfSymbol
+import com.ljyh.mei.ui.local.LocalNavController
+import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
+import com.ljyh.mei.utils.DownloadManager
+import com.ljyh.mei.utils.rememberEnumPreference
+import com.ljyh.mei.utils.rememberPreference
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DownloadSetting(
+    @Suppress("UNUSED_PARAMETER") scrollBehavior: TopAppBarScrollBehavior,
+) {
+    val navController = LocalNavController.current
+    val insets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+    val (downloadPath, onDownloadPathChange) = rememberPreference(
+        DownloadPathKey,
+        DownloadManager.getDefaultDownloadPath(),
+    )
+    val (downloadQuality, onDownloadQualityChange) = rememberEnumPreference(
+        DownloadQualityKey,
+        DownloadQuality.EXHIGH,
+    )
+    val (automaticCache, onAutomaticCacheChange) = rememberPreference(AutoCacheEnabledKey, false)
+    val (threshold, onThresholdChange) = rememberPreference(AutoCachePlaybackThresholdKey, 5)
+    val (automaticQuality, onAutomaticQualityChange) = rememberEnumPreference(
+        AutoCacheQualityKey,
+        DownloadQuality.EXHIGH,
+    )
+
+    IosPinnedListPage(
+        title = stringResource(R.string.download_settings),
+        onNavigateBack = navController::navigateUp,
+        bottomPadding = insets.calculateBottomPadding(),
+    ) {
+        item {
+            SettingsGroup(stringResource(R.string.download_storage)) {
+                GlassSurface(Modifier.fillMaxWidth(), shape = ContinuousRoundedRectangle(20.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SfIcon("folder", null, size = 19.dp)
+                            Text(stringResource(R.string.download_save_location), modifier = Modifier.padding(start = 10.dp))
+                        }
+                        BasicTextField(
+                            value = downloadPath, onValueChange = onDownloadPathChange,
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SettingsGroup(stringResource(R.string.download_quality)) {
+                DownloadQuality.entries.forEach { quality ->
+                    DownloadQualityCard(quality = quality, selected = quality == downloadQuality, onClick = { onDownloadQualityChange(quality) })
+                }
+            }
+        }
+        item {
+            SettingsGroup(stringResource(R.string.automatic_cache)) {
+                GlassCard(Modifier.fillMaxWidth(), onClick = { onAutomaticCacheChange(!automaticCache) }) {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SfIcon("arrow.down.circle", null)
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.automatic_cache_by_play_count))
+                            Text(stringResource(R.string.automatic_cache_description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        GlassToggle(automaticCache, onAutomaticCacheChange)
+                    }
+                }
+            }
+        }
+        if (automaticCache) {
+            item {
+                SettingsGroup(stringResource(R.string.automatic_cache_threshold)) {
+                    GlassCard(Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.automatic_cache_count, threshold), modifier = Modifier.weight(1f))
+                            IosStepper(value = threshold, onValueChange = onThresholdChange, range = 1..100)
+                        }
+                    }
+                }
+            }
+            item {
+                SettingsGroup(stringResource(R.string.automatic_cache_quality)) {
+                    DownloadQuality.entries.forEach { quality ->
+                        DownloadQualityCard(quality = quality, selected = quality == automaticQuality, onClick = { onAutomaticQualityChange(quality) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadQualityCard(
+    quality: DownloadQuality,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SfIcon(if (selected) "checkmark.circle.fill" else "circle", null)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(quality.label)
+                Text(
+                    quality.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}

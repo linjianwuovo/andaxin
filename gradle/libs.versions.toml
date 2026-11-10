@@ -1,7 +1,7 @@
 [versions]
 # 工具链跟本机已验证可用的一套对齐（AGP/Gradle/Kotlin/SDK），不是照抄旧仓，是这台机器上唯一编得过的一组。
-agp = "9.1.1"
-kotlin = "2.4.20"
+agp = "9.4.1"
+kotlin = "2.4.21"
 compose-bom = "2026.03.00"
 activity-compose = "1.13.0"
 lifecycle = "2.10.0"
@@ -15,6 +15,9 @@ coil = "3.0.4"
 glasmio = "0.1.2"
 camerax = "1.5.0-alpha06"
 mlkit-barcode = "17.3.0"
+# 并进来的 music 模块要的：Hilt 注解处理与 KSP
+hilt = "2.60.1"
+ksp = "2.3.12"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
@@ -37,6 +40,11 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 
+# 宿主 @HiltAndroidApp 自己也要跑一遍注解处理：music 模块里的 @AndroidEntryPoint
+# 是挂在宿主的 Application 上生成组件的，只靠库模块的 ksp 拼不出最终图。
+hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
+hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }
+
 
 # ios 分支：六模块引最高层的四个,core/glass 传递带出 icons
 glasmio-core = { group = "io.github.neoruaa.glasmio", name = "glasmio-core", version.ref = "glasmio" }
@@ -55,3 +63,6 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

@@ -12,7 +12,9 @@ import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.AndaXinTheme
 import com.andaxin.core.settings.Appearance
 import com.andaxin.shell.RootShell
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     companion object {

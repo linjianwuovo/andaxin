@@ -4,4 +4,6 @@
     <cache-path name="checkin" path="checkin/" />
     <!-- 导出课表那份 .ics 落在 cache/export/，经分享面板交给他存（不申请存储权限） -->
     <cache-path name="export" path="export/" />
+    <!-- 音乐那一屏的"分享日志"走同一个 FileProvider；日志在 filesDir 根下 -->
+    <files-path name="my_logs" path="." />
 </paths>

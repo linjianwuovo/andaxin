@@ -2,5 +2,8 @@
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">sports.aiit.edu.cn</domain>
+        <!-- 音乐：网易云返回的音频流与封面全是 http://（m701.music.126.net、p1/p2.music.126.net），
+             不开明文的话 ExoPlayer 直接 ERROR_CODE_IO_NETWORK_CONNECTION_FAILED，封面也永远是灰块。 -->
+        <domain includeSubdomains="true">126.net</domain>
     </domain-config>
 </network-security-config>
