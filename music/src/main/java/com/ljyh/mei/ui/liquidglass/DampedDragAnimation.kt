@@ -1,10 +1,7 @@
 package com.ljyh.mei.ui.liquidglass
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.DurationBasedAnimationSpec
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.runtime.State
 import androidx.compose.runtime.snapshotFlow
@@ -15,12 +12,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.time.Clock
 
 class DampedDragAnimation(
@@ -37,14 +32,6 @@ class DampedDragAnimation(
 
     private val valueAnimationSpec =
         spring(1f, 1000f, visibilityThreshold)
-    // 按下那一下要从当前格滑到手指所在的格，不是闪现。弹簧起步最猛（前 50ms 就冲过一半），
-    // 实测看着仍是瞬移，所以这里用 tween：速度均匀，全程都能看清在跑。
-    // 时长按跨格数缩放 —— 隔一格 150ms 够利落，跨三格 330ms 才看得出过程。
-    private fun glideSpec(distance: Float): DurationBasedAnimationSpec<Float> =
-        tween(
-            durationMillis = (120f + 70f * distance).roundToInt().coerceIn(120, 360),
-            easing = FastOutSlowInEasing,
-        )
     private val velocityAnimationSpec =
         spring(0.5f, 300f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec =
@@ -125,23 +112,6 @@ class DampedDragAnimation(
         val targetValue = value.coerceIn(valueRange)
         animationScope.launch {
             valueAnimation.animateTo(targetValue, valueAnimationSpec) { updateVelocity() }
-        }
-    }
-
-    /** Slides from the current value to the target instead of teleporting, without touching press state. */
-    fun glideToValue(value: Float) {
-        val targetValue = value.coerceIn(valueRange)
-        val distance = abs(targetValue - valueAnimation.value)
-        animationScope.launch {
-            valueAnimation.animateTo(targetValue, glideSpec(distance))
-        }
-    }
-
-    /** Tracks the pointer without the spring lag, for gestures that map a position directly. */
-    fun snapToValue(value: Float) {
-        val targetValue = value.coerceIn(valueRange)
-        animationScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            valueAnimation.snapTo(targetValue)
         }
     }
 

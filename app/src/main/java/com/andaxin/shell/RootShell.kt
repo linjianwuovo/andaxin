@@ -45,7 +45,6 @@ import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Motion
 import com.andaxin.core.design.NoSamplingBackdrop
-import com.andaxin.core.design.Palette
 import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.DayNight
 import com.andaxin.core.settings.spec
@@ -106,7 +105,6 @@ import com.ljyh.mei.constants.NavigationBarHeight
 import com.ljyh.mei.ui.glass.CompactBottomControlIconSize
 import com.ljyh.mei.ui.glass.GlassAppearance
 import com.ljyh.mei.ui.glass.GlassBottomBar
-import com.ljyh.mei.ui.glass.GlassColors
 import com.ljyh.mei.ui.glass.GlassIconButton
 import com.ljyh.mei.ui.glass.GlassSurfaceStyle
 import com.ljyh.mei.ui.glass.GlassTabItem
@@ -117,6 +115,7 @@ import com.ljyh.mei.ui.glass.LocalGlassColors
 import com.ljyh.mei.ui.glass.SfIcon
 import com.ljyh.mei.ui.glass.SfSymbol
 import com.ljyh.mei.ui.glass.rememberSharedGlassBackdrop
+import com.ljyh.mei.ui.glass.defaultGlassColors
 import com.ljyh.mei.ui.glass.trackBackdropPosition
 import com.kyant.backdrop.backdrops.layerBackdrop
 import kotlinx.coroutines.launch
@@ -537,18 +536,18 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
     // 选中格实心、其余空心（照 Kyant0/Miuix 两个 demo 的同一个规矩）。
     // 符号改用音乐模块那份 SfSymbol：那套走 SF Pro 字体，House/Clock/Ellipsis/InfoCircle/PersonFilled 都在。
-    // 底栏的高亮不能直接吃 pager 的页号，两条都踩过：
-    // ① currentPage 在动画途中逐格报，底栏把每次 selectedKey 变化当成"用户换格"回发 onSelected，
-    //    两股动画互相拽，点圆钮最后停回首页 → 改用 settledPage（只报落定页）。
-    // ② Me 那一页不在底栏的 items 里，硬喂进去库会兜成 0 再回发一次 onSelected(Home) → 高亮跑回首页。
+    // 底栏的高亮不能直接吃 pager 的页号：currentPage 在动画途中逐格报，底栏把每次 selectedKey
+    // 变化当成"用户换格"回发 onSelected，两股动画互相拽，点圆钮最后停回首页 → 用 settledPage（只报落定页）。
+    // 「我的」不在底栏的 items 里，喂进去库会 indexOfFirst 兜成 0（GlassBottomBar.kt:170）
+    // 再回发一次 onSelected(Home)。MeiloX 的做法是保留 lastSelectedTab（MainActivity.kt:1042-1044
+    // 的第一顺位匹配不到时退回它），所以这里同样只记住"最后一个属于底栏的格"，从不把 Me 传下去。
     var barKey by remember { mutableStateOf(Shelf.Home) }
     LaunchedEffect(pager.settledPage) {
         val settled = Shelf.entries[pager.settledPage]
         if (settled != Shelf.Me) barKey = settled
     }
-    // 停在「我的」时不该留着一格高亮：把 Me 喂进底栏，库按"没有选中"处理（不画指示器、也不回发）。
-    // 用 settledPage 不用 currentPage：动画途中 currentPage 先变，底栏会从"无选中"切回旧格再把它回发出去，和刚点的那格互相拽。
-    val selectedKey = if (pager.settledPage == Shelf.Me.ordinal) Shelf.Me else barKey
+    // 停在「我的」时高亮留在刚才那一格 —— 与 MeiloX 停在非底栏页面时一致，也不需要库里有任何开关。
+    val selectedKey = barKey
     val dark = when (appearance.dayNight) {
         DayNight.System -> isSystemInDarkTheme()
         DayNight.Light -> false
@@ -728,26 +727,14 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
 }
 
 /**
- * Palette 映射到音乐侧那份 GlassColors（键对键）。
+ * 玻璃调色板：直接用音乐模块自己那一份 defaultGlassColors，
+ * 与 MeiloX MainActivity.kt:497-500 完全同一行写法
+ * （defaultGlassColors(isDark = effectiveDark, accent = MaterialTheme.colorScheme.primary)）。
  *
- * container 必须跟 MeiloX 的 defaultGlassColors 逐位一致（GlassTokens.kt:126-130）：
- * 亮色 #F8F8FA@0.64、暗色 #1C1C1E@0.54。早前这里给的是不透明的 Palette.Card(#FFFFFF)，
- * 于是 GlassBottomBar 的选中指示器（onDrawSurface 画 Color.Black@0.10，
- * GlassBottomBar.kt:623-639）叠在纯白上就成了一块实心 #E5E5E5 的灰椭球 ——
- * 用户 m04809 说的"只有灰色椭球"就是这一处色值造成的，不是折射开关。
- * accent 仍取宿主主色（品牌色），只把玻璃底色与纸底对齐 MeiloX。
+ * 这里曾经手写了一份 Palette 到 GlassColors 的映射，把 content/separator/destructive
+ * 换成宿主的墨色阶梯 —— 那是 MeiloX 没有的偏离，用户 m01403 要求一模一样，已删除。
  */
-private fun shelfGlassColors(dark: Boolean, accent: Color) = GlassColors(
+private fun shelfGlassColors(dark: Boolean, accent: Color) = defaultGlassColors(
     isDark = dark,
     accent = accent,
-    content = if (dark) Palette.NightInk else Palette.Ink,
-    secondaryContent = if (dark) Palette.NightInkMuted else Palette.InkMuted,
-    tertiaryContent = if (dark) Palette.NightInkGhost else Palette.InkGhost,
-    container = if (dark) Color(0xFF1C1C1E).copy(alpha = 0.54f) else Color(0xFFF8F8FA).copy(alpha = 0.64f),
-    prominentContainer = accent.copy(alpha = if (dark) 0.76f else 0.84f),
-    subtleStroke = if (dark) Color(0x2BFFFFFF) else Color.White.copy(alpha = 0.64f),
-    groupedBackground = if (dark) Palette.NightPaper else Palette.Paper,
-    elevatedBackground = if (dark) Palette.NightCream else Palette.Cream,
-    separator = if (dark) Palette.NightHairline else Palette.Hairline,
-    destructive = if (dark) Palette.NightRose else Palette.Rose,
 )

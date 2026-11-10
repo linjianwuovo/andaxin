@@ -3,9 +3,8 @@ package com.ljyh.mei.ui.glass
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,17 +35,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -64,7 +57,6 @@ import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceIn
-import androidx.compose.ui.util.fastFirstOrNull
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
@@ -127,25 +119,6 @@ private fun morphSurfaceWidthPx(
     compactProgress: Float,
 ): Float = lerp(fullWidthPx, compactWidthPx, compactProgress.coerceIn(0f, 1f))
 
-// 弹簧收尾越过端点（compactProgress > 1 或 < 0）时，几何按这个系数再缩一点，形成回弹。
-// 不能让 lerp 直接吃原始过冲：宽度量程是 880px（展开 1048px → 收起 168px），
-// ζ=.5 的 16% 过冲乘上去会少 141px，读成"缩成一个点再弹回来"；而高度量程只有 56px，
-// 同一比例恰好 9px。所以过冲一律换算成紧凑端点尺寸上的等比收缩。
-// .06 时录屏实测只读出 5-6px 过冲（shots/cmp2/col2/ 逐帧 h：stable 170 → 最低 164），
-// 因为到帧时弹簧峰值只剩 10% 量级；.12 把同样那段过冲放大到约 12px，才真的看得见。
-private val RecoilSquash = 0.12f
-// 弹簧过冲到 16%（ζ=.5 的峰值）时把 RecoilSquash 吃满，更小的过冲按比例缩。
-private val RecoilOvershootSpan = 0.16f
-
-private fun recoilScale(compactProgress: Float): Float {
-    val overshoot = when {
-        compactProgress > 1f -> compactProgress - 1f
-        compactProgress < 0f -> -compactProgress
-        else -> return 1f
-    }
-    return 1f - RecoilSquash * (overshoot / RecoilOvershootSpan).coerceIn(0f, 1f)
-}
-
 private fun compactIndicatorVisibility(compactProgress: Float): Float {
     if (compactProgress <= CompactIndicatorFadeStart) return 1f
     val fadeProgress = ((compactProgress - CompactIndicatorFadeStart) /
@@ -179,13 +152,8 @@ fun <T> GlassBottomBar(
     backdrop: Backdrop = LocalGlassBackdrop.current,
 ) {
     require(items.isNotEmpty())
-    // 这里刻意不夹到 0..1：弹簧收尾时的过冲（compactProgress 越过 1 或 0）就是
-    // 用户要看的"回弹"。夹掉之后过冲全被吞掉，几何一路单向收缩到端点再停住，
-    // 读起来就是"硬着陆"（shots/cmp2/col/ 逐帧高：231→227→220→197→178→173→170，
-    // 中途只有 1px 起伏）。过冲幅度由调用方弹簧的 dampingRatio 决定，见
-    // app/src/main/java/com/andaxin/shell/ShelfNavScrollState.kt:75-88。
     val compactState = remember(compactProgress) {
-        derivedStateOf { compactProgress.value }
+        derivedStateOf { compactProgress.value.coerceIn(0f, 1f) }
     }
     val morphing by remember(compactProgress) {
         derivedStateOf { compactProgress.value != 0f && compactProgress.value != 1f }
@@ -199,9 +167,6 @@ fun <T> GlassBottomBar(
     }
     val stableItems = remember(items) { StableGlassTabItems(items) }
     val tabItems = stableItems.values
-    // 传进来的 key 不在 items 里（例如停在「我的」那一页）就当作"没有选中"：
-    // 不画指示器、不画放大项、也不把落定位置回发成 onSelected。
-    val hasSelection = tabItems.any { it.key == selectedKey }
     val selectedIndex = tabItems.indexOfFirst { it.key == selectedKey }.takeIf { it >= 0 } ?: 0
     val selectedItem = tabItems[selectedIndex]
     val colors = LocalGlassColors.current
@@ -227,18 +192,11 @@ fun <T> GlassBottomBar(
         val surfaceSizeModifier = remember(compactState, fullWidthPx, compactWidthPx, compactSize) {
             Modifier.layout { measurable, constraints ->
                 val progress = compactState.value
-                // 弹簧越过端点的那一小段换算成端点尺寸上的等比回缩（见 recoilScale）。
-                val recoil = recoilScale(progress)
                 val width = constraints.constrainWidth(
-                    (morphSurfaceWidthPx(fullWidthPx, compactWidthPx, progress) *
-                        (if (progress >= 1f) recoil else 1f)).roundToInt(),
+                    morphSurfaceWidthPx(fullWidthPx, compactWidthPx, progress).roundToInt(),
                 )
                 val height = constraints.constrainHeight(
-                    (androidx.compose.ui.unit.lerp(
-                        64.dp,
-                        compactSize,
-                        progress.coerceIn(0f, 1f),
-                    ).roundToPx() * recoil).roundToInt(),
+                    androidx.compose.ui.unit.lerp(64.dp, compactSize, progress).roundToPx(),
                 )
                 val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(width, height))
                 layout(width, height) { placeable.placeRelative(0, 0) }
@@ -248,8 +206,23 @@ fun <T> GlassBottomBar(
         val expandedTabWidthPx = ((fullWidthPx - paddingPx * 2f) / tabItems.size)
             .coerceAtLeast(1f)
         val compactInnerWidthPx = (compactWidthPx - paddingPx * 2f).coerceAtLeast(1f)
+        val tabWidthPx = expandedTabWidthPx
         val innerGlassVisibilityState = remember(compactState) {
             derivedStateOf { compactIndicatorVisibility(compactState.value) }
+        }
+        val indicatorSizeModifier = remember(
+            compactState, expandedTabWidthPx, compactInnerWidthPx, compactWidthPx, compactSize,
+        ) {
+            Modifier.layout { measurable, constraints ->
+                val progress = compactState.value
+                val settled = progress >= CompactIndicatorFadeEnd
+                val width = constraints.constrainWidth((if (settled) compactWidthPx else
+                    lerp(expandedTabWidthPx, compactInnerWidthPx, progress)).roundToInt())
+                val height = constraints.constrainHeight((if (settled) compactSize else
+                    androidx.compose.ui.unit.lerp(56.dp, compactSize - 8.dp, progress)).roundToPx())
+                val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(width, height))
+                layout(width, height) { placeable.placeRelative(0, 0) }
+            }
         }
         val offsetAnimation = remember { Animatable(0f) }
         var currentIndex by remember { mutableIntStateOf(selectedIndex) }
@@ -261,47 +234,31 @@ fun <T> GlassBottomBar(
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
                 pressedScale = 78f / 56f,
-                // 底栏的手势由下面那层全宽覆盖层驱动（见 dragGestureModifier），
-                // 不再挂 dragAnimation.modifier，所以这三个回调永远不会被调用。
                 onDragStarted = {},
-                onDragStopped = {},
-                onDrag = { _, _ -> },
+                onDragStopped = {
+                    if (compactState.value >= 0.74f) {
+                        onExpandState.value()
+                        animateToValue(selectedIndexState.value.toFloat())
+                        return@DampedDragAnimation
+                    }
+                    val target = targetValue.fastRoundToInt().fastCoerceIn(0, tabItems.lastIndex)
+                    currentIndex = target
+                    animateToValue(target.toFloat())
+                    animationScope.launch {
+                        offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                    }
+                },
+                onDrag = { _, dragAmount ->
+                    if (compactState.value >= 0.74f) return@DampedDragAnimation
+                    updateValue(
+                        (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                            .fastCoerceIn(0f, tabItems.lastIndex.toFloat()),
+                    )
+                    animationScope.launch { offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x) }
+                },
             )
         }
-        val pressProgressState = dragAnimation.pressProgressState
-        // 宽度在量测阶段算出来。这里不带任何"按下往右长"的加成：按住时任一格，
-        // 整条栏体已经被 pressLayerBlock（见下）按 16dp 放大，右缘自己跨过 8dp 缝贴到
-        // 右侧圆球上，接缝的消失与选中哪一格无关（按住非末格「课程表」与按住末格「公告」
-        // 的像素 run-length 完全同构，shots/cmp2/m2.png vs hq3.png）。
-        val indicatorSizeModifier = remember(
-            compactState, expandedTabWidthPx, compactInnerWidthPx, compactWidthPx, compactSize,
-        ) {
-            Modifier.layout { measurable, constraints ->
-                val progress = compactState.value
-                val settled = progress >= CompactIndicatorFadeEnd
-                val measuredWidth = if (settled) compactWidthPx else
-                    lerp(expandedTabWidthPx, compactInnerWidthPx, progress)
-                val width = constraints.constrainWidth(measuredWidth.roundToInt())
-                // 收起落位后弹簧越过 1 的那一段：指示器（此时就是那颗残留圆球里的高亮）
-                // 跟栏体一样按 recoilScale 再缩一点，两块才是同一口气回弹。
-                val recoil = if (settled) recoilScale(progress) else 1f
-                val height = constraints.constrainHeight(
-                    ((if (settled) compactSize else
-                        androidx.compose.ui.unit.lerp(
-                            56.dp,
-                            compactSize - 8.dp,
-                            progress.coerceIn(0f, 1f),
-                        )).toPx() * recoil).roundToInt(),
-                )
-                val finalWidth = if (settled) (width * recoil).roundToInt() else width
-                val placeable = measurable.measure(
-                    androidx.compose.ui.unit.Constraints.fixed(finalWidth, height),
-                )
-                layout(finalWidth, height) { placeable.placeRelative(0, 0) }
-            }
-        }
-        LaunchedEffect(selectedIndex, hasSelection, compactMode) {
-            if (!hasSelection) return@LaunchedEffect
+        LaunchedEffect(selectedIndex, compactMode) {
             currentIndex = selectedIndex
             dragAnimation.animateToValue(selectedIndex.toFloat())
         }
@@ -309,78 +266,6 @@ fun <T> GlassBottomBar(
             snapshotFlow { currentIndex }
                 .drop(1)
                 .collectLatest { index -> stableOnSelected(tabItems[index].key) }
-        }
-        // 跟手：手指接触到哪，水滴就从当前位置滑过去（glide，看得见过程），
-        // 拖动期间不断把目标改成手指的绝对位置，抬手才落格换页。
-        fun valueAt(x: Float): Float {
-            val currentWidth = morphSurfaceWidthPx(fullWidthPx, compactWidthPx, compactState.value)
-            val currentTabWidth = ((currentWidth - paddingPx * 2f) / tabItems.size).coerceAtLeast(1f)
-            val raw = if (isLtr) {
-                (x - paddingPx) / currentTabWidth - 0.5f
-            } else {
-                (currentWidth - paddingPx - x) / currentTabWidth - 0.5f
-            }
-            return raw.fastCoerceIn(0f, tabItems.lastIndex.coerceAtLeast(1).toFloat())
-        }
-        // 落格用最后一次的触摸目标，而不是 dragAnimation.value：滑过去是个动画，
-        // 抬手那一刻动画可能还没走完，按中间值取整会落错格。
-        fun finishDrag(dragTarget: Float) {
-            if (compactState.value >= CompactIndicatorFadeStart) {
-                onExpandState.value()
-                dragAnimation.animateToValue(selectedIndexState.value.toFloat())
-                return
-            }
-            val target = dragTarget.fastRoundToInt().fastCoerceIn(0, tabItems.lastIndex)
-            if (target != currentIndex) currentIndex = target
-            dragAnimation.animateToValue(target.toFloat())
-        }
-        // 手势只能挂在最外层：指示器和隐藏的 lens 源层都是 BoxWithConstraints 的兄弟节点，
-        // 触摸落在它们的子节点上时，命中链里没有可见层 —— 挂在可见层就永远收不到事件。
-        // Initial 传递顺序是父→子，所以这一层先拿到按下，拖动后再 consume，clickable 的
-        // 那一下点击就被取消，不会抬手时又把页码切回原格。
-        val dragGestureModifier = Modifier.pointerInput(
-            dragAnimation,
-            fullWidthPx,
-            compactWidthPx,
-            tabItems.size,
-            isLtr,
-        ) {
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                val trackable = compactState.value < CompactIndicatorFadeStart
-                // 手指的绝对位置换算出的目标格索引，拖动期间一直更新；落格时用它，
-                // 不用 dragAnimation.value —— 滑动动画可能还没追上手指。
-                var dragTarget = dragAnimation.value
-                if (trackable) {
-                    dragAnimation.press()
-                    dragTarget = valueAt(down.position.x)
-                    dragAnimation.glideToValue(dragTarget)
-                }
-                var dragging = false
-                var canceled = false
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.fastFirstOrNull { it.id == down.id }
-                    if (change == null) {
-                        canceled = true
-                        break
-                    }
-                    if (!change.pressed) break
-                    if (!dragging && change.position != down.position) dragging = true
-                    if (dragging && trackable) {
-                        change.consume()
-                        // 拖动期直接贴住手指：手指本身就是连续的，再叠一层动画反而会落后。
-                        dragTarget = valueAt(change.position.x)
-                        dragAnimation.snapToValue(dragTarget)
-                    }
-                }
-                // 抬手：非取消就按触摸目标落格（compact 时这里做的是展开），取消则退回原格。
-                if (canceled) {
-                    if (trackable) dragAnimation.animateToValue(selectedIndexState.value.toFloat())
-                } else {
-                    finishDrag(dragTarget)
-                }
-            }
         }
         val interactiveHighlight = remember(
             animationScope,
@@ -428,6 +313,7 @@ fun <T> GlassBottomBar(
         val tabContentAlpha = remember {
             { (1f - compactState.value * 1.35f).coerceIn(0f, 1f) }
         }
+        val pressProgressState = dragAnimation.pressProgressState
         val selectedIconColorFilterState: State<ColorFilter> = remember(
             compactState,
             pressProgressState,
@@ -545,17 +431,11 @@ fun <T> GlassBottomBar(
                             24.dp.toPx() * press,
                             28.dp.toPx() * press,
                             depthEffect = press > 0.01f,
-                            // 按下时两块玻璃（栏体 / 右侧球）互相压在一起，色散会把接缝
-                            // 描成一道彩虹，看着像两个独立圆盘叠着。MeiloX 那份接缝是干净的，
-                            // 所以这里关掉色散，只留透镜变形。
-                            chromaticAberration = false,
+                            chromaticAberration = true,
                         )
                     },
                     highlight = {
-                        // 按下时高亮压到 0.94 会把栏体刷成一块发白的实心片，切口变成硬边，
-                        // 挨着右边球就读成两张独立圆盘。压到 0.70，两块的亮度和边都接近，
-                        // 才像一整片玻璃（目标：MeiloX 设置页按住「设置」那一帧）。
-                        Highlight.Default.copy(alpha = 0.70f * pressProgressState.value)
+                        Highlight.Default.copy(alpha = 0.94f * pressProgressState.value)
                     },
                     layerBlock = pressLayerBlock,
                     onDrawSurface = { drawRect(containerColor) },
@@ -631,7 +511,7 @@ fun <T> GlassBottomBar(
                 alpha = innerGlassVisibilityState.value
             }
         }
-        val indicatorBackdropModifier = if (hasSelection && !indicatorSettled) {
+        val indicatorBackdropModifier = if (!indicatorSettled) {
             remember(
                 indicatorBackdrop,
                 dragAnimation,
@@ -654,14 +534,13 @@ fun <T> GlassBottomBar(
                                     14.dp.toPx() * opticalIntensity,
                                     22.dp.toPx() * opticalIntensity,
                                     depthEffect = opticalIntensity > 0.01f,
-                                    // 选中块被按下时的色散同理：接缝处的彩虹要去掉。
-                                    chromaticAberration = false,
+                                    chromaticAberration = true,
                                 )
                             }
                         },
                         highlight = {
                             Highlight.Default.copy(
-                                alpha = 0.60f * pressProgressState.value *
+                                alpha = 0.90f * pressProgressState.value *
                                     expandedIndicatorVisibilityState.value,
                             )
                         },
@@ -716,7 +595,6 @@ fun <T> GlassBottomBar(
                     .then(surfaceSizeModifier)
                     .then(commonTransform)
                     .then(navigationGlassModifier)
-                    .then(interactiveHighlight.gestureModifier)
                     .then(interactiveHighlight.modifier)
                     .then(if (compactMode) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(4.dp)
@@ -736,11 +614,10 @@ fun <T> GlassBottomBar(
                             enabled = !compactMode,
                             alpha = tabContentAlpha,
                             selectedColorFilter = selectedIconColorFilterState,
-                            hideSelectedItem = hasSelection,
-                            hasSelection = hasSelection,
+                            hideSelectedItem = true,
                         )
                     }
-                    if (hasSelection) MorphingSelectedNavigationItem(
+                    MorphingSelectedNavigationItem(
                         item = selectedItem,
                         compactProgress = compactState,
                         fullWidthPx = fullWidthPx,
@@ -758,7 +635,7 @@ fun <T> GlassBottomBar(
             }
         }
 
-        if (hasSelection && !indicatorSettled && appearance.usesRefraction) {
+        if (!indicatorSettled && appearance.usesRefraction) {
             CompositionLocalProvider(LocalLiquidTabScale provides lensSourceTabContentScale) {
                 Row(
                     modifier = Modifier
@@ -791,11 +668,10 @@ fun <T> GlassBottomBar(
                                 enabled = !compactMode,
                                 alpha = tabContentAlpha,
                                 selectedColorFilter = selectedIconColorFilterState,
-                                hideSelectedItem = hasSelection,
-                                hasSelection = hasSelection,
+                                hideSelectedItem = true,
                             )
                         }
-                        if (hasSelection) MorphingSelectedNavigationItem(
+                        MorphingSelectedNavigationItem(
                             item = selectedItem,
                             compactProgress = compactState,
                             fullWidthPx = fullWidthPx,
@@ -817,6 +693,8 @@ fun <T> GlassBottomBar(
         Box(
             modifier = Modifier
                 .graphicsLayer(indicatorPositionLayerBlock)
+                .then(interactiveHighlight.gestureModifier)
+                .then(dragAnimation.modifier)
                 .then(indicatorBackdropModifier)
                 .then(indicatorSizeModifier)
                 .then(
@@ -836,13 +714,6 @@ fun <T> GlassBottomBar(
                     },
                 ),
         )
-        // 摊在最上面的全宽手势层。它必须是最后一个子节点：指示器和隐藏的 lens 源层都是
-        // 兄弟，触摸落在它们身上时命中链里没有可见层，手势挂在可见层就永远收不到事件。
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .then(dragGestureModifier),
-        )
     }
 }
 
@@ -855,12 +726,11 @@ private fun <T> androidx.compose.foundation.layout.RowScope.FullTabContent(
     alpha: () -> Float,
     selectedColorFilter: State<ColorFilter>,
     hideSelectedItem: Boolean = false,
-    hasSelection: Boolean = true,
 ) {
     val colors = LocalGlassColors.current
     val scale = LocalLiquidTabScale.current
     items.values.forEach { item ->
-        val selected = hasSelection && item.key == selectedKey
+        val selected = item.key == selectedKey
         Column(
             modifier = Modifier
                 .weight(1f)

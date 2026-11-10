@@ -78,8 +78,9 @@ internal fun ShelfBottomBar(
         ) {
             GlassBottomBar(
                 items = shelfTabItems(labels),
-                // 「我的」不在 items 里：选中它时 GlassBottomBar 当作"没有选中"
-                // （GlassBottomBar.kt:176-178，不画指示器），和 MeiloX 停在不属于底栏的页面时一致。
+                // selected 永远是 items 里的一格（RootShell 只喂最后落定的底栏格，见 barKey 注释）。
+                // 原版 GlassBottomBar.kt:170 用 indexOfFirst{}.takeIf{>=0} ?: 0 兜底，
+                // 传进来不在 items 里的 key 会被静默当成第一格，所以这里绝不传 Shelf.Me。
                 selectedKey = selected,
                 onSelected = onSelected,
                 onExpand = onExpand,
