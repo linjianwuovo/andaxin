@@ -698,7 +698,8 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             // 默认值就是 error(...)），所以 provider 只包住它这一块，不和底栏混用。
             // 封面叠上来时把首页那条胶囊让给 overlay 里的同一个（位置/材质同源），
             // 否则两枚胶囊会在同一处重叠一帧。
-            if (pager.settledPage == Shelf.Home.ordinal && !coverOpen) {
+            // 每一格都挂：用户要求课程表/消息/公告/我的都有这条胶囊，上游也是全局一层。
+            if (!coverOpen) {
                 androidx.compose.runtime.CompositionLocalProvider(
                     // 播放条那一块仍是音乐模块那份 Kyant 玻璃，配色也取它自己那套
                     // （与本屏底栏的 glasmio 配色互不影响）。
@@ -748,7 +749,17 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 ShelfBottomBar(
                     selected = selectedKey,
                     labels = labels,
-                    onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
+                    // 先把高亮挪过去再让 pager 滚：库里的水滴是拿 selectedKey 的变化驱动
+                    // dragAnimation.animateToValue 的（GlassBottomBar.kt:464-470），等 settledPage
+                    // 回来才改 key，就等于整段翻页期间水滴一动不动，松手后才补一段 —— 用户说的"有延迟"。
+                    // 上游 MainActivity_main.kt:1455-1466 也是 onSelected 里先 setLastSelectedTab，
+                    // selectedIndex 立刻跟着 currentRoute 变，翻页动画与水滴同时起步。
+                    onSelected = { shelf ->
+                        // 但「我的」不能传下去：它不在 items 里，库会 indexOfFirst 兜成 0
+                        // 再把高亮甩回首页（见 :543 那条注释）。
+                        if (shelf != Shelf.Me) barKey = shelf
+                        scope.launch { pager.animateScrollToPage(shelf.ordinal) }
+                    },
                     backdrop = shelfBackdrop,
                     compactProgress = navScroll.compactProgress,
                     scrollHint = navScroll.scrollHintProgress,

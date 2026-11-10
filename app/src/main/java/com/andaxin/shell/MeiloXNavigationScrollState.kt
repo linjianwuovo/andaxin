@@ -100,13 +100,17 @@ internal class MeiloXNavigationScrollState internal constructor(initialCompact: 
                 // items, whose initial distance to the start was not yet measurable.
                 setEndpoint(compact = false)
                 phase = Inactive
-            } else if (phase == AwaitingActivation && progress != 0f && atEnd() && available.y < 0f) {
+            } else if (phase == AwaitingActivation && progress != 0f && scrollableRangePx() >= 1f && atEnd() && available.y < 0f) {
                 // An edge bounce supplies no consumed list distance. It is boundary evidence,
                 // not additional distance for the interior hint or its eligibility check.
                 setEndpoint(compact = false)
                 phase = Inactive
             } else {
-                advance(-consumed.y)
+                // 页面内容不满一屏时 consumed 恒为 0，手势位移全落在 available 上。
+                // 上游只认 consumed（它每个页面都是长列表），宿主五个屏多数滚不动 ——
+                // 不拿 available 兜底，短页上下滑就永远收不起来，也就是「概率触发不了」。
+                val delta = if (consumed.y != 0f) -consumed.y else -available.y
+                advance(delta)
             }
             crossesStart = false
             return Offset.Zero
@@ -140,7 +144,10 @@ internal class MeiloXNavigationScrollState internal constructor(initialCompact: 
     ) {
         this.enabled = enabled && viewport != null
         this.activeDistancePx = activeDistancePx
-        minimumRangePx = activeDistancePx * 1.5f
+        // 上游这边是 1.5 倍行程（LazyColumn 长列表才有那么长），宿主五个屏都是
+        // verticalScroll，内容常常只有一两屏：行程不到门槛就永远收不起来。
+        // 门槛降到 1/4 个激活行程，短页由 advance() 把折叠行程按实际可滚量封顶。
+        minimumRangePx = activeDistancePx * 0.25f
         scrollableRangePx = { viewport?.rangePx ?: 0f }
         distanceToStartPx = { viewport?.distanceToStartPx ?: Float.POSITIVE_INFINITY }
         atStart = { viewport?.atStart ?: true }
@@ -179,7 +186,9 @@ internal class MeiloXNavigationScrollState internal constructor(initialCompact: 
 
     private fun advance(signedDelta: Float) {
         if (signedDelta == 0f) return
-        if (phase == AwaitingActivation && signedDelta > 0f && atEnd() && progress != 0f) {
+        // 内容滚不动的页面 atEnd() 恒为 true，不能拿它当"顶到底了"的证据，
+        // 否则收起来之后再往上滑一次就会立刻弹回去。
+        if (phase == AwaitingActivation && signedDelta > 0f && scrollableRangePx() >= 1f && atEnd() && progress != 0f) {
             setEndpoint(compact = false)
             phase = Inactive
             return
@@ -199,7 +208,10 @@ internal class MeiloXNavigationScrollState internal constructor(initialCompact: 
             // The native edge reset precedes eligibility. Expanded controls begin the hide hint
             // only with forward motion in an eligible viewport.
             val range = scrollableRangePx()
-            if (signedDelta < 0f || !range.isFinite() || range < minimumRangePx) return
+            if (signedDelta < 0f) return
+            val scrollable = range.isFinite() && range >= minimumRangePx
+            val staticPage = !range.isFinite() || range < 1f
+            if (!scrollable && !staticPage) return
             phase = Active
             initialProgress = progress
         }
@@ -207,7 +219,11 @@ internal class MeiloXNavigationScrollState internal constructor(initialCompact: 
             setEndpoint(compact = false)
             phase = Inactive
         } else if (progress != 1f) {
-            progress = (progress + signedDelta / activeDistancePx).coerceIn(.01f, 1f)
+            // 折叠行程封顶到本页真能滚出来的距离：短页也能一次滑到底就收起，
+            // 不会滚到 0.8 就没内容可滚、松手又弹回去（那正是"时灵时不灵"的来源）。
+            val range = scrollableRangePx()
+            val foldDistance = if (range.isFinite() && range >= 1f) minOf(activeDistancePx, range) else activeDistancePx
+            progress = (progress + signedDelta / foldDistance).coerceIn(.01f, 1f)
             if (progress == 1f) {
                 compactTarget = true
                 phase = Inactive
