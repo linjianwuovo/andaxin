@@ -71,6 +71,7 @@ import com.andaxin.shell.SampleTag
 import com.andaxin.shell.Refreshable
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.ShelfTail
+import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
@@ -204,6 +205,8 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     }
     Refreshable(reload, modifier.fillMaxSize()) {
         val scroll = rememberScrollState()
+        // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
+        registerShelfNavigationViewport(scroll)
         Column(
             modifier = Modifier
                 .fillMaxSize()

@@ -54,6 +54,7 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
 import com.andaxin.shell.ShelfTail
+import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import kotlinx.coroutines.launch
@@ -126,10 +127,13 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         }
     }
 
+    val scroll = rememberScrollState()
+    // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
+    registerShelfNavigationViewport(scroll)
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(horizontal = Gap.screen),
     ) {
         Spacer(Modifier.height(Gap.md))

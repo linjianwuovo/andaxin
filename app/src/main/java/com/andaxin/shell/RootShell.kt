@@ -29,7 +29,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.IntOffset
@@ -102,22 +101,25 @@ import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationOperation
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationScaffold
 import com.ljyh.mei.constants.NavigationBarHeight
-import com.ljyh.mei.ui.glass.CompactBottomControlIconSize
 import com.ljyh.mei.ui.glass.GlassAppearance
-import com.ljyh.mei.ui.glass.GlassBottomBar
-import com.ljyh.mei.ui.glass.GlassIconButton
-import com.ljyh.mei.ui.glass.GlassSurfaceStyle
-import com.ljyh.mei.ui.glass.GlassTabItem
 import com.ljyh.mei.ui.glass.LocalBlurBackdrop
 import com.ljyh.mei.ui.glass.LocalGlassAppearance
 import com.ljyh.mei.ui.glass.LocalGlassBackdrop
 import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.SfIcon
-import com.ljyh.mei.ui.glass.SfSymbol
 import com.ljyh.mei.ui.glass.rememberSharedGlassBackdrop
-import com.ljyh.mei.ui.glass.defaultGlassColors
 import com.ljyh.mei.ui.glass.trackBackdropPosition
 import com.kyant.backdrop.backdrops.layerBackdrop
+import io.github.neoruaa.glasmio.core.GlassAppearance as GlasmioGlassAppearance
+import io.github.neoruaa.glasmio.core.LocalGlassAppearance as LocalGlasmioGlassAppearance
+import io.github.neoruaa.glasmio.core.LocalGlassColors as LocalGlasmioGlassColors
+import io.github.neoruaa.glasmio.core.defaultGlassColors as glasmioDefaultGlassColors
+import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop as LocalGlasmioBlurBackdrop
+import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop as LocalGlasmioGlassBackdrop
+import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop as glasmioRememberSharedGlassBackdrop
+import io.github.neoruaa.glasmio.glass.trackBackdropPosition as glasmioTrackBackdropPosition
+import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop as glasmioLayerBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCanvasBackdrop
+
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.animation.core.tween
@@ -553,8 +555,16 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
         DayNight.Light -> false
         DayNight.Dark -> true
     }
-    // 照 MeiloX 的滚动折叠：向下滚收成圆球，往回滚或顶边回弹展开（ShelfNavScrollState）。
-    val navScroll = rememberShelfNavScrollState()
+    // 照 MeiloX main 的滚动折叠：向下滚收成圆球，往回滚或顶边回弹展开。
+    // 这份状态（shell/MeiloXNavigationScrollState.kt）是上游 MeiloXPage.kt 同名文件的逐字副本，
+    // 它认的是一页的「视口」（rangePx / distanceToStartPx / atStart / atEnd / isScrolling），
+    // 由五个屏各自 registerShelfNavigationViewport(scroll) 报到自己的 header 上。
+    val shelfHeaders = remember { ShelfPageHeaders() }
+    val settledShelf = Shelf.entries.getOrElse(pager.settledPage) { Shelf.Home }
+    val navScroll = rememberMeiloXNavigationScrollState(
+        viewport = shelfHeaders.entry(settledShelf).viewport,
+        enabled = true,
+    )
 
     // 播放器封面不开新路由，直接叠在这一屏上面（见下面 MusicBar 的 open）。
     // 走 Navigation 的话转场结束会把首页从组合里拆掉，涨封面的过程底下露出 NavHost 的纯色底，
@@ -585,6 +595,18 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val barSource = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val barBase = com.kyant.backdrop.backdrops.rememberCanvasBackdrop { drawRect(pageTint) }
     val barBackdrop = rememberSharedGlassBackdrop(barBase, barSource)
+
+    // 底栏（glasmio 那套）自己的一条：上游 MainActivity_main.kt:585-625 的写法 ——
+    // 静态 groupedBackground 当 base、页面录成的 layer 当 source，再 rememberSharedGlassBackdrop 合起来。
+    // 和上面 kyant 那条是同一个道理、同样的两条禁忌；两条并存是因为首页那条胶囊只在 kyant 那套里，
+    // 两个库的 Backdrop 类型不通用（喂错编译就过不去）。
+    val glassColors = glasmioDefaultGlassColors(
+        isDark = dark,
+        accent = MaterialTheme.colorScheme.primary,
+    )
+    val shelfBase = rememberCanvasBackdrop { drawRect(glassColors.groupedBackground) }
+    val shelfSource = rememberLayerBackdrop()
+    val shelfBackdrop = glasmioRememberSharedGlassBackdrop(shelfBase, shelfSource)
 
     /*
      * 顶层骨架换成库的 GlasmioNavigationScaffold（第三件事）。它自己就在 content 外面
@@ -640,19 +662,27 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                     modifier = Modifier
                         .fillMaxSize()
                         .layerBackdrop(barSource)
-                        .trackBackdropPosition(barSource),
+                        .trackBackdropPosition(barSource)
+                        // 同一次录制，再报给 glasmio 那条 shared backdrop（底栏用）。
+                        // 录制层上依旧只挂录制修饰符，绝不加 Offscreen 合成。
+                        .glasmioLayerBackdrop(shelfSource)
+                        .glasmioTrackBackdropPosition(shelfSource),
                 ) {
                 HorizontalPager(
                     state = pager,
                     beyondViewportPageCount = 1,
                     modifier = Modifier.fillMaxSize().statusBarsPadding(),
                 ) { index ->
-                    when (Shelf.entries[index]) {
-                        Shelf.Home -> HomeScreen(open = open)
-                        Shelf.Timetable -> TimetableScreen()
-                        Shelf.Message -> MessageScreen()
-                        Shelf.Notice -> NoticeScreen(open = open)
-                        Shelf.Me -> MeScreen(open = open)
+                    // 每一格都挂上「我是哪一格」，屏内的滚动视口才报得到 navScroll 手上。
+                    val shelf = Shelf.entries[index]
+                    ShelfPageEntry(key = shelf, headers = shelfHeaders) {
+                        when (shelf) {
+                            Shelf.Home -> HomeScreen(open = open)
+                            Shelf.Timetable -> TimetableScreen()
+                            Shelf.Message -> MessageScreen()
+                            Shelf.Notice -> NoticeScreen(open = open)
+                            Shelf.Me -> MeScreen(open = open)
+                        }
                     }
                 }
                 }
@@ -670,7 +700,12 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             // 否则两枚胶囊会在同一处重叠一帧。
             if (pager.settledPage == Shelf.Home.ordinal && !coverOpen) {
                 androidx.compose.runtime.CompositionLocalProvider(
-                    LocalGlassColors provides shelfGlassColors(dark, MaterialTheme.colorScheme.primary),
+                    // 播放条那一块仍是音乐模块那份 Kyant 玻璃，配色也取它自己那套
+                    // （与本屏底栏的 glasmio 配色互不影响）。
+                    LocalGlassColors provides com.ljyh.mei.ui.glass.defaultGlassColors(
+                        isDark = dark,
+                        accent = MaterialTheme.colorScheme.primary,
+                    ),
                     LocalGlassAppearance provides GlassAppearance(
                         liquidGlassEnabled = true,
                         reduceTransparency = false,
@@ -684,7 +719,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                         // 这里改成叠一层 overlay，首页始终在组合里，胶囊从原位涨起来。
                         open = { coverOpen = true },
                         // 与底栏共用同一个手势进度：下滑收球时音乐条同步收成胶囊
-                        // （ShelfNavScrollState 的 animateFloatAsState 已经带弹簧，这里不再插值）。
+                        // （MeiloXNavigationScrollState 的 animateFloatAsState 已经带弹簧，这里不再插值）。
                         compactProgress = navScroll.compactProgress,
                         // 收进同一行：照 MeiloX 的 miniPlayerVerticalOffset
                         // （MusicScreen.kt:1144-1175，(NavigationBarHeight-16dp)*progress），
@@ -698,19 +733,28 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                 }
             }
 
-            // 底栏：整条换成音乐屏自己那份 GlassBottomBar（m05890「tab 重照抄音乐软件，一模一样」）。
-            // 不再走 glasmio 的 GlasmioNavigationBarWithTrailingItem —— 那套的水滴/胶囊几何、
-            // 拖动跟手曲线、收起尺寸都和 MeiloX 不是同一份实现，只能做到"像"。
-            // 这里连同 backdrop 一起换成 Kyant0 那份（barBackdrop），与首页那条胶囊同源同材质（m06119）。
-            ShelfBottomBar(
-                selected = selectedKey,
-                labels = labels,
-                onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
-                colors = shelfGlassColors(dark, MaterialTheme.colorScheme.primary),
-                backdrop = barBackdrop,
-                compactProgress = navScroll.compactProgress,
-                onExpand = navScroll::expand,
-            )
+            // 底栏：以 MeiloX main 源码为准（m03315）—— 直接调 glasmio 的
+            // GlasmioNavigationBarWithTrailingItem，与上游 MainActivity_main.kt:1665-1704 同一份实现。
+            // 早先那版调的是 music 模块里 1.55.1 的 kyant 版 GlassBottomBar，几何/手感都不是同一条链。
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalGlasmioGlassColors provides glassColors,
+                LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
+                    liquidGlassEnabled = true,
+                    reduceTransparency = false,
+                ),
+                LocalGlasmioGlassBackdrop provides shelfBackdrop,
+                LocalGlasmioBlurBackdrop provides shelfBackdrop,
+            ) {
+                ShelfBottomBar(
+                    selected = selectedKey,
+                    labels = labels,
+                    onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
+                    backdrop = shelfBackdrop,
+                    compactProgress = navScroll.compactProgress,
+                    scrollHint = navScroll.scrollHintProgress,
+                    onExpand = navScroll::expand,
+                )
+            }
         }
 
         // 播放器封面：直接叠在首页这一屏上，只渲染封面（coverOnly）。
@@ -726,15 +770,3 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     }
 }
 
-/**
- * 玻璃调色板：直接用音乐模块自己那一份 defaultGlassColors，
- * 与 MeiloX MainActivity.kt:497-500 完全同一行写法
- * （defaultGlassColors(isDark = effectiveDark, accent = MaterialTheme.colorScheme.primary)）。
- *
- * 这里曾经手写了一份 Palette 到 GlassColors 的映射，把 content/separator/destructive
- * 换成宿主的墨色阶梯 —— 那是 MeiloX 没有的偏离，用户 m01403 要求一模一样，已删除。
- */
-private fun shelfGlassColors(dark: Boolean, accent: Color) = defaultGlassColors(
-    isDark = dark,
-    accent = accent,
-)

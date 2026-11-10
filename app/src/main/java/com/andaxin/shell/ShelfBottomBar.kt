@@ -2,134 +2,98 @@ package com.andaxin.shell
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
-import com.ljyh.mei.ui.glass.AnimatedBottomNavigationRow
-import com.ljyh.mei.ui.glass.CompactBottomControlIconSize
-import com.ljyh.mei.ui.glass.GlassAppearance
-import com.ljyh.mei.ui.glass.GlassColors
-import com.ljyh.mei.ui.glass.GlassIconButton
-import com.ljyh.mei.ui.glass.GlassSurfaceStyle
-import com.ljyh.mei.ui.glass.GlassTabItem
-import com.ljyh.mei.ui.glass.LocalBlurBackdrop
-import com.ljyh.mei.ui.glass.LocalGlassAppearance
-import com.ljyh.mei.ui.glass.LocalGlassBackdrop
-import com.ljyh.mei.ui.glass.LocalGlassColors
-import com.ljyh.mei.ui.glass.SfIcon
-import com.ljyh.mei.ui.glass.SfSymbol
+import io.github.neoruaa.glasmio.glass.render.Backdrop
+import io.github.neoruaa.glasmio.icons.SfSymbol
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationBarWithTrailingItem
+import io.github.neoruaa.glasmio.scaffold.glasmioNavigationScrollHint
+import io.github.neoruaa.glasmio.ui.GlasmioTabItem
+import io.github.neoruaa.glasmio.ui.NavigationBarSurfaceHeight
 
 /**
- * 宿主底栏：直接调音乐模块那一份 [AnimatedBottomNavigationRow]。
+ * 底栏离屏底那一段。上游 MainActivity_main.kt:667-684 的
+ * bottomControlInsets = navigationInsets.only(Bottom).union(WindowInsets(bottom = 20.dp))，
+ * 取两者较大值当 navigationBottomMargin —— 手势导航下常常就是这 20dp 起作用。
+ */
+internal val ShelfBottomMarginFloor = 20.dp
+
+/** 上游 constants/Dimensions.kt:53 NavigationBarBottomMargin。 */
+private val ShelfNavigationBarBottomMargin = 8.dp
+
+/**
+ * 页面尾巴要让给底栏的高度。
  *
- * 那个函数原来在 MeiloX 的 MainActivity.kt:1219-1286 是 private 的，我早先在宿主里手抄了一份
- * —— 手抄就是所有偏离的起点（zIndex 硬调、圆钮尺寸、收起弹簧、玻璃色值全是那么走偏的）。
- * 现在它被原样搬进 music 模块（ui/glass/AnimatedBottomNavigationRow.kt），宿主和音乐屏
- * 调的是同一份代码，只剩「右边那枚圆钮放什么图标」这一处参数差异：
- * MeiloX 放搜索，宿主放「我的」。
+ * 上游 MainActivity_main.kt:754-766 collapsedBottomReservation =
+ * navigationBottomMargin + NavigationBarHeight - NavigationBarBottomMargin，
+ * 而 NavigationBarHeight = NavigationBarSurfaceHeight + 2 * NavigationBarBottomMargin，
+ * 代入后就是 navigationBottomMargin + NavigationBarSurfaceHeight + NavigationBarBottomMargin：
+ * 栏面之上多留 8dp 呼吸位。
+ */
+internal val ShelfBarReservation = NavigationBarSurfaceHeight + ShelfNavigationBarBottomMargin
+
+/**
+ * 宿主底栏：直接调 glasmio 的 [GlasmioNavigationBarWithTrailingItem]。
+ *
+ * 上游 MainActivity_main.kt:1665-1704 的 AnimatedBottomNavigationRow 已经是这个库的一层薄包装，
+ * 只额外做了三件事：横向 20dp 边距、滚动提示的缩放 pivot、底部离屏底，外加播放器手势的竖向让位。
+ * 宿主这五个 tab 上方那条胶囊自己会滑，所以竖向让位这一项不需要 —— 其余三项照抄。
+ *
+ * 右边那枚圆钮是 trailingItem（宿主的「我的」），库会在 detachTrailingItem 时把它分离成独立控件，
+ * 收起（compactProgress → 1）时贴着栏体右侧站住，展开时滑回栏内。
  */
 @Composable
 internal fun ShelfBottomBar(
     selected: Shelf,
     labels: List<String>,
     onSelected: (Shelf) -> Unit,
-    colors: GlassColors,
     backdrop: Backdrop,
     compactProgress: State<Float>,
+    scrollHint: State<Float>,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 玻璃三件套（色/外观/backdrop）都是音乐模块的 CompositionLocal，默认值会报错，
-    // 所以这里自己 provide 一遍；和首页那条胶囊用的是同一份 colors 与同一个 backdrop，
-    // 收起时两块的材质才是同一块玻璃（m06119）。
-    CompositionLocalProvider(
-        LocalGlassColors provides colors,
-        LocalGlassAppearance provides GlassAppearance(
-            liquidGlassEnabled = true,
-            reduceTransparency = false,
+    val bottomMargin = maxOf(
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+        ShelfBottomMarginFloor,
+    )
+
+    GlasmioNavigationBarWithTrailingItem(
+        items = shelfTabItems(labels),
+        trailingItem = GlasmioTabItem(
+            key = Shelf.Me,
+            label = labels[Shelf.Me.ordinal],
+            symbol = SfSymbol.PersonFilled,
         ),
-        LocalGlassBackdrop provides backdrop,
-        LocalBlurBackdrop provides backdrop,
-    ) {
-        // MeiloX 的 bottomInset 是 windowsInsets.getBottom()；宿主这一层没有折叠的播放器
-        // 面板，所以 playerProgress 恒为 0，整行不会被往下推。
-        val bottomInset = WindowInsets.navigationBars
-            .asPaddingValues()
-            .calculateBottomPadding()
-
-        AnimatedBottomNavigationRow(
-            compactProgress = compactProgress,
-            items = shelfTabItems(labels),
-            // selected 永远是 items 里的一格（RootShell 只喂最后落定的底栏格，见 barKey 注释）。
-            // 原版 GlassBottomBar.kt:170 用 indexOfFirst{}.takeIf{>=0} ?: 0 兜底，
-            // 传进来不在 items 里的 key 会被静默当成第一格，所以这里绝不传 Shelf.Me。
-            selectedKey = selected,
-            onExpand = onExpand,
-            onSelected = onSelected,
-            backdrop = backdrop,
-            playerProgress = { 0f },
-            bottomInset = bottomInset,
-            modifier = modifier,
-        ) {
-            MeButton(backdrop = backdrop, compactProgress = compactProgress) {
-                onSelected(Shelf.Me)
-            }
-        }
-    }
-}
-
-/** MeiloX 那枚圆钮（AnimatedHomeSearchButton）的同构替换：图标从搜索换成「我的」。 */
-@Composable
-private fun MeButton(
-    backdrop: Backdrop,
-    compactProgress: State<Float>,
-    onClick: () -> Unit,
-) {
-    val progress = compactProgress.value
-    GlassIconButton(
-        onClick = onClick,
+        selectedKey = selected,
+        onSelected = onSelected,
+        onExpand = onExpand,
+        compactProgress = compactProgress,
         backdrop = backdrop,
-        style = GlassSurfaceStyle.Navigation,
-        modifier = Modifier.size(64.dp - 16.dp * progress),
-        morphProgress = compactProgress,
-        morphCaptureWidth = 64.dp,
-    ) {
-        SfIcon(
-            SfSymbol.PersonFilled,
-            contentDescription = "我的",
-            tint = LocalGlassColors.current.content,
-            size = 26.dp + (CompactBottomControlIconSize - 26.dp) * progress,
-            weight = FontWeight.SemiBold,
-        )
-    }
+        // 顺序照上游 MainActivity_main.kt:1690-1700：横向边距 → 提示缩放的 pivot → 底部离屏底。
+        // 反了会让提示缩放把底边距一起缩掉。
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .glasmioNavigationScrollHint(scrollHint)
+            .padding(bottom = bottomMargin),
+    )
 }
 
-/** 四格：图标/文字与 MeiloX 那四格同源。 */
-private fun shelfTabItems(labels: List<String>): List<GlassTabItem<Shelf>> = listOf(
-    GlassTabItem(
-        key = Shelf.Home,
-        label = labels[Shelf.Home.ordinal],
-        symbol = SfSymbol.HouseFilled,
-    ),
-    GlassTabItem(
-        key = Shelf.Timetable,
-        label = labels[Shelf.Timetable.ordinal],
-        symbol = SfSymbol.Clock,
-    ),
-    GlassTabItem(
-        key = Shelf.Message,
-        label = labels[Shelf.Message.ordinal],
-        symbol = SfSymbol.Ellipsis,
-    ),
-    GlassTabItem(
-        key = Shelf.Notice,
-        label = labels[Shelf.Notice.ordinal],
-        symbol = SfSymbol.InfoCircle,
-    ),
+/**
+ * 四格。符号照上游 main 的 tab 定义。
+ *
+ * selected 永远不能是 Shelf.Me —— RootShell 只喂「最后一个属于底栏的格」，
+ * 「我的」是 trailingItem，喂进 items 会违反库的 trailing key 唯一性 require。
+ */
+private fun shelfTabItems(labels: List<String>): List<GlasmioTabItem<Shelf>> = listOf(
+    GlasmioTabItem(Shelf.Home, labels[Shelf.Home.ordinal], SfSymbol.HouseFilled),
+    GlasmioTabItem(Shelf.Timetable, labels[Shelf.Timetable.ordinal], SfSymbol.ClockFilled),
+    GlasmioTabItem(Shelf.Message, labels[Shelf.Message.ordinal], SfSymbol.Ellipsis),
+    GlasmioTabItem(Shelf.Notice, labels[Shelf.Notice.ordinal], SfSymbol.InfoCircle),
 )
