@@ -81,6 +81,7 @@ import com.ljyh.mei.ui.component.home.RecommendCard
 import com.ljyh.mei.ui.component.player.PlayerViewModel
 import com.ljyh.mei.ui.component.playlist.PlayingImageView
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
+import com.ljyh.mei.ui.glass.GlassButton
 import com.ljyh.mei.ui.glass.IosPinnedPage
 import com.ljyh.mei.ui.glass.IosTypography
 import com.ljyh.mei.ui.glass.LocalGlassColors
@@ -233,7 +234,34 @@ fun HomeScreen(
                 }
 
                 is Resource.Error -> {
-                    // 这里可以加一个错误重试页面
+                    // 上游这里是个空分支：接口失败时整屏只剩余白。校园网对 music.163.com 做
+                    // TLS 中间人时它一定进这个分支，所以照 FindMusicScreen/SearchLandingScreen
+                    // 的既有写法补一个可见的失败态 + 重试。
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.load_failed),
+                            style = IosTypography.headline,
+                            color = LocalGlassColors.current.content,
+                        )
+                        Text(
+                            text = result.message,
+                            style = IosTypography.subheadline,
+                            color = LocalGlassColors.current.secondaryContent,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                        GlassButton(
+                            onClick = { viewModel.homePageResourceShow(true) },
+                            modifier = Modifier.padding(top = 16.dp),
+                        ) {
+                            Text(stringResource(R.string.retry))
+                        }
+                    }
                 }
 
                 Resource.Loading -> {

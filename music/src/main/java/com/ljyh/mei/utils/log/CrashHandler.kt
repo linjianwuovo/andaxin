@@ -131,8 +131,11 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
             val time = formatter.format(Date())
             val fileName = "crash-$time-$timestamp.log"
 
-            // Store reports in the app's private files directory.
-            val logDir = File(mContext.filesDir, LOG_DIR_NAME)
+            // Prefer the app's external files directory: an installed release build is not
+            // debuggable, so run-as cannot reach filesDir and the report would be unreadable.
+            // getExternalFilesDir needs no permission and stays scoped to this package.
+            val baseDir = mContext.getExternalFilesDir(null) ?: mContext.filesDir
+            val logDir = File(baseDir, LOG_DIR_NAME)
             if (!logDir.exists()) {
                 logDir.mkdirs()
             }

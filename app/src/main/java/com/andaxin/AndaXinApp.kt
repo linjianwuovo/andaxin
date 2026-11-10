@@ -13,6 +13,7 @@ import com.andaxin.app.AppGraph
 import com.andaxin.core.launcher.LauncherIcons
 import com.ljyh.mei.AppContext
 import com.ljyh.mei.constants.UserAgent
+import com.ljyh.mei.utils.log.CrashHandler
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -30,6 +31,10 @@ class AndaXinApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // 全仓崩溃落盘。音乐模块那个 CrashHandler 原本只在它自己的 MainActivity 里 init，
+        // 而宿主从不启动那个 Activity，于是正式包的崩溃一条都不留（run-as 也读不到未 debuggable
+        // 的包）。装在这里：filesDir/crash_logs/crash-*.log。
+        CrashHandler.init(this)
         // 音乐那一块的三十多处 AppContext.instance.xxx 全靠这一行才有值
         AppContext.instance = this
         // 只建壳，feed 全是 lazy：启动期不做任何磁盘或网络 IO
