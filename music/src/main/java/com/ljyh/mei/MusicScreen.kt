@@ -169,6 +169,8 @@ import com.ljyh.mei.ui.component.sheet.rememberBottomSheetState
 import com.ljyh.mei.ui.component.utils.appBarScrollBehavior
 import com.ljyh.mei.ui.component.utils.resetHeightOffset
 import com.ljyh.mei.ui.component.VersionUpdateAlert
+import com.ljyh.mei.ui.glass.AnimatedBottomNavigationRow
+import com.ljyh.mei.ui.glass.AnimatedHomeSearchButton
 import com.ljyh.mei.ui.glass.CompactBottomControlIconSize
 import com.ljyh.mei.ui.glass.defaultGlassColors
 import com.ljyh.mei.ui.glass.GlassAppearance
@@ -1142,16 +1144,21 @@ fun MusicScreen(
                                 navController.navigateTopLevel(screen.route)
                             }
                         },
-                        onSearchClick = {
-                            focusSearchOnEntry = true
-                            if (currentRoute != Screen.Search.route) {
-                                navController.navigate(Screen.Search.route)
-                            }
-                        },
                         backdrop = bottomControlsBackdrop,
-                        playerBottomSheetState = playerBottomSheetState,
+                        playerProgress = { playerBottomSheetState.progress },
                         bottomInset = bottomInset,
-                    )
+                    ) {
+                        AnimatedHomeSearchButton(
+                            compactProgress = compactNavigationProgress,
+                            backdrop = bottomControlsBackdrop,
+                            onClick = {
+                                focusSearchOnEntry = true
+                                if (currentRoute != Screen.Search.route) {
+                                    navController.navigate(Screen.Search.route)
+                                }
+                            },
+                        )
+                    }
                 }
                 selectionToolbar.content.value?.let { toolbar ->
                     Box(Modifier.align(Alignment.BottomCenter).zIndex(3f)
@@ -1269,74 +1276,6 @@ private fun BoxScope.AnimatedMiniPlayerLayer(
     }
 }
 
-@Composable
-private fun AnimatedBottomNavigationRow(
-    compactProgress: State<Float>,
-    items: List<GlassTabItem<Index>>,
-    selectedKey: Index,
-    onExpand: () -> Unit,
-    onSelected: (Index) -> Unit,
-    onSearchClick: () -> Unit,
-    backdrop: Backdrop,
-    playerBottomSheetState: BottomSheetState,
-    bottomInset: Dp,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = bottomInset + NavigationBarBottomMargin)
-            .offset {
-                val slideOffset = (bottomInset + NavigationBarHeight) *
-                    playerBottomSheetState.progress.coerceIn(0f, 1f)
-                IntOffset(x = 0, y = slideOffset.roundToPx())
-            },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        GlassBottomBar(
-            items = items,
-            selectedKey = selectedKey,
-            onExpand = onExpand,
-            onSelected = onSelected,
-            backdrop = backdrop,
-            compactProgress = compactProgress,
-            compactSize = MiniPlayerHeight,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.size(width = 8.dp, height = 1.dp))
-        Box(
-            modifier = Modifier.size(64.dp),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            AnimatedHomeSearchButton(compactProgress, backdrop, onSearchClick)
-        }
-    }
-}
-
-@Composable
-private fun AnimatedHomeSearchButton(
-    compactProgress: State<Float>,
-    backdrop: Backdrop,
-    onClick: () -> Unit,
-) {
-    val progress = compactProgress.value
-    GlassIconButton(
-        onClick = onClick,
-        backdrop = backdrop,
-        style = GlassSurfaceStyle.Navigation,
-        modifier = Modifier.size(64.dp - 16.dp * progress),
-        morphProgress = compactProgress,
-        morphCaptureWidth = 64.dp,
-    ) {
-        SfIcon(
-            SfSymbol.Search,
-            contentDescription = stringResource(R.string.app_tab_search),
-            tint = LocalGlassColors.current.content,
-            size = 26.dp + (CompactBottomControlIconSize - 26.dp) * progress,
-            weight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-        )
-    }
-}
 
 private fun playerAwareWindowInsetsForRoute(
     route: String,

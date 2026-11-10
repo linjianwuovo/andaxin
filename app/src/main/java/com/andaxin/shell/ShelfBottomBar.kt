@@ -1,25 +1,19 @@
 package com.andaxin.shell
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
-import com.ljyh.mei.constants.MiniPlayerHeight
-import com.ljyh.mei.constants.NavigationBarBottomMargin
+import com.ljyh.mei.ui.glass.AnimatedBottomNavigationRow
 import com.ljyh.mei.ui.glass.CompactBottomControlIconSize
 import com.ljyh.mei.ui.glass.GlassAppearance
-import com.ljyh.mei.ui.glass.GlassBottomBar
 import com.ljyh.mei.ui.glass.GlassColors
 import com.ljyh.mei.ui.glass.GlassIconButton
 import com.ljyh.mei.ui.glass.GlassSurfaceStyle
@@ -32,18 +26,13 @@ import com.ljyh.mei.ui.glass.SfIcon
 import com.ljyh.mei.ui.glass.SfSymbol
 
 /**
- * 底栏：整条照抄 MeiloX 音乐屏自己的底栏，不再用 glasmio 的 GlasmioNavigationBarWithTrailingItem。
+ * 宿主底栏：直接调音乐模块那一份 [AnimatedBottomNavigationRow]。
  *
- * 对齐目标就是 music/src/main/java/com/ljyh/mei/MusicScreen.kt:1273-1339 的
- * AnimatedBottomNavigationRow + AnimatedHomeSearchButton，逐项搬过来：
- * ① Row(padding horizontal 20dp + 底部 NavigationBarBottomMargin)，
- * ② GlassBottomBar 吃 weight(1f)、compactSize = MiniPlayerHeight（不是 glasmio 的 48dp 常量以外的值），
- * ③ 右边 Spacer(8dp) 之后一个 64dp 的圆按钮（MeiloX 那儿是搜索，这里换成「我的」），
- * ④ 圆按钮在收起时一起缩：size = 64dp - 16dp * progress，
- *    图标 size = 26dp + (CompactBottomControlIconSize - 26dp) * progress，字重 SemiBold。
- *
- * 图标走音乐模块那份 SfIcon/SfSymbol（com.ljyh.mei.ui.glass），字体是 music 模块的 R.font.sf_pro，
- * 和 MeiloX 屏里是同一份；宿主 assets 里那份 glasmio_symbols.ttf 不在这条路径上。
+ * 那个函数原来在 MeiloX 的 MainActivity.kt:1219-1286 是 private 的，我早先在宿主里手抄了一份
+ * —— 手抄就是所有偏离的起点（zIndex 硬调、圆钮尺寸、收起弹簧、玻璃色值全是那么走偏的）。
+ * 现在它被原样搬进 music 模块（ui/glass/AnimatedBottomNavigationRow.kt），宿主和音乐屏
+ * 调的是同一份代码，只剩「右边那枚圆钮放什么图标」这一处参数差异：
+ * MeiloX 放搜索，宿主放「我的」。
  */
 @Composable
 internal fun ShelfBottomBar(
@@ -68,42 +57,34 @@ internal fun ShelfBottomBar(
         LocalGlassBackdrop provides backdrop,
         LocalBlurBackdrop provides backdrop,
     ) {
-        Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding()
-                .padding(bottom = NavigationBarBottomMargin),
-            verticalAlignment = Alignment.CenterVertically,
+        // MeiloX 的 bottomInset 是 windowsInsets.getBottom()；宿主这一层没有折叠的播放器
+        // 面板，所以 playerProgress 恒为 0，整行不会被往下推。
+        val bottomInset = WindowInsets.navigationBars
+            .asPaddingValues()
+            .calculateBottomPadding()
+
+        AnimatedBottomNavigationRow(
+            compactProgress = compactProgress,
+            items = shelfTabItems(labels),
+            // selected 永远是 items 里的一格（RootShell 只喂最后落定的底栏格，见 barKey 注释）。
+            // 原版 GlassBottomBar.kt:170 用 indexOfFirst{}.takeIf{>=0} ?: 0 兜底，
+            // 传进来不在 items 里的 key 会被静默当成第一格，所以这里绝不传 Shelf.Me。
+            selectedKey = selected,
+            onExpand = onExpand,
+            onSelected = onSelected,
+            backdrop = backdrop,
+            playerProgress = { 0f },
+            bottomInset = bottomInset,
+            modifier = modifier,
         ) {
-            GlassBottomBar(
-                items = shelfTabItems(labels),
-                // selected 永远是 items 里的一格（RootShell 只喂最后落定的底栏格，见 barKey 注释）。
-                // 原版 GlassBottomBar.kt:170 用 indexOfFirst{}.takeIf{>=0} ?: 0 兜底，
-                // 传进来不在 items 里的 key 会被静默当成第一格，所以这里绝不传 Shelf.Me。
-                selectedKey = selected,
-                onSelected = onSelected,
-                onExpand = onExpand,
-                backdrop = backdrop,
-                compactProgress = compactProgress,
-                compactSize = MiniPlayerHeight,
-                // 不加 zIndex：把栏体抬到球上面后，长出的指示器会盖住整个「我的」球，人像图标
-                // 都被糊掉（shots/cmp2/hp11_press_3x.png 右panel）。MeiloX 的按下帧
-                // （shots/cmp2/mxP/f106.png 球心行 y=110）是「指示器暗边 1116-1118 → 3px 亮缝 →
-                // 球描边 1122-1123」，两块玻璃各自完整、只贴得很近，并不互相遮盖。
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.size(width = 8.dp, height = 1.dp))
-            Box(
-                modifier = Modifier.size(64.dp),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                MeButton(backdrop = backdrop, compactProgress = compactProgress, onClick = { onSelected(Shelf.Me) })
+            MeButton(backdrop = backdrop, compactProgress = compactProgress) {
+                onSelected(Shelf.Me)
             }
         }
     }
 }
 
+/** MeiloX 那枚圆钮（AnimatedHomeSearchButton）的同构替换：图标从搜索换成「我的」。 */
 @Composable
 private fun MeButton(
     backdrop: Backdrop,
@@ -129,7 +110,7 @@ private fun MeButton(
     }
 }
 
-/** 四格：图标/文字与 MeiloX 那四格同源，首两格做选中实心/未选中描边切换。 */
+/** 四格：图标/文字与 MeiloX 那四格同源。 */
 private fun shelfTabItems(labels: List<String>): List<GlassTabItem<Shelf>> = listOf(
     GlassTabItem(
         key = Shelf.Home,
