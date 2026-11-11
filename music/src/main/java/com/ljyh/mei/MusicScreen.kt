@@ -816,11 +816,27 @@ fun MusicScreen(
             playerBottomSheetState.collapseSoft()
         }
     }
-    // 封面模式退出口：下拉把播放器收到底就是 dismiss，这一页没有别的内容可看，直接退回宿主。
+    // 封面模式退出口：封面从收起态涨起来之后，只要再收起（返回键 / 下拉手势）或直接消失，就退回宿主。
+    // 只认 dismiss 会漏掉返回键：返回键走的是 BottomSheet 自己的 collapseSoft，停在收起态，
+    // 结果 overlay 一直挂在组合里、视觉上看不见，却继续把宿主整页的触摸吞掉。
     LaunchedEffect(coverOnly, playerBottomSheetState) {
         if (!coverOnly) return@LaunchedEffect
-        snapshotFlow { playerBottomSheetState.isDismissed }.collect { dismissed ->
-            if (dismissed) currentCoverBack.value?.invoke()
+        var expanded = false
+        var closed = false
+        snapshotFlow {
+            Triple(
+                playerBottomSheetState.isExpanded,
+                playerBottomSheetState.isCollapsed,
+                playerBottomSheetState.isDismissed,
+            )
+        }.collect { (isExpanded, collapsed, dismissed) ->
+            if (closed) return@collect
+            if (isExpanded) {
+                expanded = true
+            } else if (expanded && (collapsed || dismissed)) {
+                closed = true
+                currentCoverBack.value?.invoke()
+            }
         }
     }
             val miniPlayerCenterTravel = if (isLandscape) 0.dp else MiniPlayerInlineVerticalTravel
