@@ -100,6 +100,10 @@
 # their generic signatures so R8 cannot erase List element types in release builds.
 -keep class com.ljyh.mei.playback.PlaybackSnapshot { *; }
 -keep class com.ljyh.mei.playback.PlaybackItemSnapshot { *; }
+-keep class com.ljyh.mei.source.core.SourceSettings { *; }
+-keep class com.ljyh.mei.source.api.Track { *; }
+-keep class com.ljyh.mei.source.api.SourceArtist { *; }
+-keep class com.ljyh.mei.source.api.SourceAlbum { *; }
 -keep class com.ljyh.mei.playback.PlaybackArtistSnapshot { *; }
 
 -keepclasseswithmembernames class * {
@@ -160,6 +164,18 @@
 # Compose 相关规则
 -keep,allowshrinking class * extends androidx.compose.ui.node.ModifierNodeElement { <init>(); }
 
+# Android saves Parcelable class names in Activity state across APK updates.
+-keepnames class androidx.compose.runtime.ParcelableSnapshotMutableFloatState
+-keepnames class androidx.compose.runtime.ParcelableSnapshotMutableIntState
+-keepnames class androidx.compose.runtime.ParcelableSnapshotMutableLongState
+-keepnames class androidx.compose.runtime.ParcelableSnapshotMutableState
+-keepnames class androidx.compose.runtime.snapshots.SnapshotStateList
+
+# These enums are nested in rememberSaveable MutableState via Java serialization.
+-keepnames enum com.ljyh.mei.ui.navigation.LibraryPage
+-keepnames enum com.ljyh.mei.ui.screen.main.library.LibraryPlaylistFilter
+-keepnames enum com.ljyh.mei.ui.screen.account.NeteaseMobileLoginMethod
+
 -keepattributes Signature
 -keep class com.google.gson.reflect.TypeToken { *; }
 -keep class * extends com.google.gson.reflect.TypeToken
@@ -168,6 +184,22 @@
 
 # 奇怪的问题，ArtistDetail需要免去r8混淆，但是其他类正常s com.google.common.reflect.** { *; }
 -keep class com.ljyh.mei.data.model.api.** { *; }
+
+# Shared source results decode these presentation records through Gson.
+-keep class com.ljyh.mei.data.model.melox.AccountDevice { *; }
+-keep class com.ljyh.mei.data.model.melox.AccountAuthorization { *; }
+-keep class com.ljyh.mei.data.model.melox.AccountAuthorizationPage { *; }
+-keep class com.ljyh.mei.data.model.melox.AccountBinding { *; }
+-keep class com.ljyh.mei.data.model.melox.AccountSecuritySummary { *; }
+-keep class com.ljyh.mei.data.model.melox.MusicianAccount { *; }
+-keep class com.ljyh.mei.data.model.melox.ListeningStats* { *; }
+-keep class com.ljyh.mei.data.model.melox.SongWikiMemoryKind { *; }
+-keep class com.ljyh.mei.data.model.melox.SongWikiMemoryItem { *; }
+-keep class com.ljyh.mei.data.model.melox.SongWikiTagGroup { *; }
+-keep class com.ljyh.mei.data.model.melox.SongWikiAttribute { *; }
+-keep class com.ljyh.mei.data.model.melox.SongWikiAssociationDetail { *; }
+-keep class com.ljyh.mei.data.model.melox.SongWikiAssociationGroup { *; }
+-keep class com.ljyh.mei.data.model.melox.SongWikiReview { *; }
 
 # ONNX Runtime's JNI and reflective Java API are required by minimized builds.
 -keep class ai.onnxruntime.** { *; }

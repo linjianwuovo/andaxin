@@ -27,8 +27,8 @@ android {
         // ios 分支外观底座=Glasmio：其 AAR 声明 minSdk 33，manifest 合并实测顶死 26
         minSdk = 33
         targetSdk = 35
-        versionCode = 147
-        versionName = "0.9.8"
+        versionCode = 149
+        versionName = "0.9.10"
 
         // 只出 arm64：装机就是米11 和那台 OPPO，多一套 abi 只是让包胖 30%
         ndk { abiFilters += "arm64-v8a" }
@@ -138,6 +138,9 @@ dependencies {
     implementation(musiclibs.coil.core)
     implementation(musiclibs.coil.gif)
     implementation(musiclibs.coil.network.okhttp)
+    // Timber：Application 里要植树（上游 AppContext 的职责）。music 那边是 implementation
+    // 不传递，所以这里单独再引一次，版本仍走同一个 catalog。
+    implementation(musiclibs.timber)
 
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.android)

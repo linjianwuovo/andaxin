@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 音乐库（music 模块）在 values-zh 与 values-zh-rTW 里自带 app_name=MeiloX。
+         资源合并是按限定符逐条覆盖，app 模块只写了默认 values 的「安大信」，
+         zh-CN 设备上就命中了库模块那份，桌面与应用信息里显示成 MeiloX。
+         这里把同名的两条按限定符再写一遍：application 模块优先级高于 library，
+         于是中文环境下仍然是「安大信」，而库模块里那两个 R.string.app_name 引用
+         （MusicScreen 侧栏标题、通知栏 R.string.app_name_en）也一并落回本名。 -->
+    <string name="app_name">安大信</string>
+    <string name="app_name_en">安大信</string>
+</resources>

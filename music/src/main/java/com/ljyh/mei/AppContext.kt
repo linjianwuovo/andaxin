@@ -10,7 +10,16 @@ import android.content.Context
  *
  * 图片加载也不再由这里提供 —— 音乐在 MusicActivity 的 setContent 里已经
  * setSingletonImageLoaderFactory 过一份带网易 UA 的 ImageLoader。
+ *
+ * [attachSourceArtwork] 是给宿主留的一扇门：上游在 AppContext.onCreate 里直接调
+ * SourceArtworkRegistry.attach(sourceArtwork)，而那个 attach 是 internal（只在 music
+ * 模块内可见）。宿主 Application 在另一个 Gradle 模块里，调不到，也不想为了这一行
+ * 去改上游文件，所以在这里包一层。
  */
 object AppContext {
     lateinit var instance: Context
+
+    fun attachSourceArtwork(store: com.ljyh.mei.source.script.SourceArtworkStore) {
+        com.ljyh.mei.source.script.SourceArtworkRegistry.attach(store)
+    }
 }
