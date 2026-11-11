@@ -22,6 +22,10 @@ import com.ljyh.mei.utils.log.FileLoggingTree
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val ACTION_OPEN_SONG_RECOGNITION = "com.ljyh.mei.action.OPEN_SONG_RECOGNITION"
+        const val EXTRA_RECOGNITION_PROVIDER = "recognition_provider"
+    }
 
     @androidx.annotation.OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.S)

@@ -716,9 +716,14 @@ internal class ScriptMusicProvider(
                     ensureCurrent()
                     if (catalogOwner !== owner.owner) throw CancellationException("Source account changed")
                 }
-                val read = currentCoroutineContext()[CatalogRead]?.takeIf { it.provider === this }
-                invalidateCatalog(read)
-                catalog.putAccount(owner.owner, null, ::ensureCurrent)
+                // Only a verified session that just became unusable invalidates the catalog; an anonymous
+                // probe that never had an account must not cancel unrelated in-flight reads.
+                val (verified, account) = catalog.account(owner.owner, ::ensureCurrent)
+                if (verified && account != null) {
+                    val read = currentCoroutineContext()[CatalogRead]?.takeIf { it.provider === this }
+                    invalidateCatalog(read)
+                    catalog.putAccount(owner.owner, null, ::ensureCurrent)
+                }
             }
             throw error
         } catch (_: Exception) {

@@ -31,6 +31,8 @@ import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import io.github.neoruaa.glasmio.scaffold.*
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import com.ljyh.mei.ui.screen.playlist.component.LocalPlaylistLocateHost
+import com.ljyh.mei.ui.screen.playlist.component.LocalPlaylistLocateOwner
 
 /** A mounted entry publishes chrome; the navigation host owns only its button surfaces. */
 internal class MeiloXPageHeader {
@@ -113,7 +115,10 @@ internal fun MeiloXPageEntry(
         header.mounted++
         onDispose { headers.unmount(header) }
     }
-    CompositionLocalProvider(LocalMeiloXPageHeader provides header) {
+    CompositionLocalProvider(
+        LocalMeiloXPageHeader provides header,
+        LocalPlaylistLocateOwner provides key.route,
+    ) {
         Box(Modifier.fillMaxSize().testTag("MeiloXPage:${key.route}")) {
             content()
             if (!rememberDeviceInfo().isLandscape || LocalGlasmioSidebarExpanded.current) {
@@ -132,13 +137,22 @@ fun meiloxHeaderAction(
     enabled: Boolean = true,
     visualKey: Any = key,
     menuAnchor: GlasmioMenuAnchorState? = null,
+    overflowSystemName: String? = null,
     content: @Composable () -> Unit,
 ): GlasmioHeaderAction {
     val colors = LocalGlassColors.current
     val scheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
     val shapes = MaterialTheme.shapes
-    return GlasmioHeaderAction(key, visualKey, contentDescription, onClick, enabled, menuAnchor) {
+    return GlasmioHeaderAction(
+        key = key,
+        visualKey = visualKey,
+        contentDescription = contentDescription,
+        onClick = onClick,
+        enabled = enabled,
+        menuAnchor = menuAnchor,
+        overflowSystemName = overflowSystemName,
+    ) {
         MaterialTheme(colorScheme = scheme, typography = typography, shapes = shapes) {
             CompositionLocalProvider(
                 LocalGlassColors provides colors,
@@ -160,6 +174,7 @@ fun MeiloXPinnedPage(
     actions: @Composable () -> List<GlasmioHeaderAction> = { emptyList() },
     actionsStyle: GlasmioToolbarActionStyle = GlasmioToolbarActionStyle.Merged,
     actionsSeparationProgress: Float? = null,
+    actionSearch: GlasmioHeaderSearchState? = null,
     collapseProgress: Float = 1f,
     backgroundColor: Color? = null,
     topBarBlurProgress: Float = 0f,
@@ -181,15 +196,39 @@ fun MeiloXPinnedPage(
             onClick = navigateBack,
         ) { SfIcon(SfSymbol.ChevronBack, null, mirrored = true) })))
     }.orEmpty()
-    val hidesHeading = rememberDeviceInfo().isLandscape && !LocalGlasmioSidebarExpanded.current
+    val isLandscape = rememberDeviceInfo().isLandscape
+    val hidesHeading = isLandscape && !LocalGlasmioSidebarExpanded.current
     val trailingActions = actions()
+    val locatorHost = LocalPlaylistLocateHost.current
+    val locatorRegistration = locatorHost?.registrationFor(LocalPlaylistLocateOwner.current)
+    val locatorAction = if (isLandscape && locatorRegistration?.shouldShow == true) {
+            meiloxHeaderAction(
+                key = "playlist-locate",
+                contentDescription = stringResource(R.string.playlist_locate_current_track),
+                onClick = { locatorRegistration.locating = true },
+                enabled = locatorRegistration.available && !locatorRegistration.locating,
+                overflowSystemName = "scope",
+            ) {
+                if (locatorRegistration.locating) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    SfIcon("scope", null)
+                }
+            }
+        } else null
+    val trailingGroups = buildList {
+        locatorAction?.let {
+            add(GlasmioHeaderGroup("playlist-locate", listOf(it), GlasmioToolbarActionStyle.Separated))
+        }
+        if (trailingActions.isNotEmpty()) {
+            add(GlasmioHeaderGroup("actions", trailingActions, actionsStyle, search = actionSearch))
+        }
+    }
     val spec = GlasmioHeaderSpec(
         title = if (hidesHeading) "" else title,
         subtitle = subtitle.takeUnless { hidesHeading },
         leading = leading,
-        trailing = if (trailingActions.isEmpty()) emptyList() else listOf(
-            GlasmioHeaderGroup("actions", trailingActions, actionsStyle),
-        ),
+        trailing = trailingGroups,
         scrollState = scrollState,
         colors = colors,
     )
@@ -198,7 +237,7 @@ fun MeiloXPinnedPage(
             header.spec = spec
         }
     }
-    if (header == null) {
+    if (header == null && actionSearch == null) {
         // Standalone previews and isolated component tests keep a local toolbar.
         GlasmioPinnedPage(
             title = if (hidesHeading) "" else title, subtitle = subtitle.takeUnless { hidesHeading }, bottomPadding = bottomPadding, modifier = modifier,
@@ -230,12 +269,33 @@ fun MeiloXPinnedPage(
         start = IosPageHorizontalPadding, top = status + 72.dp + LocalMeiloXSearchTopPadding.current,
         end = IosPageHorizontalPadding, bottom = bottomPadding + 24.dp,
     )
-    GlasmioPageBody(
-        contentPadding = padding, modifier = modifier,
-        backgroundColor = backgroundColor ?: colors.groupedBackground,
-        backgroundBrush = backgroundBrush, background = background,
-        topBarBlurProgress = topBarBlurProgress, content = content,
-    )
+    val contentPadding = remember(padding, actionSearch) {
+        object : PaddingValues by padding {
+            override fun calculateTopPadding(): Dp = padding.calculateTopPadding() +
+                56.dp * (actionSearch?.progress?.value ?: 0f)
+        }
+    }
+    val body: @Composable () -> Unit = {
+        GlasmioPageBody(
+            contentPadding = contentPadding, modifier = modifier,
+            backgroundColor = backgroundColor ?: colors.groupedBackground,
+            backgroundBrush = backgroundBrush, background = background,
+            topBarBlurProgress = topBarBlurProgress, content = content,
+        )
+    }
+    if (header == null) {
+        val standaloneMotion = remember {
+            object : GlasmioHeaderMotion {
+                override val frame = mutableStateOf(GlasmioNavigationFrame(0, "standalone", "standalone"))
+            }
+        }
+        GlasmioNavigationScaffold(standaloneMotion, header = { spec }) {
+            body()
+            GlasmioPageTitle("standalone")
+        }
+    } else {
+        body()
+    }
 }
 
 /** The same page chrome remains available while a retained route reconnects to its service. */
@@ -269,6 +329,7 @@ fun MeiloXPinnedListPage(
     actions: @Composable () -> List<GlasmioHeaderAction> = { emptyList() },
     actionsStyle: GlasmioToolbarActionStyle = GlasmioToolbarActionStyle.Merged,
     actionsSeparationProgress: Float? = null,
+    actionSearch: GlasmioHeaderSearchState? = null,
     backgroundColor: Color? = null,
     backgroundBrush: Brush? = null,
     bottomPaddingValues: PaddingValues? = null,
@@ -285,6 +346,7 @@ fun MeiloXPinnedListPage(
         title = title, subtitle = subtitle, bottomPadding = bottomPadding, modifier = modifier,
         onNavigateBack = onNavigateBack, navigateBackContentDescription = navigateBackContentDescription,
         actions = actions, actionsStyle = actionsStyle, actionsSeparationProgress = actionsSeparationProgress,
+        actionSearch = actionSearch,
         collapseProgress = collapse, topBarBlurProgress = rememberGlasmioHeaderScrollEdge(listState, collapseEnterBreakpoint),
         backgroundColor = backgroundColor, backgroundBrush = backgroundBrush,
     ) { padding ->

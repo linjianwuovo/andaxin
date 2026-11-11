@@ -7,6 +7,9 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.material3.ripple
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -141,6 +144,7 @@ fun LyricScreen(
     controlsAutoHideBlocked: Boolean = false,
     lyricOffset: Dp = 48.dp,
     centerMainLyric: Boolean = false,
+    mainLyricAnchorFraction: Float? = null,
 ) {
     val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
@@ -167,6 +171,7 @@ fun LyricScreen(
     )
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val mainLyricAnchor = mainLyricAnchorFraction ?: if (centerMainLyric) 0.5f else null
     var lyricWidthPx by remember { mutableIntStateOf(0) }
     val manualScroll = remember(lyricData.lyricLine, playerConnection.player) {
         LyricManualScrollState()
@@ -208,9 +213,9 @@ fun LyricScreen(
                 interactionSource = remember { MutableInteractionSource() }
             ) { onToggleControls(true) }
     ) {
-        // Bounds of the bottom-right source badge, in this box's coordinates. The
-        // lower-half tap-to-toggle gesture runs on the Initial pass and consumes taps
-        // before children see them, so the badge region must be excluded explicitly.
+        // Hide visible controls on lower-half taps, excluding the source badge.
+        // While controls are hidden, lyric rows own the click and seek before
+        // their existing callback restores controls. Empty space uses the parent click.
         var badgeBounds by remember { mutableStateOf<Rect?>(null) }
         var badgeHostCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
         Box(
@@ -238,9 +243,9 @@ fun LyricScreen(
                             }
                             if (change.changedToUpIgnoreConsumed()) {
                                 released = true
-                                if (lowerHalf && !moved && !inBadge) {
+                                if (controlsVisible && lowerHalf && !moved && !inBadge) {
                                     change.consume()
-                                    onToggleControls(!controlsVisible)
+                                    onToggleControls(false)
                                 }
                             }
                             pressed = event.changes.any { it.pressed }
@@ -289,7 +294,7 @@ fun LyricScreen(
                         }
                     }
                     LifecycleStartedEffect(player, keepAliveZonePx, lyricOffsetPx, manualScroll, contentVisible, active, synchronizeEntryWithParent,
-                        centerMainLyric, lyricWidthPx, mainTextStyle, romanizationEnabled, lyricData.isVerbatim, textMeasurer, density) {
+                        mainLyricAnchor, lyricWidthPx, mainTextStyle, romanizationEnabled, lyricData.isVerbatim, textMeasurer, density) {
                         if (!contentVisible || !active) return@LifecycleStartedEffect
                         try {
                             // A retained host must position before its old frame becomes visible.
@@ -298,11 +303,11 @@ fun LyricScreen(
                             snapshotFlow { listState.layoutInfo.visibleItemsInfo.isNotEmpty() }
                                 .first { it }
                             var lastFocusIndex: Int? = null
-                            val mainCenters = mutableMapOf<Int, Int>()
-                            fun centerOffset(index: Int): Int = if (!centerMainLyric || lyricWidthPx <= 0) 0 else {
-                                mainCenters.getOrPut(index) {
-                                    mainLyricCenterOffset(lines[index], lyricData.isVerbatim, mainTextStyle,
-                                        romanizationEnabled, lyricWidthPx, textMeasurer, density).roundToInt()
+                            val mainOffsets = mutableMapOf<Int, Int>()
+                            fun anchorOffset(index: Int): Int = if (mainLyricAnchor == null || lyricWidthPx <= 0) 0 else {
+                                mainOffsets.getOrPut(index) {
+                                    mainLyricAnchorOffset(lines[index], lyricData.isVerbatim, mainTextStyle,
+                                        romanizationEnabled, lyricWidthPx, textMeasurer, density, mainLyricAnchor).roundToInt()
                                 }
                             }
                             var initialPositionPending = true
@@ -345,7 +350,7 @@ fun LyricScreen(
                                         if (!manualScroll.isBrowsing && !listState.isScrollInProgress) {
                                             if (snap) {
                                                 // Reset placement springs, retaining the text measurement cache.
-                                                listState.scrollToItem(focusIndex, centerOffset(focusIndex))
+                                                listState.scrollToItem(focusIndex, anchorOffset(focusIndex))
                                                 animatedPosition = position
                                                 placementGeneration++
                                                 jumped = true
@@ -356,10 +361,10 @@ fun LyricScreen(
                                                 }
                                                 if (target != null) {
                                                     val anchor = currentLayout.viewportStartOffset +
-                                                        lyricOffsetPx + keepAliveZonePx - centerOffset(focusIndex)
+                                                        lyricOffsetPx + keepAliveZonePx - anchorOffset(focusIndex)
                                                     listState.scrollBy((target.offset - anchor).toFloat())
                                                 } else {
-                                                    listState.scrollToItem(focusIndex, centerOffset(focusIndex))
+                                                    listState.scrollToItem(focusIndex, anchorOffset(focusIndex))
                                                 }
                                             }
                                             true
@@ -391,7 +396,7 @@ fun LyricScreen(
                         }
                     }
                     key(keepAliveZonePx) {
-                        Box(Modifier.fillMaxSize().padding(contentPadding)) {
+                        CompositionLocalProvider(LocalIndication provides ripple(color = Color.White)) {
                             PlayerLyricsView(
                                 showTranslation = translationEnabled,
                                 showPhonetic = romanizationEnabled,
@@ -431,7 +436,8 @@ fun LyricScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier
+                                modifier = Modifier.fillMaxSize()
+                                    .padding(contentPadding)
                                     .padding(vertical = rendererVerticalPadding)
                                     .onSizeChanged { lyricWidthPx = it.width }
                                     .graphicsLayer {
@@ -508,7 +514,7 @@ fun LyricScreen(
 }
 
 /** Matches the renderer's primary text bounds, excluding translation and line-level phonetics. */
-internal fun mainLyricCenterOffset(
+internal fun mainLyricAnchorOffset(
     line: ISyncedLine,
     isVerbatim: Boolean,
     style: TextStyle,
@@ -516,6 +522,7 @@ internal fun mainLyricCenterOffset(
     widthPx: Int,
     textMeasurer: TextMeasurer,
     density: Density,
+    anchorFraction: Float = 0.5f,
 ): Float = with(density) {
     val textWidth = (widthPx - 32.dp.roundToPx()).coerceAtLeast(1)
     if (line is KaraokeLine && isVerbatim) {
@@ -542,7 +549,7 @@ internal fun mainLyricCenterOffset(
         ).flatten()
         val top = positioned.minOfOrNull { it.position.y } ?: 0f
         val bottom = positioned.maxOfOrNull { it.position.y + it.textLayoutResult.size.height } ?: 0f
-        return 8.dp.toPx() + (top + bottom) / 2f
+        return 8.dp.toPx() + top + (bottom - top) * anchorFraction
     }
     val text = when (line) {
         is SyncedLine -> line.content
@@ -552,7 +559,7 @@ internal fun mainLyricCenterOffset(
     val height = textMeasurer.measure(text, style.copy(lineHeight = 1.2.em),
         constraints = Constraints(maxWidth = textWidth)).size.height
     val topPadding = if (line is SyncedLine) 12.dp else 8.dp
-    topPadding.toPx() + height / 2f
+    topPadding.toPx() + height * anchorFraction
 }
 
 /** Coordinates are local to the badge host; horizontal alignment survives footer motion. */

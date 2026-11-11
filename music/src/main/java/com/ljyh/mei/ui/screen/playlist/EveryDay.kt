@@ -21,6 +21,7 @@ import com.ljyh.mei.data.model.toMediaItem
 import com.ljyh.mei.data.model.toMediaMetadata
 import com.ljyh.mei.data.network.Resource
 import com.ljyh.mei.playback.queue.ListQueue
+import com.ljyh.mei.source.api.SourceErrorCode
 import com.ljyh.mei.source.api.Track
 import com.ljyh.mei.source.shared.OnlineDailyRecommendations
 import com.ljyh.mei.source.shared.SharedOnlineRepository
@@ -30,8 +31,11 @@ import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.navigation.MeiloXLoadingPage
 import com.ljyh.mei.ui.navigation.MeiloXPinnedPage
+import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.screen.source.SourceContentViewModel
 import com.ljyh.mei.ui.screen.source.SourceTrackActions
+import com.ljyh.mei.ui.screen.source.sourceCode
+import com.ljyh.mei.ui.screen.source.sourceErrorMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -44,13 +48,17 @@ import javax.inject.Inject
 @HiltViewModel
 class DailyRecommendationsViewModel @Inject constructor(onlineRepository: SharedOnlineRepository, savedStateHandle: SavedStateHandle) : ViewModel() {
     private val repository = onlineRepository.screen("daily-recommendations", savedStateHandle["providerId"])
+    val providerId: String? = savedStateHandle["providerId"]
     private val mutableState = MutableStateFlow<Resource<OnlineDailyRecommendations>>(Resource.Loading)
+    private val mutableError = MutableStateFlow<SourceErrorCode?>(null)
     val state = mutableState.asStateFlow()
+    val errorCode = mutableError.asStateFlow()
     private var job: Job? = null
     init {
         viewModelScope.launch {
             repository.sessionChanges.collect { owner ->
                 job?.cancel()
+                mutableError.value = null
                 mutableState.value = Resource.Error("音源已禁用、卸载或切换账号")
                 if (owner.isNotBlank()) refresh()
             }
@@ -60,9 +68,17 @@ class DailyRecommendationsViewModel @Inject constructor(onlineRepository: Shared
         job?.cancel()
         job = viewModelScope.launch {
             mutableState.value = Resource.Loading
+            mutableError.value = null
             try { mutableState.value = Resource.Success(repository.dailyRecommendations()) }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { mutableState.value = Resource.Error(failure.message.orEmpty()) }
+            catch (failure: Exception) {
+                val code = failure.sourceCode()
+                mutableError.value = code
+                mutableState.value = Resource.Error(
+                    if (code == SourceErrorCode.AUTH_REQUIRED || code == SourceErrorCode.AUTH_EXPIRED) "每日推荐需要登录网易云音源"
+                    else sourceErrorMessage(code)
+                )
+            }
         }
     }
 }
@@ -72,6 +88,7 @@ class DailyRecommendationsViewModel @Inject constructor(onlineRepository: Shared
 fun EveryDay(viewModel: DailyRecommendationsViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val songs by viewModel.state.collectAsState()
+    val errorCode by viewModel.errorCode.collectAsState()
     val nav = LocalNavController.current
     val player = LocalPlayerConnection.current
     val actions: SourceContentViewModel = hiltViewModel(key = "daily-track-actions")
@@ -101,6 +118,11 @@ fun EveryDay(viewModel: DailyRecommendationsViewModel = hiltViewModel()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 io.github.neoruaa.glasmio.ui.GlasmioGroupedList {
                     io.github.neoruaa.glasmio.ui.GlasmioListRow((songs as Resource.Error).message)
+                    if (errorCode == SourceErrorCode.AUTH_REQUIRED || errorCode == SourceErrorCode.AUTH_EXPIRED) {
+                        io.github.neoruaa.glasmio.ui.GlasmioListRow("登录网易云音乐", onClick = {
+                            Screen.NeteaseLogin.navigate(nav) { viewModel.providerId?.let { addQuery("providerId", it) } }
+                        })
+                    }
                     io.github.neoruaa.glasmio.ui.GlasmioListRow("重试", onClick = viewModel::refresh)
                 }
             }

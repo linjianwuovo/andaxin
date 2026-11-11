@@ -63,7 +63,6 @@ class ScriptNetworkPolicy(
         .followRedirects(true).followSslRedirects(true).retryOnConnectionFailure(false)
         .proxy(java.net.Proxy.NO_PROXY)
         .dns(Dns { host ->
-            validateHost(host)
             Dns.SYSTEM.lookup(host).also(::validateResolvedAddresses)
         })
         .addInterceptor { chain ->
@@ -116,11 +115,19 @@ class ScriptNetworkPolicy(
 
     internal val audioClient: OkHttpClient get() = transports().audio
 
-    fun validateUrl(value: String): HttpUrl {
+    fun validateUrl(value: String): HttpUrl = validateTransportUrl(value, requireGrantedHost = true)
+
+    /** Redirect targets may move to the canonical host selected by the service. */
+    internal fun validateRedirectUrl(value: String): HttpUrl = validateTransportUrl(value, requireGrantedHost = false)
+
+    private fun validateTransportUrl(value: String, requireGrantedHost: Boolean): HttpUrl {
         if (value.length > 8192) denied()
         val url = value.toHttpUrlOrNull() ?: denied()
-        if (url.scheme != "https" || url.port != 443 || url.username.isNotEmpty() || url.password.isNotEmpty() || url.fragment != null) denied()
-        validateHost(url.host)
+        if (url.username.isNotEmpty() || url.password.isNotEmpty() || url.fragment != null) denied()
+        if (requireGrantedHost) {
+            if (url.scheme != "https" || url.port != 443) denied()
+            validateHost(url.host)
+        } else if (url.scheme !in setOf("http", "https")) denied()
         return url
     }
 
@@ -156,12 +163,10 @@ class ScriptNetworkPolicy(
 
     /** Artwork streams directly into the host cache and never enters the script response buffer. */
     internal fun cacheArtwork(response: Response, file: java.io.File, ensureCurrent: () -> Unit): String {
-        if (response.code in 300..399) throw SourceException(SourceErrorCode.NETWORK)
         if (!response.isSuccessful) throw SourceException(
             if (response.code in setOf(404, 410)) SourceErrorCode.NOT_FOUND else SourceErrorCode.NETWORK,
         )
         val body = response.body ?: invalidResponse()
-        if (body.contentLength() > MAX_ARTWORK_BYTES) throw SourceResponseSizeException()
         ensureCurrent()
         val parent = file.parentFile ?: invalidResponse()
         java.nio.file.Files.createDirectories(parent.toPath())
@@ -170,13 +175,10 @@ class ScriptNetworkPolicy(
             body.byteStream().use { input ->
                 temporary.outputStream().use { output ->
                     val buffer = ByteArray(65_536)
-                    var written = 0L
                     while (true) {
                         ensureCurrent()
                         val count = input.read(buffer)
                         if (count < 0) break
-                        written += count
-                        if (written > MAX_ARTWORK_BYTES) throw SourceResponseSizeException()
                         output.write(buffer, 0, count)
                     }
                 }
@@ -190,7 +192,7 @@ class ScriptNetworkPolicy(
         var bytesRemaining = cached.sumOf { it.length() }
         var countRemaining = cached.size
         cached.filter { it != file }.forEach { old ->
-            if (bytesRemaining > MAX_ARTWORK_BYTES || countRemaining > 256) {
+            if (bytesRemaining > MAX_ARTWORK_CACHE_BYTES || countRemaining > 256) {
                 val size = old.length()
                 if (old.delete()) { bytesRemaining -= size; countRemaining-- }
             }
@@ -281,7 +283,6 @@ class ScriptNetworkPolicy(
 
     internal fun responsePayload(response: Response, encoding: String): JsonObject = transport {
         if (encoding !in setOf("utf8", "base64")) denied()
-        if (response.code in 300..399) throw SourceException(SourceErrorCode.NETWORK)
         val responseBody = response.body
         if (responseBody != null && responseBody.contentLength() > MAX_RESPONSE_BYTES) throw SourceResponseSizeException()
         val source = responseBody?.source()
@@ -338,7 +339,7 @@ class ScriptNetworkPolicy(
 
         const val MAX_REQUEST_BYTES = 256 * 1024
         const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-        internal const val MAX_ARTWORK_BYTES = 16L * 1024 * 1024
+        internal const val MAX_ARTWORK_CACHE_BYTES = 128L * 1024 * 1024
         internal const val API_CONCURRENCY = 4
         internal const val ARTWORK_CONCURRENCY = 2
         internal const val AUDIO_CONCURRENCY = 2

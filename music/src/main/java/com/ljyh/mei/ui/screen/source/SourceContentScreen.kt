@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import com.ljyh.mei.data.model.mediaId
+import com.ljyh.mei.data.model.supportsNeteaseSongActions
 import com.ljyh.mei.ui.screen.playlist.SongListDetailData
 import com.ljyh.mei.ui.screen.playlist.SongListDetailScreen
 import com.ljyh.mei.ui.screen.playlist.SongListLandscapeLayout
@@ -214,7 +215,7 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
     var savedError by remember(ref, state.providerVersion, state.accountRevision, contentRevision) { mutableStateOf<SourceErrorCode?>(null) }
     var savedAttempt by remember(ref) { mutableIntStateOf(0) }
     var query by rememberSaveable(ref) { mutableStateOf("") }
-    var searchActive by remember(ref) { mutableStateOf(false) }
+    var searchActive by rememberSaveable(ref) { mutableStateOf(false) }
     val play = rememberSourceQueuePlayer("source-${ref.providerId}-${ref.type.wireName}-${ref.contentId}", state.title,
         viewModel = viewModel, queueRequest = SourceContentRequest.Detail(ref))
     val playAll = rememberSourceQueuePlayer("source-${ref.providerId}-${ref.type.wireName}-${ref.contentId}", state.title,
@@ -369,6 +370,13 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
         val displayed = remember(matchingTracks, query) { sourceDetailMatches(matchingTracks, query) }
         val displayedMetadata = remember(displayed) { displayed.map { it.value.toMediaMetadata() } }
         val favoriteIds = rememberFavoriteTrackIds(displayedMetadata)
+        val listState = rememberLazyListState()
+        val locateTrack = if (ref is PlaylistRef && ref.providerId == ProviderIds.NETEASE &&
+            state.detail?.ref == ref && !searchActive && query.isBlank() && !selection.active) {
+            LocalPlayerConnection.current?.mediaMetadata?.collectAsState()?.value
+                ?.takeIf { it.supportsNeteaseSongActions }?.trackRef
+        } else null
+        val bottomPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
         val count = maxOf(playlist?.trackCount ?: album?.trackCount ?: 0, tracks.size)
         val detailMenu = detailMenuItems(
             downloadTitle = stringResource(R.string.album_download_all, count),
@@ -426,6 +434,7 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
             useCoverBackground = true, usePlaylistPortraitHeader = ref is PlaylistRef,
             landscapeLayout = if (ref is PlaylistRef) SongListLandscapeLayout.Split else SongListLandscapeLayout.AlbumHeader,
             showTrackArtwork = ref !is AlbumRef, hasLoadedContent = state.detail != null,
+            listState = listState,
             favoriteTrackIds = favoriteIds,
             trackNumber = { _, index -> (displayed.getOrNull(index)?.index ?: index) + 1 },
             footer = {
@@ -434,7 +443,16 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
                     GlasmioListRow(sourceErrorMessage(error), trailing = { Text("重试") }, onClick = { searchAttempt++ })
                 } }
             },
-            overlayContent = { SourceTrackActions(menu, { menu = null }, viewModel, playlist = playlist) },
+            overlayContent = {
+                locateTrack?.let { track ->
+                    SourceTrackLocateButton(
+                        viewModel, SourceContentRequest.Detail(ref), state, track, listState,
+                        leadingItems = 1, // Both layouts reserve a slot for the playlist hero.
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    )
+                }
+                SourceTrackActions(menu, { menu = null }, viewModel, playlist = playlist)
+            },
         )
         var retainedOrder by remember(ownerKey) { mutableStateOf<PlaylistOrderState<TrackRef>?>(null) }
         order?.let { current -> SideEffect { retainedOrder = current } }
@@ -732,7 +750,7 @@ fun SourceArtistCatalogScreen(ref: ArtistRef, albums: Boolean, viewModel: Source
             }
             sourceDetailPagingStatus(state, viewModel::refresh, {
                 if (query.text.isBlank()) viewModel.loadMore() else viewModel.continueArtistCatalogSearch()
-            }, automatic = query.text.isBlank())
+            }, automatic = false)
         }
         if (!state.loading && state.error == null && (if (albums) records.isEmpty() && !state.albumsHasMore else tracks.isEmpty() && !state.hasMore)) {
             item("artist-catalog-empty") {
