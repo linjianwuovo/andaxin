@@ -18,9 +18,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 
 internal const val PlayerSheetStiffness = 300f
-internal const val PlayerBackgroundHandoffEnd = 0.99f
+// The container hands its background over to the glass only once it has already
+// shrunk close to the capsule. A wide handoff window left the glass slab at full
+// sheet size while the mesh under it was still fading, which read as a light flash.
+internal const val PlayerBackgroundHandoffStart = 0.04f
+internal const val PlayerBackgroundHandoffEnd = 0.14f
 internal const val PlayerMiniContentFadeEnd = 0.8f
-internal const val PlayerPressHighlightFadeEnd = PlayerBackgroundHandoffEnd
+internal const val PlayerPressHighlightFadeEnd = 0.99f
 internal const val PlayerContentAppearStart = 0.3f
 internal const val PlayerContentAppearEnd = 0.9f
 internal const val PlayerReleasePositionDamping = 0.9f
@@ -42,12 +46,11 @@ internal fun GlasmioBottomSheetState.syncPlaybackVisibility(hasCurrentMediaItem:
 
 internal fun easeInCubic(value: Float): Float = value.coerceIn(0f, 1f).let { it * it * it }
 internal fun easeOutCubic(value: Float): Float = 1f - easeInCubic(1f - value)
-/**
- * The player's own mesh stays under the container until it is nearly the capsule.
- * Easing in revealed a full-screen light glass slab on the way back to the mini
- * player, so the handover eases out and happens while the container is still small.
- */
-internal fun playerBackgroundAlpha(progress: Float) = easeOutCubic(progress / PlayerBackgroundHandoffEnd)
+/** 1 while the mesh owns the container, 0 once the glass has taken over near the capsule. */
+internal fun playerBackgroundAlpha(progress: Float): Float = easeOutCubic(
+    ((progress - PlayerBackgroundHandoffStart) /
+        (PlayerBackgroundHandoffEnd - PlayerBackgroundHandoffStart)).coerceIn(0f, 1f),
+)
 internal fun playerPressHighlightAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerPressHighlightFadeEnd)
 internal fun playerPressHighlightRect(sourceSize: Size, container: Rect) = Rect(container.topLeft, sourceSize)
 internal fun playerMiniContentAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerMiniContentFadeEnd)

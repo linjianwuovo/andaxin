@@ -27,8 +27,8 @@ android {
         // ios 分支外观底座=Glasmio：其 AAR 声明 minSdk 33，manifest 合并实测顶死 26
         minSdk = 33
         targetSdk = 35
-        versionCode = 153
-        versionName = "0.9.14"
+        versionCode = 154
+        versionName = "0.9.15"
 
         // 只出 arm64：装机就是米11 和那台 OPPO，多一套 abi 只是让包胖 30%
         ndk { abiFilters += "arm64-v8a" }
