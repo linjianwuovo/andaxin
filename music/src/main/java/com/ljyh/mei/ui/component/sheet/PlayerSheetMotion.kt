@@ -18,18 +18,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 
 internal const val PlayerSheetStiffness = 300f
-// The album mesh has to cover the container while it still reads as a sheet,
-// but it is clipped down to the capsule on the way back, so the last stretch is
-// a grey slab the size of the pill that ends by popping. Dissolve it linearly
-// instead, starting well inside the shrink so the page never shows through a
-// half-screen sheet.
-internal const val PlayerBackgroundHandoffStart = 0.03f
-internal const val PlayerBackgroundHandoffEnd = 0.38f
-// The pill's own labels have to outlive that dissolve, otherwise the capsule
-// hands over while it is still empty.
-internal const val PlayerMiniContentFadeStart = 0.30f
-internal const val PlayerMiniContentFadeEnd = 0.85f
-internal const val PlayerPressHighlightFadeEnd = 0.99f
+internal const val PlayerBackgroundHandoffEnd = 0.99f
+internal const val PlayerMiniContentFadeEnd = 0.8f
+internal const val PlayerPressHighlightFadeEnd = PlayerBackgroundHandoffEnd
 internal const val PlayerContentAppearStart = 0.3f
 internal const val PlayerContentAppearEnd = 0.9f
 internal const val PlayerReleasePositionDamping = 0.9f
@@ -51,17 +42,10 @@ internal fun GlasmioBottomSheetState.syncPlaybackVisibility(hasCurrentMediaItem:
 
 internal fun easeInCubic(value: Float): Float = value.coerceIn(0f, 1f).let { it * it * it }
 internal fun easeOutCubic(value: Float): Float = 1f - easeInCubic(1f - value)
-/** 1 while the mesh owns the container, 0 once the glass has taken over near the capsule. */
-internal fun playerBackgroundAlpha(progress: Float): Float = (
-    (progress - PlayerBackgroundHandoffStart) /
-        (PlayerBackgroundHandoffEnd - PlayerBackgroundHandoffStart)
-    ).coerceIn(0f, 1f)
+internal fun playerBackgroundAlpha(progress: Float) = easeInCubic(progress / PlayerBackgroundHandoffEnd)
 internal fun playerPressHighlightAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerPressHighlightFadeEnd)
 internal fun playerPressHighlightRect(sourceSize: Size, container: Rect) = Rect(container.topLeft, sourceSize)
-internal fun playerMiniContentAlpha(progress: Float) = 1f - easeInCubic(
-    ((progress - PlayerMiniContentFadeStart) /
-        (PlayerMiniContentFadeEnd - PlayerMiniContentFadeStart)).coerceIn(0f, 1f),
-)
+internal fun playerMiniContentAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerMiniContentFadeEnd)
 internal fun playerContentAlpha(progress: Float) = easeInCubic(
     (progress - PlayerContentAppearStart) / (PlayerContentAppearEnd - PlayerContentAppearStart),
 )
@@ -190,14 +174,14 @@ internal class PlayerSheetMotionPath(initiallyClosing: Boolean) {
 internal fun playerClosingCornerRadius(source: Float, screen: Float, progress: Float): Float =
     mix(source, screen, progress.coerceIn(0f, 1f))
 
-/** Preserve the measured leading inset as the container moves; the capsule keeps its resting row. */
+/** Preserve the measured leading and top insets as the container moves. */
 internal fun playerMiniContentOrigin(
     content: Rect,
     sourceContainer: Rect,
     container: Rect,
 ): Offset = Offset(
     content.left + container.left - sourceContainer.left,
-    content.top,
+    content.top + container.top - sourceContainer.top,
 )
 
 internal fun playerMiniTrailingOrigin(
