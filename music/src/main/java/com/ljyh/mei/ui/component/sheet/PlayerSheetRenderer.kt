@@ -825,10 +825,9 @@ fun BottomSheet(
                     val miniAlpha = playerMiniContentAlpha(p)
                     if (miniAlpha > 0f && layers.miniContent.size.width > 0) {
                         layers.miniContent.alpha = miniAlpha
-                        val offset = playerMiniContentOrigin(
-                            layers.sourceMiniContent, layers.sourceContainer,
-                            globalBounds,
-                        ) - layers.hostBounds.topLeft
+                        // The capsule keeps the place it will occupy once the sheet is gone, so
+                        // the handoff never drags it along with the collapsing container.
+                        val offset = layers.sourceMiniContent.topLeft - layers.hostBounds.topLeft
                         withTransform({
                             translate(offset.x, offset.y)
                             scale(layers.miniScaleX, layers.miniScaleY, Offset.Zero)

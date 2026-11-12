@@ -8,7 +8,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -282,16 +280,13 @@ private fun MiniPlayerContent(
                         mediaMetadata = it,
                         error = error,
                         onCoverBoundsChanged = onCoverBoundsChanged,
-                        modifier = Modifier.padding(horizontal = 2.dp),
+                        modifier = Modifier,
                     )
                 }
             }
 
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
-                Row(
-                    modifier = Modifier.offset(x = (-4).dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         modifier = Modifier.size(40.dp).semantics { contentDescription = playPauseDescription },
                         onClick = {
@@ -315,12 +310,7 @@ private fun MiniPlayerContent(
                                 systemName = icon,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurface,
-                                size = when (icon) {
-                                    "pause.fill" -> 18.dp
-                                    "play.fill" -> 16.dp
-                                    else -> 22.dp
-                                },
-                                modifier = if (icon == "play.fill") Modifier.offset(x = 1.dp) else Modifier,
+                                size = 22.dp,
                                 weight = FontWeight.SemiBold,
                             )
                         }
@@ -352,7 +342,7 @@ private fun MiniPlayerContent(
                                     forward = true,
                                     clickCount = nextClickCount,
                                     tint = MaterialTheme.colorScheme.onSurface,
-                                    size = 26.dp,
+                                    size = 22.dp,
                                     weight = FontWeight.SemiBold,
                                 )
                             }
@@ -378,10 +368,10 @@ fun MiniMediaInfo(
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(start = 4.dp),
+        modifier = modifier,
     ) {
         Box(modifier = Modifier.padding(4.dp)) {
-            Spacer(modifier = Modifier.size(28.dp))
+            Spacer(modifier = Modifier.size(32.dp))
             val artwork = LocalPlayerArtwork.current
             AnimatedContent(
                 targetState = artwork,
@@ -390,7 +380,7 @@ fun MiniMediaInfo(
                         .togetherWith(fadeOut(tween(400)))
                 },
                 label = "MiniCoverTransition",
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(32.dp)
                     .onGloballyPositioned { coordinates ->
                         val bounds = coordinates.boundsInRoot()
                         sheet?.miniArtworkCoordinates = coordinates
@@ -416,7 +406,7 @@ fun MiniMediaInfo(
             ) {
                 Box(
                     Modifier
-                        .size(28.dp)
+                        .size(32.dp)
                         .background(
                             color = Color.Black.copy(alpha = 0.6f),
                             shape = ContinuousRoundedRectangle(MiniPlayerArtworkCornerRadius),
@@ -438,13 +428,13 @@ fun MiniMediaInfo(
             metadata = mediaMetadata,
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 4.dp, end = 6.dp),
+                .padding(start = 6.dp, end = 6.dp),
         ) { track, allowMarquee ->
-            Column(verticalArrangement = Arrangement.spacedBy((-1).dp)) {
+            Column {
                 AppleMusicMarqueeText(
                     text = track.title,
                     style = LocalTextStyle.current.copy(
-                        fontSize = 13.sp,
+                        fontSize = 15.sp,
                         letterSpacing = 0.sp,
                         fontWeight = FontWeight.SemiBold,
                     ),
@@ -455,7 +445,7 @@ fun MiniMediaInfo(
                 AppleMusicMarqueeText(
                     text = track.artists.joinToString { it.name },
                     style = LocalTextStyle.current.copy(
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                     ),
                     color = MaterialTheme.colorScheme.onSurface,
                     edgeWidth = if (allowMarquee) 8.dp else 0.dp,

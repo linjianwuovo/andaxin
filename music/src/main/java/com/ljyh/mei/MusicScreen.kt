@@ -765,6 +765,13 @@ fun MusicScreen(
             val collapsedBottomReservation = when {
                 active && !isLandscape -> navigationBottomMargin + searchToolbarSurfaceHeight -
                     searchToolbarVerticalOffset + searchControlSpacing
+                // 封面模式收下去要正好压在宿主首页那条胶囊上，而宿主是按"底栏外沿 + 8dp"
+                // 摆的（ShelfBottomBar 的 margin 再叠 MusicBar 的 8dp）。这里的
+                // navigationBottomMargin 还多带了一份"悬浮内容额外间距"（同一个默认 8dp 的偏好），
+                // 不扣掉就会低一格 —— 收合最后一帧是明确的 8dp 跳动。
+                coverOnly && !isLandscape ->
+                    navigationBottomMargin - bottomFloatingContentExtraSpacing +
+                        NavigationBarHeight - NavigationBarBottomMargin
                 shouldAllowNavigationBar && !isLandscape ->
                     navigationBottomMargin + NavigationBarHeight - NavigationBarBottomMargin
                 else -> navigationBottomMargin

@@ -74,8 +74,13 @@ class MusicBarState {
     }
 }
 
+/**
+ * 提到宿主那一层持有：封面叠上来时这条胶囊会整段离开组合，
+ * 状态若跟着它一起销毁，收合回来要先重新 bindService 拿曲目，
+ * 那几帧什么都没画 —— 用户看到的是一次空档闪烁。
+ */
 @Composable
-private fun rememberMusicBarState(): MusicBarState {
+internal fun rememberMusicBarState(): MusicBarState {
     val context = LocalContext.current
     val state = remember { MusicBarState() }
     DisposableEffect(context) {
@@ -106,11 +111,11 @@ private fun rememberMusicBarState(): MusicBarState {
  */
 @Composable
 fun MusicBar(
+    state: MusicBarState,
     open: () -> Unit,
     compactProgress: State<Float>,
     modifier: Modifier = Modifier,
 ) {
-    val state = rememberMusicBarState()
     val title = state.title ?: return
 
     MiniPlayerBar(

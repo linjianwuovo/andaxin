@@ -564,6 +564,10 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     // 用户看到的就是"先进了音乐界面、再弹出封面"两段动作。
     var coverOpen by remember { mutableStateOf(false) }
 
+    // 曲目状态挂在这一层：封面叠上去时首页那条胶囊会离开组合，
+    // 状态若跟着走，收合回来要重新 bindService 才拿得到标题 —— 中间几帧是空的。
+    val musicBarState = com.andaxin.feature.music.rememberMusicBarState()
+
     // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
     val graph = LocalAppGraph.current
     val jump by graph.tabJump.collectAsStateWithLifecycle()
@@ -702,6 +706,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                     LocalGlasmioBlurBackdrop provides shelfBackdrop,
                 ) {
                     com.andaxin.feature.music.MusicBar(
+                        state = musicBarState,
                         // 封面不开新页面：Navigation 的转场会把上一页拆掉，涨封面的过程中
                         // 底下露出的是 NavHost 的纯色底，看起来就是"先进音乐界面再弹封面"。
                         // 这里改成叠一层 overlay，首页始终在组合里，胶囊从原位涨起来。

@@ -18,9 +18,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 
 internal const val PlayerSheetStiffness = 300f
-internal const val PlayerBackgroundHandoffEnd = 0.99f
-internal const val PlayerMiniContentFadeEnd = 0.8f
-internal const val PlayerPressHighlightFadeEnd = PlayerBackgroundHandoffEnd
+internal const val PlayerBackgroundHandoffEnd = 0.06f
+internal const val PlayerPressHighlightFadeEnd = 0.99f
 internal const val PlayerContentAppearStart = 0.3f
 internal const val PlayerContentAppearEnd = 0.9f
 internal const val PlayerReleasePositionDamping = 0.9f
@@ -42,10 +41,13 @@ internal fun GlasmioBottomSheetState.syncPlaybackVisibility(hasCurrentMediaItem:
 
 internal fun easeInCubic(value: Float): Float = value.coerceIn(0f, 1f).let { it * it * it }
 internal fun easeOutCubic(value: Float): Float = 1f - easeInCubic(1f - value)
-internal fun playerBackgroundAlpha(progress: Float) = easeInCubic(progress / PlayerBackgroundHandoffEnd)
+/** The backdrop covers the shell until it is nearly the capsule, so the glass never shows as a bare slab. */
+internal fun playerBackgroundAlpha(progress: Float) =
+    (progress.coerceIn(0f, 1f) / PlayerBackgroundHandoffEnd).coerceIn(0f, 1f)
 internal fun playerPressHighlightAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerPressHighlightFadeEnd)
 internal fun playerPressHighlightRect(sourceSize: Size, container: Rect) = Rect(container.topLeft, sourceSize)
-internal fun playerMiniContentAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerMiniContentFadeEnd)
+/** Capsule content rides the same handoff as the backdrop, so it never floats over the shell. */
+internal fun playerMiniContentAlpha(progress: Float) = 1f - playerBackgroundAlpha(progress)
 internal fun playerContentAlpha(progress: Float) = easeInCubic(
     (progress - PlayerContentAppearStart) / (PlayerContentAppearEnd - PlayerContentAppearStart),
 )
@@ -173,16 +175,6 @@ internal class PlayerSheetMotionPath(initiallyClosing: Boolean) {
 
 internal fun playerClosingCornerRadius(source: Float, screen: Float, progress: Float): Float =
     mix(source, screen, progress.coerceIn(0f, 1f))
-
-/** Preserve the measured leading and top insets as the container moves. */
-internal fun playerMiniContentOrigin(
-    content: Rect,
-    sourceContainer: Rect,
-    container: Rect,
-): Offset = Offset(
-    content.left + container.left - sourceContainer.left,
-    content.top + container.top - sourceContainer.top,
-)
 
 internal fun playerMiniTrailingOrigin(
     content: Rect,
