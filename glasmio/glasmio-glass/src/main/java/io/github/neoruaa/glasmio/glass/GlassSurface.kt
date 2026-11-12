@@ -161,6 +161,14 @@ internal fun adaptiveGlassContentColors(
 /** Global opacity control for the navigation glass box-shadow stack. */
 const val GlassBoxShadowAlpha = 0.3f
 
+/**
+ * Distance from either end of a morph clock that still counts as the endpoint.
+ *
+ * Springs settle on their visibility threshold, not on exactly 0f/1f, so without this band a rest
+ * state of 1e-4 kept the morph renderer attached and the surface lost its normal material.
+ */
+private const val MorphEndpointEpsilon = 1e-3f
+
 /** Shared liquid drag deformation used by glass controls and animated glass shells. */
 fun GraphicsLayerScope.applyGlassDragScale(
     pressProgress: Float,
@@ -1092,7 +1100,11 @@ fun GlassSurface(
     val surfaceBackdrop = if (sampleBackdrop && appearance.usesBackdrop) backdrop else emptyBackdrop()
     val morphing = remember(morphProgress) {
         derivedStateOf {
-            morphProgress?.value?.let { it != 0f && it != 1f } == true
+            // Springs settle inside their visibility threshold instead of landing on the exact
+            // endpoint, so a residual 1e-4 used to keep this true forever: the morph renderer
+            // stayed attached at rest, the normal material was never drawn again, and the surface
+            // read as a bare transparent strip. Treat the endpoints as a band.
+            morphProgress?.value?.let { it > MorphEndpointEpsilon && it < 1f - MorphEndpointEpsilon } == true
         }
     }.value
     val morphGlassModifier = if (morphProgress != null && resolvedStyle == GlassSurfaceStyle.Navigation &&

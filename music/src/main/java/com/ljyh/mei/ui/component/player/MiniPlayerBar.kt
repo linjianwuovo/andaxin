@@ -104,6 +104,19 @@ fun MiniPlayerBar(
     val showNextButton by remember(compactProgress) {
         derivedStateOf { 1f - compactProgress.value.coerceIn(0f, 1f) > 0.001f }
     }
+    // morphProgress 吃的是同一颗物理弹簧（MeiloXNavigationScrollState 的 nativeNavigationSpring，
+    // dampingRatio=0.8，注释就写着 "including its small overshoot"），收敛到端点时会停在
+    // ±1e-4 这种非零余量上。而玻璃库只认严格端点：GlassSurface.kt:1093-1097
+    // `it != 0f && it != 1f` → morphing=true，胶囊就留在 GlassMorphRenderer 的离屏捕获分支，
+    // 正常材质（navigationGlassBackgroundResolved）不再绘制，静止后整条胶囊只剩内容和描边
+    // ——就是用户报的"滑动后停止胶囊变透明"。这里把端点吸死，中间段仍是连续值，动画不受影响。
+    val morphProgress = remember(compactProgress) {
+        derivedStateOf {
+            compactProgress.value.let { p ->
+                if (p < 0.001f) 0f else if (p > 0.999f) 1f else p
+            }
+        }
+    }
     // 材质与底栏统一（m06119）：底色走 colors.container（RootShell.shelfGlassColors 已对齐 MeiloX
     // 的 #F8F8FA@0.64 / 暗 #1C1C1E@0.54），与 GlassBottomBar 用的是同一个键。
     //
@@ -122,7 +135,7 @@ fun MiniPlayerBar(
         // 收胶囊时玻璃从"整条横条"变成"右侧那颗球"：morphProgress 一离开 0 就切到
         // GlassMorphRenderer 那条离屏捕获路径，morphVerticalTravel 让捕获带跟着往下让，
         // 否则球下方的内容会被采样成横条形状的一整块。数值与 MiniPlayer.kt:176-177 一致。
-        morphProgress = compactProgress,
+        morphProgress = morphProgress,
         morphVerticalTravel = NavigationBarHeight - 16.dp,
         onClick = onClick,
     ) {

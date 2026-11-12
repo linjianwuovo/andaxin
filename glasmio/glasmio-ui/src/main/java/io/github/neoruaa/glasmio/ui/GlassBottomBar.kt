@@ -130,6 +130,14 @@ private val ExpandedNavigationItemHeight = 54.dp
 private val ExpandedNavigationItemMinWidth = 75.dp
 private val NavigationItemIconClearance = 4.dp
 
+/**
+ * Distance from either end of the collapse clock that still counts as the endpoint.
+ *
+ * The driving spring settles on its visibility threshold instead of exactly 0f/1f, so a strict
+ * comparison left the morph renderer attached at rest and the bar lost its normal material.
+ */
+private const val BottomBarMorphEndpointEpsilon = 1e-3f
+
 private data class NavigationTabGeometry(val widthPx: Float, val stepPx: Float) {
     fun center(index: Float): Float = widthPx / 2f + index * stepPx
 }
@@ -269,7 +277,10 @@ fun <T> GlasmioNavigationBar(
         derivedStateOf { compactProgress.value.coerceIn(0f, 1f) }
     }
     val morphing by remember(compactProgress) {
-        derivedStateOf { compactProgress.value != 0f && compactProgress.value != 1f }
+        derivedStateOf {
+            val progress = compactProgress.value
+            progress > BottomBarMorphEndpointEpsilon && progress < 1f - BottomBarMorphEndpointEpsilon
+        }
     }
     val compactMode by remember(compactState) {
         derivedStateOf { compactState.value > 0f }
