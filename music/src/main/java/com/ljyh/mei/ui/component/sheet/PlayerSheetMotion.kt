@@ -42,7 +42,12 @@ internal fun GlasmioBottomSheetState.syncPlaybackVisibility(hasCurrentMediaItem:
 
 internal fun easeInCubic(value: Float): Float = value.coerceIn(0f, 1f).let { it * it * it }
 internal fun easeOutCubic(value: Float): Float = 1f - easeInCubic(1f - value)
-internal fun playerBackgroundAlpha(progress: Float) = easeInCubic(progress / PlayerBackgroundHandoffEnd)
+/**
+ * The player's own mesh stays under the container until it is nearly the capsule.
+ * Easing in revealed a full-screen light glass slab on the way back to the mini
+ * player, so the handover eases out and happens while the container is still small.
+ */
+internal fun playerBackgroundAlpha(progress: Float) = easeOutCubic(progress / PlayerBackgroundHandoffEnd)
 internal fun playerPressHighlightAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerPressHighlightFadeEnd)
 internal fun playerPressHighlightRect(sourceSize: Size, container: Rect) = Rect(container.topLeft, sourceSize)
 internal fun playerMiniContentAlpha(progress: Float) = 1f - easeOutCubic(progress / PlayerMiniContentFadeEnd)
