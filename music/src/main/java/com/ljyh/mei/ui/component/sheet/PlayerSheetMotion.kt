@@ -190,14 +190,14 @@ internal class PlayerSheetMotionPath(initiallyClosing: Boolean) {
 internal fun playerClosingCornerRadius(source: Float, screen: Float, progress: Float): Float =
     mix(source, screen, progress.coerceIn(0f, 1f))
 
-/** Preserve the measured leading and top insets as the container moves. */
+/** Preserve the measured leading inset as the container moves; the capsule keeps its resting row. */
 internal fun playerMiniContentOrigin(
     content: Rect,
     sourceContainer: Rect,
     container: Rect,
 ): Offset = Offset(
     content.left + container.left - sourceContainer.left,
-    content.top + container.top - sourceContainer.top,
+    content.top,
 )
 
 internal fun playerMiniTrailingOrigin(
