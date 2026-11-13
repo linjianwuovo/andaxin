@@ -78,3 +78,5 @@ AI 课堂那一屏例外：它只问真接口，没登录就直接说拿不到�
 ## 许可
 
 Apache-2.0，全文见 [LICENSE](LICENSE)。第三方组件的许可、机制参考的来源、以及和轻小信那条线（MIT）的关系，逐条列在 [NOTICE](NOTICE)。
+
+带音乐屏的那一版不在这里：[安大信·随身听](https://github.com/linjianwuovo/andaxin-walkman)。它的音乐屏（music/）派生自 MeiloX 1.55.1，上游是 GPLv3，静态链接后整个 APK 必须按 GPLv3 分发，与本仓的 Apache-2.0 无法共存，所以单独一个仓维护。本仓于 0.8.95 起不再包含任何 GPL 派生代码。
