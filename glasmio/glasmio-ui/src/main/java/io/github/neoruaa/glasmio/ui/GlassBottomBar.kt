@@ -257,6 +257,8 @@ internal fun navigationLensSourceColorFilter(
  * The outer glass keeps the capsule-to-circle navigation morph. The indicator samples the
  * actual material separately from the raw selected row, preserving each symbol's native metrics.
  * [onItemBoundsChanged] reports each visible item's interactive bounds in window coordinates.
+ * [externalSelectionProgress] drives the indicator from the selected tab out to a detached control
+ * that lives [externalSelectionTrailingOffsetPx] past the trailing edge.
  */
 @Composable
 fun <T> GlasmioNavigationBar(
@@ -271,6 +273,8 @@ fun <T> GlasmioNavigationBar(
     onItemBoundsChanged: ((T, Rect) -> Unit)? = null,
     compactItem: GlasmioTabItem<T>? = null,
     onItemIconBoundsChanged: ((T, Rect) -> Unit)? = null,
+    externalSelectionProgress: State<Float>? = null,
+    externalSelectionTrailingOffsetPx: Float = 0f,
 ) {
     require(items.isNotEmpty())
     val compactState = remember(compactProgress) {
@@ -338,6 +342,18 @@ fun <T> GlasmioNavigationBar(
         val compactWidthPx = with(density) { compactSize.toPx() }
         val compactInsetPx = with(density) { (NavigationBarSurfaceHeight - compactSize).toPx() / 2f }
         val expandedHeightPx = with(density) { NavigationBarSurfaceHeight.toPx() }
+        // 0 停在本栏选中格，1 停在栏外那枚独立圆钮上。圆钮不在本栏的测量范围内，所以它的中心
+        // 只能按"右边缘 + 间隙 + 半径"算出来（RTL 镜像到左侧）。
+        val externalSelectionFraction: () -> Float = {
+            externalSelectionProgress?.value?.coerceIn(0f, 1f) ?: 0f
+        }
+        val externalSelectionRest: () -> Float = { 1f - externalSelectionFraction() }
+        val externalSelectionDiameterPx = expandedHeightPx
+        val externalSelectionCenterPx = if (isLtr) {
+            fullWidthPx + externalSelectionTrailingOffsetPx
+        } else {
+            -externalSelectionTrailingOffsetPx
+        }
         val surfaceGeometry = remember(
             compactProgress, fullWidthPx, compactWidthPx, expandedHeightPx, compactInsetPx, density, compactSize,
         ) {
@@ -399,14 +415,27 @@ fun <T> GlasmioNavigationBar(
         }
         val indicatorSizeModifier = remember(
             compactState, expandedTabWidthPx, compactInnerWidthPx, compactWidthPx, compactSize,
+            externalSelectionProgress, externalSelectionDiameterPx, density,
         ) {
             Modifier.layout { measurable, constraints ->
                 val progress = compactState.value
                 val settled = progress >= 1f
-                val width = constraints.constrainWidth((if (settled) compactWidthPx else
-                    lerp(expandedTabWidthPx, compactInnerWidthPx, progress)).roundToInt())
-                val height = constraints.constrainHeight((if (settled) compactSize else
-                    androidx.compose.ui.unit.lerp(ExpandedNavigationItemHeight, compactSize - 8.dp, progress)).roundToPx())
+                val external = externalSelectionFraction()
+                val restingWidth = if (settled) compactWidthPx else
+                    lerp(expandedTabWidthPx, compactInnerWidthPx, progress)
+                val restingHeight = if (settled) compactSize else
+                    androidx.compose.ui.unit.lerp(ExpandedNavigationItemHeight, compactSize - 8.dp, progress)
+                // 滑出去这一段要长成圆钮那么大（正圆），否则停在圆钮里是一枚瘦胶囊。
+                val width = constraints.constrainWidth(
+                    lerp(restingWidth, externalSelectionDiameterPx, external).roundToInt(),
+                )
+                val height = constraints.constrainHeight(
+                    androidx.compose.ui.unit.lerp(
+                        restingHeight,
+                        with(density) { externalSelectionDiameterPx.toDp() },
+                        external,
+                    ).roundToPx(),
+                )
                 val placeable = measurable.measure(androidx.compose.ui.unit.Constraints.fixed(width, height))
                 layout(width, height) { placeable.placeRelative(0, 0) }
             }
@@ -733,11 +762,15 @@ fun <T> GlasmioNavigationBar(
             expandedTabs,
             compactInsetPx,
             compactProgress,
+            externalSelectionProgress,
+            externalSelectionDiameterPx,
+            externalSelectionCenterPx,
         ) {
             {
                 // Follow the current tab center while the capsule shrinks, then converge to
                 // the compact center. This keeps the first, middle and last tabs symmetric.
                 val progress = compactState.value
+                val external = externalSelectionFraction()
                 val currentWidth = morphSurfaceWidthPx(fullWidthPx, compactWidthPx, progress)
                 val expandedTabCenter = expandedTabs.center(dragAnimation.value)
                 val tabCenter = if (isLtr) {
@@ -745,11 +778,14 @@ fun <T> GlasmioNavigationBar(
                 } else {
                     fullWidthPx - paddingPx - expandedTabCenter
                 }
-                val indicatorWidth = if (progress >= 1f) {
+                val restingWidth = if (progress >= 1f) {
                     compactWidthPx
                 } else {
                     lerp(expandedTabWidthPx, compactInnerWidthPx, progress)
                 }
+                // Must stay in step with indicatorSizeModifier, which has already grown the
+                // indicator to the detached control's diameter by the time external reaches 1.
+                val indicatorWidth = lerp(restingWidth, externalSelectionDiameterPx, external)
                 if (progress >= 1f) {
                     // The transparent compact interaction target follows the material center.
                     val compactOffset = (currentWidth - compactWidthPx).coerceAtLeast(0f) / 2f
@@ -760,10 +796,19 @@ fun <T> GlasmioNavigationBar(
                         compactWidthPx / 2f - indicatorWidth / 2f,
                         progress,
                     )
-                    val indicatorLeft = targetIndicatorLeft.coerceIn(
+                    var indicatorLeft = targetIndicatorLeft.coerceIn(
                         paddingPx,
-                        currentWidth - paddingPx - indicatorWidth,
+                        (currentWidth - paddingPx - indicatorWidth).coerceAtLeast(paddingPx),
                     )
+                    if (external > 0f) {
+                        // 圆钮落在栏体之外，clamp 的取值区间根本到不了那里，所以越过它
+                        // 直接按"圆钮中心 - 半径"对齐；两端重合时这一步是连续的外推。
+                        indicatorLeft = lerp(
+                            indicatorLeft,
+                            externalSelectionCenterPx - indicatorWidth / 2f,
+                            external,
+                        )
+                    }
                     val surfaceBaseLeft = if (isLtr) 0f else fullWidthPx - currentWidth
                     val directionalBase = if (isLtr) 0f else fullWidthPx - indicatorWidth
                     val fraction = (offsetAnimation.value / fullWidthPx).fastCoerceIn(-1f, 1f)
@@ -781,6 +826,7 @@ fun <T> GlasmioNavigationBar(
             innerGlassVisibilityState,
             selectionFeedbackEnabled,
             panelPressScale,
+            externalSelectionProgress,
         ) {
             {
                 val velocity = if (selectionFeedbackEnabled.value) dragAnimation.velocity / 10f else 0f
@@ -788,7 +834,8 @@ fun <T> GlasmioNavigationBar(
                 scaleY = panelPressScale.value * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
                 // drawBackdrop installs this block on the backdrop layer itself. Keep the
                 // complete refractive surface, highlight and shadows on the same alpha curve.
-                alpha = innerGlassVisibilityState.value
+                // 滑到圆钮上时这枚水滴要让位：圆钮自己就画着一层玻璃，两块叠一起会发灰。
+                alpha = innerGlassVisibilityState.value * externalSelectionRest()
             }
         }
         val indicatorBackdropModifier = if (hasSelection && !indicatorSettled) {
@@ -911,11 +958,13 @@ fun <T> GlasmioNavigationBar(
                         horizontalInsetPx = paddingPx,
                         expandedTabWidthPx = expandedTabWidthPx,
                         selectedContentLateScale = selectedContentLateScaleProvider,
-                        labelAlpha = tabContentAlpha,
+                        labelAlpha = { tabContentAlpha() * externalSelectionRest() },
                         selectedIconColorFilter = selectedIconColorFilterState,
                         contentColor = colors.content,
                         panelScale = selectedTabPanelScale,
-                        iconAlpha = if (compactItem != null) tabContentAlpha else null,
+                        iconAlpha = {
+                            (if (compactItem != null) tabContentAlpha() else 1f) * externalSelectionRest()
+                        },
                         onIconBoundsChanged = onItemIconBoundsChanged?.let { callback ->
                             { bounds -> callback(selectedItem.key, bounds) }
                         },
@@ -932,7 +981,7 @@ fun <T> GlasmioNavigationBar(
                         expandedTabWidthPx = expandedTabWidthPx,
                         selectedContentLateScale = selectedContentLateScaleProvider,
                         labelAlpha = { 0f },
-                        iconAlpha = { compactState.value },
+                        iconAlpha = { compactState.value * externalSelectionRest() },
                         selectedIconColorFilter = null,
                         contentColor = colors.content,
                         panelScale = selectedTabPanelScale,
@@ -988,7 +1037,7 @@ fun <T> GlasmioNavigationBar(
                             horizontalInsetPx = paddingPx,
                             expandedTabWidthPx = expandedTabWidthPx,
                             selectedContentLateScale = selectedContentLateScaleProvider,
-                            labelAlpha = tabContentAlpha,
+                            labelAlpha = { tabContentAlpha() * externalSelectionRest() },
                             selectedIconColorFilter = hiddenSelectedIconColorFilterState,
                             contentColor = colors.content,
                             selectedContentSource = true,

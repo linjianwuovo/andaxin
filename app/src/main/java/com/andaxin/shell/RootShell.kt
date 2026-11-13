@@ -535,13 +535,15 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     // 变化当成"用户换格"回发 onSelected，两股动画互相拽，点圆钮最后停回首页 → 用 settledPage（只报落定页）。
     // 「我的」不在底栏的 items 里，喂进去库会 indexOfFirst 兜成 0（GlassBottomBar.kt:170）
     // 再回发一次 onSelected(Home)。MeiloX 的做法是保留 lastSelectedTab（MainActivity.kt:1042-1044
-    // 的第一顺位匹配不到时退回它），所以这里同样只记住"最后一个属于底栏的格"，从不把 Me 传下去。
+    // 的第一顺位匹配不到时退回它），所以 selectedKey 同样只记"最后一个属于底栏的格"；
+    // 停在「我的」时由 meSelected 让水滴从那格滑到右侧圆钮上，回来时再滑回这一格。
     var barKey by remember { mutableStateOf(Shelf.Home) }
+    var meSelected by remember { mutableStateOf(false) }
     LaunchedEffect(pager.settledPage) {
         val settled = Shelf.entries[pager.settledPage]
+        meSelected = settled == Shelf.Me
         if (settled != Shelf.Me) barKey = settled
     }
-    // 停在「我的」时高亮留在刚才那一格 —— 与 MeiloX 停在非底栏页面时一致，也不需要库里有任何开关。
     val selectedKey = barKey
     val dark = when (appearance.dayNight) {
         DayNight.System -> isSystemInDarkTheme()
@@ -747,11 +749,17 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                     // 上游 MainActivity_main.kt:1455-1466 也是 onSelected 里先 setLastSelectedTab，
                     // selectedIndex 立刻跟着 currentRoute 变，翻页动画与水滴同时起步。
                     onSelected = { shelf ->
-                        // 但「我的」不能传下去：它不在 items 里，库会 indexOfFirst 兜成 0
-                        // 再把高亮甩回首页（见 :543 那条注释）。
-                        if (shelf != Shelf.Me) barKey = shelf
+                        // 「我的」不传进 items（库会 indexOfFirst 兜成 0 再把水滴甩回首页），
+                        // 但也得让水滴立刻起步：只翻 meSelected，等 settledPage 回来才动就慢半拍。
+                        if (shelf != Shelf.Me) {
+                            barKey = shelf
+                            meSelected = false
+                        } else {
+                            meSelected = true
+                        }
                         scope.launch { pager.animateScrollToPage(shelf.ordinal) }
                     },
+                    trailingSelected = meSelected,
                     backdrop = shelfBackdrop,
                     compactProgress = navScroll.compactProgress,
                     scrollHint = navScroll.scrollHintProgress,

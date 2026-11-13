@@ -6,6 +6,8 @@ import android.content.ContextWrapper
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -336,10 +338,17 @@ private fun BoxScope.SearchBarLayer(
     }
 }
 
+/** Gap between the main capsule and the detached trailing control. */
+private val TrailingItemGap = 8.dp
+
 /**
  * A navigation item can share the main capsule or occupy its own trailing capsule.
  * Selection and actions keep the same keys in both presentations. The host owns routes,
  * search state and outer window insets; [onItemBoundsChanged] reports actual window pixels.
+ *
+ * [trailingSelected] is for hosts whose trailing item is a real destination of its own:
+ * the selection indicator then slides out of the capsule onto the trailing control instead
+ * of highlighting a main item that is no longer the current one.
  */
 @Composable
 fun <T> GlasmioNavigationBarWithTrailingItem(
@@ -354,6 +363,7 @@ fun <T> GlasmioNavigationBarWithTrailingItem(
     compactSize: Dp = CompactBottomControlSize,
     backdrop: Backdrop = LocalGlassBackdrop.current,
     onItemBoundsChanged: ((T, Rect) -> Unit)? = null,
+    trailingSelected: Boolean = false,
 ) {
     require(items.isNotEmpty()) { "At least one main navigation item is required." }
     require(items.none { it.key == trailingItem.key }) { "The trailing item key must be unique." }
@@ -365,6 +375,17 @@ fun <T> GlasmioNavigationBarWithTrailingItem(
     }
     val auxiliaryContactActive = remember(auxiliaryActive) { { auxiliaryActive.value } }
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val trailingSelectionProgress = animateFloatAsState(
+        targetValue = if (trailingSelected) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 380f),
+        label = "trailingSelection",
+    )
+    val density = LocalDensity.current
+    // The main bar is measured to width - auxiliary - gap, so the auxiliary center sits
+    // gap + radius past the bar's trailing edge.
+    val trailingCenterOffsetPx = with(density) {
+        TrailingItemGap.toPx() + NavigationBarSurfaceHeight.toPx() / 2f
+    }
     var hostOrigin by remember { mutableStateOf(Offset.Zero) }
     var sourceIconBounds by remember { mutableStateOf<Rect?>(null) }
     val sourceIconCenter = rememberUpdatedState(sourceIconBounds?.center?.minus(hostOrigin))
@@ -396,6 +417,8 @@ fun <T> GlasmioNavigationBarWithTrailingItem(
                     onItemIconBoundsChanged = { key, bounds ->
                         if (key == trailingItem.key && compactProgress.value <= 0f) sourceIconBounds = bounds
                     },
+                    externalSelectionProgress = if (detachTrailingItem) trailingSelectionProgress else null,
+                    externalSelectionTrailingOffsetPx = if (detachTrailingItem) trailingCenterOffsetPx else 0f,
                 )
                 CompositionLocalProvider(LocalBottomControlContactMemberActive provides auxiliaryContactActive) {
                     FloatingNavigationControl(
@@ -406,7 +429,7 @@ fun <T> GlasmioNavigationBarWithTrailingItem(
                         modifier = Modifier.zIndex(2f).graphicsLayer {
                             alpha = if (detachTrailingItem) 1f else compactProgress.value.coerceIn(0f, 1f)
                         },
-                        itemSelected = trailingItem.key == selectedKey,
+                        itemSelected = trailingSelected || trailingItem.key == selectedKey,
                         itemActive = auxiliaryActive.value,
                         itemContentDescription = trailingItem.contentDescription,
                         onBoundsChanged = { bounds -> onItemBoundsChanged?.invoke(trailingItem.key, bounds) },
@@ -414,7 +437,9 @@ fun <T> GlasmioNavigationBarWithTrailingItem(
                         SfIcon(
                             trailingItem.symbol,
                             contentDescription = trailingItem.contentDescription,
-                            tint = LocalGlassColors.current.let { if (trailingItem.key == selectedKey) it.accent else it.content },
+                            tint = LocalGlassColors.current.let {
+                                if (trailingSelected || trailingItem.key == selectedKey) it.accent else it.content
+                            },
                             size = CompactBottomControlIconSize,
                             fontSize = 18.sp,
                             weight = FontWeight.Medium,
@@ -434,7 +459,7 @@ fun <T> GlasmioNavigationBarWithTrailingItem(
             val width = constraints.maxWidth
             val height = NavigationBarSurfaceHeight.roundToPx()
             val auxiliaryWidth = height
-            val gap = 8.dp.roundToPx()
+            val gap = TrailingItemGap.roundToPx()
             val mainWidth = if (detachTrailingItem) (width - auxiliaryWidth - gap).coerceAtLeast(1) else width
             val main = measurables[0].measure(Constraints.fixed(mainWidth, height))
             val auxiliary = measurables[1].measure(Constraints.fixed(auxiliaryWidth, height))

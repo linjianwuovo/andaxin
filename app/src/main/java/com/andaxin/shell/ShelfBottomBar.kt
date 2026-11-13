@@ -46,6 +46,9 @@ internal val ShelfBarReservation = NavigationBarSurfaceHeight + ShelfNavigationB
  *
  * 右边那枚圆钮是 trailingItem（宿主的「我的」），库会在 detachTrailingItem 时把它分离成独立控件，
  * 收起（compactProgress → 1）时贴着栏体右侧站住，展开时滑回栏内。
+ *
+ * [trailingSelected] 让那枚圆钮也能当「当前页」：水滴从胶囊里滑出去落到它身上，
+ * 而不是停在上一格假装还在那里。
  */
 @Composable
 internal fun ShelfBottomBar(
@@ -57,6 +60,7 @@ internal fun ShelfBottomBar(
     scrollHint: State<Float>,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
+    trailingSelected: Boolean = false,
 ) {
     val bottomMargin = maxOf(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
@@ -75,6 +79,7 @@ internal fun ShelfBottomBar(
         onExpand = onExpand,
         compactProgress = compactProgress,
         backdrop = backdrop,
+        trailingSelected = trailingSelected,
         // 顺序照上游 MainActivity_main.kt:1690-1700：横向边距 → 提示缩放的 pivot → 底部离屏底。
         // 反了会让提示缩放把底边距一起缩掉。
         modifier = modifier
@@ -88,8 +93,8 @@ internal fun ShelfBottomBar(
 /**
  * 四格。符号照上游 main 的 tab 定义。
  *
- * selected 永远不能是 Shelf.Me —— RootShell 只喂「最后一个属于底栏的格」，
- * 「我的」是 trailingItem，喂进 items 会违反库的 trailing key 唯一性 require。
+ * 只列四格：「我的」是 trailingItem，喂进 items 会违反库的 trailing key 唯一性 require。
+ * 选中「我的」时不改这里的 selectedKey（仍是最后一格），而是靠 trailingSelected 让水滴滑过去。
  */
 private fun shelfTabItems(labels: List<String>): List<GlasmioTabItem<Shelf>> = listOf(
     GlasmioTabItem(Shelf.Home, labels[Shelf.Home.ordinal], SfSymbol.HouseFilled),
