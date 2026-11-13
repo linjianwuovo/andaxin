@@ -70,18 +70,10 @@
         android:supportsRtl="false"
         android:theme="@style/Theme.AndaXin">
 
-        <!--
-          supportsPictureInPicture：音乐那一屏（MeiloX 搬进来的 MusicScreen）里有个
-          "画中画歌词"的入口，它调的是当前 Activity 的 enterPictureInPictureMode。
-          以前音乐是独立 Activity，声明在 music 的清单里；现在音乐成了本页，
-          这条得跟着落到宿主身上，否则那个入口按下去只会抛 IllegalStateException。
-          configChanges 补 smallestScreenSize：进画中画会改这个，不写就重建 Activity。
-        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:supportsPictureInPicture="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize" />
 
         <!--

@@ -54,7 +54,6 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.SectionTitle
 import com.andaxin.shell.ShelfTail
-import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import kotlinx.coroutines.launch
@@ -84,8 +83,6 @@ private val ENTRIES = listOf(
     Entry("查寝签到", "记录与详情", "dorm", R.drawable.ic_entry_dorm, R.drawable.ic_entry_dorm_accent),
     Entry("校园卡", "余额与流水", "card", R.drawable.ic_entry_card, R.drawable.ic_entry_card_accent),
     Entry("报修", "单据与新建", "repair", R.drawable.ic_entry_repair, R.drawable.ic_entry_repair_accent),
-    // 音乐：MeiloX 的源码就在这个 APK 里（:music 模块），点进来是它原来那一屏，不是另装一个 App
-    Entry("音乐", "上下学路上听歌", "music", R.drawable.ic_entry_music, R.drawable.ic_entry_music_accent),
     Entry("AI 课堂", "课件与签到", "aiclass", R.drawable.ic_entry_aiclass, R.drawable.ic_entry_aiclass_accent),
     Entry("公开课", "目录与进度", "opencourse", R.drawable.ic_entry_opencourse, R.drawable.ic_entry_opencourse_accent),
     Entry("班级群", "班内名单", "group", R.drawable.ic_entry_group, R.drawable.ic_entry_group_accent),
@@ -127,13 +124,10 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
         }
     }
 
-    val scroll = rememberScrollState()
-    // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
-    registerShelfNavigationViewport(scroll)
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = Gap.screen),
     ) {
         Spacer(Modifier.height(Gap.md))

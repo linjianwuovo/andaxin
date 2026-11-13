@@ -44,7 +44,6 @@ import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.ErrorLine
 import com.andaxin.shell.ShelfTail
-import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.state.MessageModel
 
 @Composable
@@ -57,13 +56,10 @@ fun MessageScreen(modifier: Modifier = Modifier) {
 
     // 下拉一次重拉这一屏：新消息不用杀进程重开才看得见
     Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
-        val scroll = rememberScrollState()
-        // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
-        registerShelfNavigationViewport(scroll)
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scroll)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = Gap.screen),
         ) {
             Spacer(Modifier.height(Gap.md))

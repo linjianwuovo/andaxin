@@ -33,10 +33,11 @@ object Gap {
     val screen: Dp = 18.dp
 
     /**
-     * 底栏让出来的那条尾巴不再是一个常量：上游 MeiloX main 让它跟着系统导航条高度走
-     * （MainActivity_main.kt:667-684 取 max(系统导航条, 20dp)，:754-766 再加栏体高度）。
-     * 现由 shell/Bits.kt 的 ShelfTail() 在运行时算，见那里。
+     * 底栏让出来的那条尾巴（再加系统导航条的高度，见 shell 的 ShelfTail）。
+     *
+     * 62 栏体（库的 NavigationBarSurfaceHeight）+ 12 栏底间距 + 20 收尾留白，凑成 94。
      */
+    val shelfTail: Dp = 94.dp
 }
 
 /**

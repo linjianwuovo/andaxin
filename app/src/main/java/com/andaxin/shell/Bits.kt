@@ -23,9 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -497,22 +495,12 @@ fun FillHeight(modifier: Modifier = Modifier) = Spacer(modifier.fillMaxHeight())
  * 为什么要有它：底栏是悬浮的玻璃，页面现在从它底下整屏铺过去（这样玻璃才有东西可折射），
  * 那么滚到底时最后一条内容必须停在栏子上沿之上，不然它永远压在玻璃底下读不出来。
  *
- * 高度不再是一个常量，因为上游就不是：MainActivity_main.kt:667-684 的 bottomControlInsets
- * 取「系统导航条」与「20dp」的较大值当 navigationBottomMargin，再用 :754-766 的
- * collapsedBottomReservation = navigationBottomMargin + NavigationBarHeight - NavigationBarBottomMargin
- * 得到页尾要留的这一段。代入 NavigationBarHeight = SurfaceHeight + 2 * 8dp，
- * 就是下面这个 max(系统导航条, 20dp) + 62dp + 8dp —— 多出的 8dp 是栏面上方的呼吸位。
+ * 两个修饰符的顺序别反：`navigationBarsPadding` 要写在 `height` **前面**，
+ * 那样它是加在 96 之外；写在后面就变成把 96 里面挖掉一块，三键导航的机器上照样被压住。
  */
 @Composable
 fun ShelfTail() {
-    Spacer(
-        Modifier.height(
-            maxOf(
-                WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                ShelfBottomMarginFloor,
-            ) + ShelfBarReservation,
-        ),
-    )
+    Spacer(Modifier.navigationBarsPadding().height(Gap.shelfTail))
 }
 
 

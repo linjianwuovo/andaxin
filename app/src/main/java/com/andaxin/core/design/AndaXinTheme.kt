@@ -19,7 +19,6 @@ import com.andaxin.core.settings.DayNight
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.core.GlassColors
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropProvider
-import io.github.neoruaa.glasmio.icons.GlasmioIconProvider
 import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
 
 private val LightInk = InkSet(
@@ -175,19 +174,14 @@ fun AndaXinTheme(
                     // 主题吃 Glasmio 的 iOS 语义色板,色值仍来自装机验收过的 Palette；
                     // 字号仍走 AdxTypography.withMiSans（glasmioTypography 假设 SF 字体,我们不带苹果字体）。
                     // backdrop 目前是根上的 emptyBackdrop 兜底 —— 逐屏真采样在后续步骤。
-                    // 图标走 SF Symbols 字体（assets/glasmio_symbols.ttf，见 GlasmioSymbols.kt）。
-                    // 官方 demo 就是这么挂的（sample/MainActivity.kt:211-215 GlasmioIconProvider(symbolTypeface = ...)）：
-                    // 少了这层，SfIcon 全部退回 Material 矢量图标（SfSymbol.kt:129-134），底栏字形和 iOS 对不上。
-                    GlasmioIconProvider(symbolTypeface = rememberSfSymbolTypeface()) {
-                        GlasmioTheme(
-                            isDark = dark,
-                            colorScheme = scheme,
-                            typography = AdxTypography.withMiSans(),
-                            colors = adxGlassColors(dark, accent),
-                        ) {
-                            GlasmioBackdropProvider(backdrop = emptyBackdrop()) {
-                                content()
-                            }
+                    GlasmioTheme(
+                        isDark = dark,
+                        colorScheme = scheme,
+                        typography = AdxTypography.withMiSans(),
+                        colors = adxGlassColors(dark, accent),
+                    ) {
+                        GlasmioBackdropProvider(backdrop = emptyBackdrop()) {
+                            content()
                         }
                     }
                 }

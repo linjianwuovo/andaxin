@@ -34,7 +34,6 @@ import com.andaxin.shell.ErrorLine
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.ShelfTail
-import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.pressClick
@@ -62,13 +61,10 @@ fun NoticeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 
     // 只有列表这一支需要下拉刷新，详情那一屏没什么可刷的
     Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
-        val scroll = rememberScrollState()
-        // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
-        registerShelfNavigationViewport(scroll)
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .verticalScroll(scroll)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = Gap.screen),
         ) {
             Spacer(Modifier.height(Gap.md))

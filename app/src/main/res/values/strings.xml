@@ -8,10 +8,6 @@
      * 要区分测试包由 beta 那份资源自己加后缀（app/src/beta/res/values/strings.xml）。
      */
     <string name="app_name">安大信</string>
-    <!-- 音乐模块的通知栏用的是 app_name_en（NotificationControls 里那个资源 id）。
-         默认 values 里没有这一条时，values-zh / values-zh-rTW 里的同名条目会被 lint
-         判成 ExtraTranslation，而 release 的 lintVital 直接让构建失败。 -->
-    <string name="app_name_en">安大信</string>
 
     <string name="tab_home">首页</string>
     <string name="tab_schedule">课程表</string>

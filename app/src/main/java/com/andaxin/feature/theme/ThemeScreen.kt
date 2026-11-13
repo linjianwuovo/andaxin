@@ -2,7 +2,6 @@ package com.andaxin.feature.theme
 
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
-import io.github.neoruaa.glasmio.ui.GlasmioSwitch
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -203,31 +202,6 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(Gap.sm))
             Text("只换主色，底栏玻璃跟着走。", fontSize = Type.micro, color = ink.faint)
-        }
-
-        Spacer(Modifier.height(Gap.xl))
-        GroupTitle("HDR 高光")
-        Sheet {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("按 HDR 输出", fontSize = Type.body, color = ink.strong)
-                    Spacer(Modifier.height(Gap.xxs))
-                    Text(
-                        text = if (draft.material == com.andaxin.core.settings.BarMaterial.Solid)
-                            "实心那一档一层玻璃都不画，开了也没东西可亮。"
-                        else "屏幕支持 HDR 时才真生效；开了这一项，界面要重建一次（会闪一下）。",
-                        fontSize = Type.micro,
-                        color = ink.faint,
-                        lineHeight = Type.metaLine,
-                    )
-                }
-                Spacer(Modifier.width(Gap.md))
-                // ios 分支：开关用 Glasmio 那枚，和通知页同一个件
-                GlasmioSwitch(
-                    checked = draft.hdr && draft.material != com.andaxin.core.settings.BarMaterial.Solid,
-                    onCheckedChange = { draft = draft.copy(hdr = it); commit() },
-                )
-            }
         }
 
         Spacer(Modifier.height(Gap.xl))

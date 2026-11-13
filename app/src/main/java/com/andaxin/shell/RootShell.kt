@@ -2,18 +2,11 @@ package com.andaxin.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
@@ -29,9 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -45,7 +36,6 @@ import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Motion
 import com.andaxin.core.design.NoSamplingBackdrop
 import com.andaxin.core.settings.Appearance
-import com.andaxin.core.settings.DayNight
 import com.andaxin.core.settings.spec
 import com.andaxin.feature.about.AboutScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
@@ -93,28 +83,20 @@ import com.andaxin.feature.modules.RepairListScreen
 import com.andaxin.feature.sport.SportStartScreen
 import com.andaxin.feature.theme.ThemeScreen
 import com.andaxin.feature.web.WebScreen
+import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import io.github.neoruaa.glasmio.icons.SfSymbol
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderMotion
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderSpec
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationBarWithTrailingItem
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationFrame
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationOperation
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationScaffold
-import com.ljyh.mei.constants.NavigationBarHeight
-import com.kyant.backdrop.backdrops.layerBackdrop
-import io.github.neoruaa.glasmio.core.GlassAppearance as GlasmioGlassAppearance
-import io.github.neoruaa.glasmio.core.LocalGlassAppearance as LocalGlasmioGlassAppearance
-import io.github.neoruaa.glasmio.core.LocalGlassColors as LocalGlasmioGlassColors
-import io.github.neoruaa.glasmio.core.defaultGlassColors as glasmioDefaultGlassColors
-import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop as LocalGlasmioBlurBackdrop
-import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop as LocalGlasmioGlassBackdrop
-import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop as glasmioRememberSharedGlassBackdrop
-import io.github.neoruaa.glasmio.glass.trackBackdropPosition as glasmioTrackBackdropPosition
-import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop as glasmioLayerBackdrop
-import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCanvasBackdrop
-
+import io.github.neoruaa.glasmio.scaffold.glasmioNavigationScrollHint
+import io.github.neoruaa.glasmio.ui.CompactBottomControlSize
+import io.github.neoruaa.glasmio.ui.GlasmioTabItem
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -129,7 +111,7 @@ import com.andaxin.feature.brief.BriefDetailPage
  * 底栏五格。格数与顺序是他定的，不许增删改序 —— 要动先问。
  * 每格一个图标 + 一行字，图标是自己画的 vector，不引 material-icons-extended 那个大包。
  */
-internal enum class Shelf(
+private enum class Shelf(
     val labelRes: Int,
     /** 未选中：主笔那层（跟着墨色） */
     val iconRes: Int,
@@ -160,10 +142,6 @@ object Route {
 
     const val WELCOME = "gate"
     const val MORE = "more"
-    /** 音乐：MeiloX 源码并在这个 APK 里，「我的」那一格点它就把那屏拉起来。 */
-    const val MUSIC = "music"
-    /** 带上这个参数（任意非空值）= 从首页胶囊进来，直接展开播放器封面页。 */
-    const val MUSIC_PLAYER_ARG = "openPlayer"
     const val NOTIFY = "notify"
     const val CARD = "card"
     const val CARD_FLOWS = "card/flows"
@@ -286,9 +264,6 @@ fun RootShell() {
      * 底下那排格子看不见，那不算"落到消息那一格"。格子本身由 ShelfHost 滚过去。
      */
     val jump by graph.tabJump.collectAsStateWithLifecycle()
-    val openPage: (String) -> Unit = remember(nav) {
-        { route -> nav.navigate(route) }
-    }
     LaunchedEffect(jump) {
         if (jump < 0) return@LaunchedEffect
         while (nav.currentDestination?.route != null &&
@@ -307,27 +282,16 @@ fun RootShell() {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        page(Route.SHELF) { Gate(appearance, open = openPage) }
-        // 音乐屏是 MeiloX 那套 Compose 直接搬进来的一页（MusicScreen），不再另起 Activity。
-        page(
-            Route.MUSIC + "?${Route.MUSIC_PLAYER_ARG}={${Route.MUSIC_PLAYER_ARG}}",
-            // 默认值必须声明：没它，「我的」页那条 nav.navigate("music") 匹配不上带 query 的路由，
-            // 运行时会抛 destination not found；有了默认值，裸 "music" 也落同一页、按普通入口收 mini player。
-            arguments = listOf(androidx.navigation.navArgument(Route.MUSIC_PLAYER_ARG) { defaultValue = "" }),
-        ) { entry ->
-            com.ljyh.mei.MusicScreen(
-                openInPlayer = entry.arguments?.getString(Route.MUSIC_PLAYER_ARG) == "1",
-            )
-        }
+        page(Route.SHELF) { Gate(appearance, open = { nav.navigate(it) }) }
         page(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
         page(Route.ABOUT) {
-            AboutScreen(onBack = { nav.popBackStack() }, open = openPage)
+            AboutScreen(onBack = { nav.popBackStack() }, open = { nav.navigate(it) })
         }
         page(Route.PROFILE) { ProfileScreen(onBack = { nav.popBackStack() }) }
-        page(Route.SPORT) { SportStartScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.SPORT) { SportStartScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
         page(Route.SPORT_RECORDS) {
-            SportRecordsScreen(open = openPage, onBack = { nav.popBackStack() })
+            SportRecordsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() })
         }
         page(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
         // 只有高级模式里的「新建路线」会导航到这里；普通界面没有入口
@@ -342,47 +306,47 @@ fun RootShell() {
             SportDetailScreen(recordId = entry.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
         }
 
-        page(Route.MORE) { MoreScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.MORE) { MoreScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.NOTIFY) { NotifyScreen(onBack = { nav.popBackStack() }) }
-        page(Route.CARD) { CampusCardScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.CARD) { CampusCardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
         page(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
 
-        page(Route.DORM) { DormBoardScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.DORM) { DormBoardScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.DORM_TASK, arguments = listOf(idPattern())) { e ->
             DormTaskScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
         page(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
             DormDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        page(Route.EXAM) { ExamListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.EXAM) { ExamListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.EXAM_DETAIL, arguments = listOf(idPattern())) { e ->
             ExamDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        page(Route.CREDIT) { CreditListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.CREDIT) { CreditListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.CREDIT_DETAIL, arguments = listOf(idPattern())) { e ->
             CreditDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
         page(Route.DEKT) { com.andaxin.feature.modules.SecondClassScreen(onBack = { nav.popBackStack() }) }
-        page(Route.LABOR) { LaborListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.LABOR) { LaborListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.LABOR_DETAIL, arguments = listOf(idPattern())) { e ->
             LaborDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        page(Route.HOLIDAY) { HolidayListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.HOLIDAY) { HolidayListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.HOLIDAY_DETAIL, arguments = listOf(idPattern())) { e ->
             HolidayDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
         page(Route.HOLIDAY_FORM) { HolidayFormScreen(onBack = { nav.popBackStack() }) }
-        page(Route.REPAIR) { RepairListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.REPAIR) { RepairListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.REPAIR_DETAIL, arguments = listOf(idPattern())) { e ->
             RepairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
         page(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
-        page(Route.AFFAIR) { AffairTabsScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.AFFAIR) { AffairTabsScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(Route.AFFAIR_TAB, arguments = listOf(tabPattern())) { e ->
             AffairTabsScreen(
                 startTab = e.arguments?.getString(TAB_ARG)?.toIntOrNull() ?: 0,
-                open = openPage,
+                open = { nav.navigate(it) },
                 onBack = { nav.popBackStack() },
             )
         }
@@ -393,7 +357,7 @@ fun RootShell() {
         page(Route.NOTICE_DETAIL, arguments = listOf(idPattern())) { e ->
             NoticeDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
         }
-        page(Route.AICLASS) { AiClassListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+        page(Route.AICLASS) { AiClassListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() }) }
         page(
             Route.AICLASS_SIGN_QR,
             arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
@@ -429,13 +393,13 @@ fun RootShell() {
             )
         }
         page(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
-            CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), open = openPage) { nav.popBackStack() }
+            CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), open = { nav.navigate(it) }) { nav.popBackStack() }
         }
         page(Route.AICLASS_PLAY, arguments = listOf(idPattern())) { e ->
             RecordPlayScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
         }
         page(Route.OPEN_COURSE) {
-            OpenCourseListScreen(open = openPage, onBack = { nav.popBackStack() })
+            OpenCourseListScreen(open = { nav.navigate(it) }, onBack = { nav.popBackStack() })
         }
         page(Route.OPEN_COURSE_DETAIL, arguments = listOf(idPattern())) { e ->
             OpenCourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
@@ -529,46 +493,23 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     val pager = rememberPagerState(initialPage = Shelf.Home.ordinal) { Shelf.entries.size }
     val scope = rememberCoroutineScope()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
-    // 选中格实心、其余空心（照 Kyant0/Miuix 两个 demo 的同一个规矩）。
-    // 符号改用音乐模块那份 SfSymbol：那套走 SF Pro 字体，House/Clock/Ellipsis/InfoCircle/PersonFilled 都在。
-    // 底栏的高亮不能直接吃 pager 的页号：currentPage 在动画途中逐格报，底栏把每次 selectedKey
-    // 变化当成"用户换格"回发 onSelected，两股动画互相拽，点圆钮最后停回首页 → 用 settledPage（只报落定页）。
-    // 「我的」不在底栏的 items 里，喂进去库会 indexOfFirst 兜成 0（GlassBottomBar.kt:170）
-    // 再回发一次 onSelected(Home)。MeiloX 的做法是保留 lastSelectedTab（MainActivity.kt:1042-1044
-    // 的第一顺位匹配不到时退回它），所以 selectedKey 同样只记"最后一个属于底栏的格"；
-    // 停在「我的」时由 meSelected 让水滴从那格滑到右侧圆钮上，回来时再滑回这一格。
-    var barKey by remember { mutableStateOf(Shelf.Home) }
-    var meSelected by remember { mutableStateOf(false) }
-    LaunchedEffect(pager.settledPage) {
-        val settled = Shelf.entries[pager.settledPage]
-        meSelected = settled == Shelf.Me
-        if (settled != Shelf.Me) barKey = settled
+    // 逐行照库自带 demo 的 SampleBottomBar（gla_sample_main.kt:686-693）：选中格用实心符号、
+    // 其余用空心（sample 里是 SfSymbol.HouseFilled 与 SfSymbol.House 二选一）。
+    // 图标只走库自带的 SfSymbol + 默认 MaterialGlasmioIconResolver，不挂自绘 vector：
+    // 那 36 个符号里没有信封/铃铛，"消息"就是 ellipsis（Material 兜底 MoreHoriz）、"公告"就是 info.circle。
+    val selectedKey = Shelf.entries[pager.currentPage]
+    val tabs = remember(labels, selectedKey) {
+        listOf(
+            GlasmioTabItem(Shelf.Home, labels[0], if (selectedKey == Shelf.Home) SfSymbol.HouseFilled else SfSymbol.House),
+            GlasmioTabItem(Shelf.Timetable, labels[1], if (selectedKey == Shelf.Timetable) SfSymbol.ClockFilled else SfSymbol.Clock),
+            GlasmioTabItem(Shelf.Message, labels[2], SfSymbol.Ellipsis),
+            GlasmioTabItem(Shelf.Notice, labels[3], SfSymbol.InfoCircle),
+        )
     }
-    val selectedKey = barKey
-    val dark = when (appearance.dayNight) {
-        DayNight.System -> isSystemInDarkTheme()
-        DayNight.Light -> false
-        DayNight.Dark -> true
-    }
-    // 照 MeiloX main 的滚动折叠：向下滚收成圆球，往回滚或顶边回弹展开。
-    // 这份状态（shell/MeiloXNavigationScrollState.kt）是上游 MeiloXPage.kt 同名文件的逐字副本，
-    // 它认的是一页的「视口」（rangePx / distanceToStartPx / atStart / atEnd / isScrolling），
-    // 由五个屏各自 registerShelfNavigationViewport(scroll) 报到自己的 header 上。
-    val shelfHeaders = remember { ShelfPageHeaders() }
-    val settledShelf = Shelf.entries.getOrElse(pager.settledPage) { Shelf.Home }
-    val navScroll = rememberMeiloXNavigationScrollState(
-        viewport = shelfHeaders.entry(settledShelf).viewport,
-        enabled = true,
-    )
-
-    // 播放器封面不开新路由，直接叠在这一屏上面（见下面 MusicBar 的 open）。
-    // 走 Navigation 的话转场结束会把首页从组合里拆掉，涨封面的过程底下露出 NavHost 的纯色底，
-    // 用户看到的就是"先进了音乐界面、再弹出封面"两段动作。
-    var coverOpen by remember { mutableStateOf(false) }
-
-    // 曲目状态挂在这一层：封面叠上去时首页那条胶囊会离开组合，
-    // 状态若跟着走，收合回来要重新 bindService 才拿得到标题 —— 中间几帧是空的。
-    val musicBarState = com.andaxin.feature.music.rememberMusicBarState()
+    // 照 MeiloX：最后一格不挤在主条里，单独占右边一颗小胶囊。
+    val trailing = remember(labels) { GlasmioTabItem(Shelf.Me, labels[4], SfSymbol.PersonFilled) }
+    // 照 MeiloX 的滚动折叠：向下滚收成圆球，往回滚或顶边回弹展开（ShelfNavScrollState）。
+    val navScroll = rememberShelfNavScrollState()
 
     // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
     val graph = LocalAppGraph.current
@@ -587,21 +528,12 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     //    加了顶上必出一条彩带、图标/文字后面几块纯白、栏体压暗（现在录制层由 scaffold 内部开，
     //    它用的是 layerBackdrop(reuseContent = true)，我们不再自己往上面加 modifier）。
     val pageBackdrop = rememberLayerBackdrop()
-    val pageTint = MaterialTheme.colorScheme.background
-    // 播放条（MusicBar/MiniPlayerBar）用的也是 glasmio 那套玻璃，故与底栏共用同一条
-    // shopBackdrop —— 早先它自己走 Kyant0 门面才需要再录一条，门面删掉后不必了。
-
-    // 底栏（glasmio 那套）自己的一条：上游 MainActivity_main.kt:585-625 的写法 ——
-    // 静态 groupedBackground 当 base、页面录成的 layer 当 source，再 rememberSharedGlassBackdrop 合起来。
-    // 和上面 kyant 那条是同一个道理、同样的两条禁忌；两条并存是因为首页那条胶囊只在 kyant 那套里，
-    // 两个库的 Backdrop 类型不通用（喂错编译就过不去）。
-    val glassColors = glasmioDefaultGlassColors(
-        isDark = dark,
-        accent = MaterialTheme.colorScheme.primary,
-    )
-    val shelfBase = rememberCanvasBackdrop { drawRect(glassColors.groupedBackground) }
-    val shelfSource = rememberLayerBackdrop()
-    val shelfBackdrop = glasmioRememberSharedGlassBackdrop(shelfBase, shelfSource)
+    val pageTint = androidx.compose.material3.MaterialTheme.colorScheme.background
+    val canvasBackdrop = io.github.neoruaa.glasmio.glass.render.backdrops.rememberCanvasBackdrop {
+        drawRect(pageTint)
+    }
+    // 底座用静态色（MeiloX 的 glassBackdrop），源才是录下来的页面层。
+    val barBackdrop = io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop(canvasBackdrop, pageBackdrop)
 
     /*
      * 顶层骨架换成库的 GlasmioNavigationScaffold（第三件事）。它自己就在 content 外面
@@ -651,133 +583,41 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
             // 五个 tab 的内容也在这层里，里面同样有玻璃件（首页那排按钮等）。
             // 采样层内自采样会递归把 RenderThread 栈打穿，统一关掉（见 NoSamplingBackdrop）。
             NoSamplingBackdrop {
-                // 除了 scaffold 内部那层（glasmio 的 pageBackdrop），这里再录一层给底栏用。
-                // 录制层上只挂 layerBackdrop + trackBackdropPosition，绝不加 Offscreen 合成。
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        // 同一次录制，再报给 glasmio 那条 shared backdrop（底栏用）。
-                        // 录制层上依旧只挂录制修饰符，绝不加 Offscreen 合成。
-                        .glasmioLayerBackdrop(shelfSource)
-                        .glasmioTrackBackdropPosition(shelfSource),
-                ) {
                 HorizontalPager(
                     state = pager,
                     beyondViewportPageCount = 1,
                     modifier = Modifier.fillMaxSize().statusBarsPadding(),
                 ) { index ->
-                    // 每一格都挂上「我是哪一格」，屏内的滚动视口才报得到 navScroll 手上。
-                    val shelf = Shelf.entries[index]
-                    ShelfPageEntry(key = shelf, headers = shelfHeaders) {
-                        when (shelf) {
-                            Shelf.Home -> HomeScreen(open = open)
-                            Shelf.Timetable -> TimetableScreen()
-                            Shelf.Message -> MessageScreen()
-                            Shelf.Notice -> NoticeScreen(open = open)
-                            Shelf.Me -> MeScreen(open = open)
-                        }
+                    when (Shelf.entries[index]) {
+                        Shelf.Home -> HomeScreen(open = open)
+                        Shelf.Timetable -> TimetableScreen()
+                        Shelf.Message -> MessageScreen()
+                        Shelf.Notice -> NoticeScreen(open = open)
+                        Shelf.Me -> MeScreen(open = open)
                     }
                 }
-                }
             }
         }
 
-        // 底栏与它上面那条播放条一起收进一个底部 Column：
-        // 播放条只在首页出现（"移植到主界面"），没歌时它自己整条不渲染。
-        Column(
-            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
-        ) {
-            // 播放条还是音乐模块那套 Kyant0 玻璃（MiniPlayerBar 读的是它自己那份 CompositionLocal，
-            // 默认值就是 error(...)），所以 provider 只包住它这一块，不和底栏混用。
-            // 封面叠上来时把首页那条胶囊让给 overlay 里的同一个（位置/材质同源），
-            // 否则两枚胶囊会在同一处重叠一帧。
-            // 每一格都挂：用户要求课程表/消息/公告/我的都有这条胶囊，上游也是全局一层。
-            if (!coverOpen) {
-                androidx.compose.runtime.CompositionLocalProvider(
-                    // 播放条那一块仍是音乐模块那份 Kyant 玻璃，配色也取它自己那套
-                    // （与本屏底栏的 glasmio 配色互不影响）。
-                    LocalGlasmioGlassColors provides glasmioDefaultGlassColors(
-                        isDark = dark,
-                        accent = MaterialTheme.colorScheme.primary,
-                    ),
-                    LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
-                        liquidGlassEnabled = true,
-                        reduceTransparency = false,
-                    ),
-                    LocalGlasmioGlassBackdrop provides shelfBackdrop,
-                    LocalGlasmioBlurBackdrop provides shelfBackdrop,
-                ) {
-                    com.andaxin.feature.music.MusicBar(
-                        state = musicBarState,
-                        // 封面不开新页面：Navigation 的转场会把上一页拆掉，涨封面的过程中
-                        // 底下露出的是 NavHost 的纯色底，看起来就是"先进音乐界面再弹封面"。
-                        // 这里改成叠一层 overlay，首页始终在组合里，胶囊从原位涨起来。
-                        open = { coverOpen = true },
-                        // 与底栏共用同一个手势进度：下滑收球时音乐条同步收成胶囊
-                        // （MeiloXNavigationScrollState 的 animateFloatAsState 已经带弹簧，这里不再插值）。
-                        compactProgress = navScroll.compactProgress,
-                        // 收进同一行：照 MeiloX 的 miniPlayerVerticalOffset
-                        // （MusicScreen.kt:1144-1175，(NavigationBarHeight-16dp)*progress），
-                        // progress=1 时胶囊正好落进两球那一行。
-                        // 这里必须乘连续值：早前 roundToInt() 把 progress 压成 0/1 两档，
-                        // 竖向位移只会在过半那一刻整段跳一下，横向却跟着手指连续变 —— 就是"不跟手"。
-                        modifier = Modifier.offset {
-                            IntOffset(0, ((NavigationBarHeight - 16.dp).toPx() * navScroll.compactProgress.value).roundToInt())
-                        },
-                    )
-                }
-            }
-
-            // 底栏：以 MeiloX main 源码为准（m03315）—— 直接调 glasmio 的
-            // GlasmioNavigationBarWithTrailingItem，与上游 MainActivity_main.kt:1665-1704 同一份实现。
-            // 早先那版调的是 music 模块里 1.55.1 的 kyant 版 GlassBottomBar，几何/手感都不是同一条链。
-            androidx.compose.runtime.CompositionLocalProvider(
-                LocalGlasmioGlassColors provides glassColors,
-                LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
-                    liquidGlassEnabled = true,
-                    reduceTransparency = false,
-                ),
-                LocalGlasmioGlassBackdrop provides shelfBackdrop,
-                LocalGlasmioBlurBackdrop provides shelfBackdrop,
-            ) {
-                ShelfBottomBar(
-                    selected = selectedKey,
-                    labels = labels,
-                    // 先把高亮挪过去再让 pager 滚：库里的水滴是拿 selectedKey 的变化驱动
-                    // dragAnimation.animateToValue 的（GlassBottomBar.kt:464-470），等 settledPage
-                    // 回来才改 key，就等于整段翻页期间水滴一动不动，松手后才补一段 —— 用户说的"有延迟"。
-                    // 上游 MainActivity_main.kt:1455-1466 也是 onSelected 里先 setLastSelectedTab，
-                    // selectedIndex 立刻跟着 currentRoute 变，翻页动画与水滴同时起步。
-                    onSelected = { shelf ->
-                        // 「我的」不传进 items（库会 indexOfFirst 兜成 0 再把水滴甩回首页），
-                        // 但也得让水滴立刻起步：只翻 meSelected，等 settledPage 回来才动就慢半拍。
-                        if (shelf != Shelf.Me) {
-                            barKey = shelf
-                            meSelected = false
-                        } else {
-                            meSelected = true
-                        }
-                        scope.launch { pager.animateScrollToPage(shelf.ordinal) }
-                    },
-                    trailingSelected = meSelected,
-                    backdrop = shelfBackdrop,
-                    compactProgress = navScroll.compactProgress,
-                    scrollHint = navScroll.scrollHintProgress,
-                    onExpand = navScroll::expand,
-                )
-            }
-        }
-
-        // 播放器封面：直接叠在首页这一屏上，只渲染封面（coverOnly）。
-        // 这样"涨起来"的那一帧底下就是首页本身和它那条胶囊，跟 MeiloX 里
-        // 胶囊原地长成封面的手感一致；返回键也回到这里，而不是落进音乐主页。
-        if (coverOpen) {
-            com.ljyh.mei.MusicScreen(
-                openInPlayer = true,
-                coverOnly = true,
-                onCoverBack = { coverOpen = false },
-            )
-        }
+        // 逐行照库自带 demo 的 SampleBottomBar（gla_sample_main.kt:694-710）：
+        // 同样的参数、同样的修饰符顺序、同样的 CompactBottomControlSize，
+        // 不叠角标、不换图标 —— 那两件是本仓自己加的，官方实现里没有。
+        GlasmioNavigationBarWithTrailingItem(
+            items = tabs,
+            trailingItem = trailing,
+            selectedKey = selectedKey,
+            onSelected = { scope.launch { pager.animateScrollToPage(it.ordinal) } },
+            onExpand = navScroll::expand,
+            compactProgress = navScroll.compactProgress,
+            compactSize = CompactBottomControlSize,
+            backdrop = barBackdrop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(androidx.compose.ui.Alignment.BottomCenter)
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 8.dp)
+                .glasmioNavigationScrollHint(navScroll.scrollHintProgress)
+                .navigationBarsPadding(),
+        )
     }
 }
-

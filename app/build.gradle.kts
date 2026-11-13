@@ -12,10 +12,6 @@ plugins {
     // AGP 9 自带 Kotlin 支持，再套一层 org.jetbrains.kotlin.android 会直接报错 —— 别加回来
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    // 并进来的 music 模块是整套 Hilt：一个 APK 只能有一个 @HiltAndroidApp，
-    // 所以宿主 Application 也得参与织入，这两个插件必须同时出现在 app 上。
-    alias(libs.plugins.hilt)
-    alias(libs.plugins.ksp)
 }
 
 android {
@@ -27,8 +23,8 @@ android {
         // ios 分支外观底座=Glasmio：其 AAR 声明 minSdk 33，manifest 合并实测顶死 26
         minSdk = 33
         targetSdk = 35
-        versionCode = 159
-        versionName = "0.9.20"
+        versionCode = 161
+        versionName = "0.8.95"
 
         // 只出 arm64：装机就是米11 和那台 OPPO，多一套 abi 只是让包胖 30%
         ndk { abiFilters += "arm64-v8a" }
@@ -89,11 +85,9 @@ android {
         }
     }
 
-    // 跟 music 模块对齐：它那边是 21（网易那套依赖已经按 21 编），
-    // 混着 17 会在 dex 阶段对不上。
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
@@ -102,49 +96,11 @@ android {
     }
 
     packaging {
-        resources.excludes += setOf(
-            "/META-INF/{AL2.0,LGPL2.1}",
-            "/DebugProbesKt.bin",
-            // music 那套上百个依赖叠在一起，这几类是各家长重复的声明文件
-            "/META-INF/DEPENDENCIES",
-            "/META-INF/INDEX.LIST",
-            "/META-INF/LICENSE*",
-            "/META-INF/NOTICE*",
-            "/META-INF/*.kotlin_module",
-            "/META-INF/versions/9/OSGI-INF/MANIFEST.MF",
-        )
-        // 网易那套 so 是从 APK 里 mmap 还是安装时解出来，只能这么定：它自己 dlopen，
-        // 必须解出来；dex 同理（音乐仓原本就是这么打的）
-        jniLibs.useLegacyPackaging = true
-        dex.useLegacyPackaging = true
+        resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/DebugProbesKt.bin")
     }
 }
 
 dependencies {
-    // 音乐：MeiloX 1.55.1 的源码整个并进来（库模块），不是另装一个 App
-    implementation(project(":music"))
-    // 首页那条播放条要直接读 MusicService 的 Player，所以要 media3 的类型在编译期可见
-    // （库模块的 implementation 不会传给上层）。session 这条不能省：MusicService 的父类
-    // MediaLibraryService 在 media3-session 里，只引 exoplayer 会报 supertype 不可访问。
-    implementation(musiclibs.media3)
-    implementation(musiclibs.media3.session)
-    // 首页底栏换成音乐模块那套 Kyant0 液态玻璃（GlassBottomBar）。music 把它当 implementation
-    // 不传递，而 app 侧要直接写 Backdrop/LayerBackdrop，所以这里单独再引一次。
-    implementation(musiclibs.backdrop)
-    // Coil 的 SingletonImageLoader 工厂挂在 Application 上（音乐模块原来就那样）。
-    // 它得先于任何一次图片请求建立，所以不能留在某一页的 setContent 里 —— 那一页
-    // 自己的 AsyncImage 会先 get()，再 setSafe() 就抛 "already been created"。
-    implementation(musiclibs.coil.compose)
-    implementation(musiclibs.coil.core)
-    implementation(musiclibs.coil.gif)
-    implementation(musiclibs.coil.network.okhttp)
-    // Timber：Application 里要植树（上游 AppContext 的职责）。music 那边是 implementation
-    // 不传递，所以这里单独再引一次，版本仍走同一个 catalog。
-    implementation(musiclibs.timber)
-
-    ksp(libs.hilt.compiler)
-    implementation(libs.hilt.android)
-
     val bom = platform(libs.compose.bom)
     implementation(bom)
     debugImplementation(libs.compose.ui.tooling)

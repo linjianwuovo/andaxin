@@ -32,13 +32,6 @@ data class Appearance(
     val dispersion: Float = 0.5f,
     /** 强调色，十六进制不带 #；空串 = 用主题默认那支蓝 */
     val accent: String = "",
-    /**
-     * 窗口按 HDR 输出（ios27 那套液态玻璃的高光靠它才亮得起来）。
-     *
-     * 这是"请求"不是"保证"：屏幕本身支持 HDR 才真生效，判断和下发都在
-     * MainActivity 里交给 glasmio 的 configureGlassDynamicRange（见那里的注释）。
-     */
-    val hdr: Boolean = false,
 )
 
 /**
@@ -59,7 +52,6 @@ class AppearanceStore(private val store: Store) {
             distortion = store.peekString(p, KEY_DISTORTION)?.toFloatOrNull() ?: 0.5f,
             dispersion = store.peekString(p, KEY_DISPERSION)?.toFloatOrNull() ?: 0.5f,
             accent = store.peekString(p, KEY_ACCENT).orEmpty(),
-            hdr = store.peekString(p, KEY_HDR)?.toBooleanStrictOrNull() ?: false,
         )
     }
 
@@ -74,7 +66,6 @@ class AppearanceStore(private val store: Store) {
             KEY_DISTORTION to a.distortion.toString(),
             KEY_DISPERSION to a.dispersion.toString(),
             KEY_ACCENT to a.accent,
-            KEY_HDR to a.hdr.toString(),
         )
     }
 
@@ -87,7 +78,6 @@ class AppearanceStore(private val store: Store) {
         const val KEY_DISTORTION = "theme.distortion"
         const val KEY_DISPERSION = "theme.dispersion"
         const val KEY_ACCENT = "theme.accent"
-        const val KEY_HDR = "theme.hdr"
     }
 }
 

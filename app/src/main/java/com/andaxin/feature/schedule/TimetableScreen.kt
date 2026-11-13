@@ -63,7 +63,6 @@ import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.ErrorLine
 import com.andaxin.shell.ShelfTail
-import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.state.TimetableModel
 import kotlinx.coroutines.delay
 
@@ -139,13 +138,10 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
          */
         BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewport = maxHeight
-        val scroll = rememberScrollState()
-        // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
-        registerShelfNavigationViewport(scroll)
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scroll)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = Gap.screen),
         ) {
             Spacer(Modifier.height(Gap.md))
