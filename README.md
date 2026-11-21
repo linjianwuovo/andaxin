@@ -10,22 +10,6 @@
 
 凭据只在你自己手机上：口令用系统 Keystore 里一把不可导出的密钥加密后存本机，不进日志、不进崩溃上报、也不进这个仓。成绩、课表、班内名单这类属于别人的信息只在本机显示，不做导出。学校那边改了流程或者关掉某个入口，对应那一屏就会取不到数，屏幕上会写清是哪一条 —— 这是这类客户端的常态，不是哪里坏了。
 
-## 这个仓的来历
-
-从零写。不继承轻小信（Relianttt/lightxin）及其任何派生仓的一行源码，约束和自查办法见 [docs/CLEAN_ROOM.md](docs/CLEAN_ROOM.md)。
-
-界面上"每一步出自我这"是硬要求：任何一块协议字段，落进代码时旁边要写清证据来自哪次抓包。取不到证的不写，宁可那一屏少显示一行。
-
-## 怎么编
-
-```bash
-export JAVA_HOME=/d/app/jdk-21
-./gradlew :app:assembleStableDebug      # 开发包：不混淆，装机看效果用这个
-./gradlew :app:assembleStableRelease    # 正式包：R8 + 资源压缩 + 你的签名
-```
-
-`release` 要签名：在仓根放一个 `keystore.properties`（已经在 .gitignore 里），四个键 `storeFile / storePassword / keyAlias / keyPassword`。没有它 release 出来是未签名包，别当正式包发。密钥库和口令永远不进仓。
-
 ## 结构
 
 ```
